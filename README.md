@@ -54,6 +54,17 @@ open-webui          # http://localhost:12000
 open-webui-stop
 ```
 
+**Connecting to inference backends:** Open-WebUI can access all three inference services. Configure them in Admin Panel → Settings → Connections:
+
+| Backend | Connection Type | URL | API Key |
+|---------|----------------|-----|---------|
+| Bundled Ollama | Ollama (pre-configured) | — | — |
+| Host Ollama | Ollama | `http://host.docker.internal:11434` | — |
+| vLLM | OpenAI API | `http://host.docker.internal:8020/v1` | `none` |
+| LiteLLM | OpenAI API | `http://host.docker.internal:4000/v1` | `none` |
+
+Once added, all models from all backends appear in Open-WebUI's model dropdown. If you're running LiteLLM, you only need to add LiteLLM — it already routes to both Ollama and vLLM (plus cloud APIs), so one connection covers everything.
+
 #### vLLM (High-Throughput Inference Server)
 
 | Script | Purpose | Port |
@@ -470,6 +481,8 @@ Register these tools as custom apps in NVIDIA Sync so they appear in the Sync UI
 | vLLM | `bash ~/dgx-toolbox/start-vllm-sync.sh` | 8020 | No |
 
 Refer to the [NVIDIA Sync custom apps documentation](https://docs.nvidia.com/dgx/dgx-spark/nvidia-sync.html#spark-nvidia-sync) for the exact configuration format.
+
+**Note:** When launching a custom app for the first time, Sync may auto-open a browser window before the service is ready — you'll see a "localhost refused to connect" or similar error. This is normal. Many containers install dependencies on first launch (Unsloth Studio can take up to 30 minutes). Wait a few minutes and refresh the page.
 
 ### Port Forwarding Summary
 
