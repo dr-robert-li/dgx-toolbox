@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-03-19 — Cross-Tool Integrations
+
+### Added
+
+- **setup-litellm-config.sh** — Interactive LiteLLM config generator (auto-detects Ollama models and vLLM, prompts for OpenAI/Anthropic/Gemini API keys)
+- **example.vllm-model** — Default model config for vLLM (`nvidia/Llama-3.1-Nemotron-Nano-8B-v1`)
+
+### Changed
+
+- **eval-toolbox** — Added `openai` package, `host.docker.internal` networking, cross-mount of `~/data/exports` (read-only)
+- **data-toolbox** — Added `openai` package, `host.docker.internal` networking, cross-mount of `~/eval/models` (read-only)
+- **vLLM scripts** — Read default model from `~/.vllm-model` when no argument passed
+
 ## 2026-03-19 — Inference Playground
 
 ### Added

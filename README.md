@@ -119,36 +119,54 @@ HuggingFace cache (`~/.cache/huggingface`) and model checkpoints (`~/eval/models
 | `start-litellm.sh` | LiteLLM proxy — streams logs | 4000 |
 | `start-litellm-sync.sh` | NVIDIA Sync variant — returns immediately | 4000 |
 
-Unified OpenAI-compatible proxy that routes to Ollama, vLLM, and cloud APIs (OpenAI, Anthropic, etc.) through a single endpoint. All tools — Open-WebUI, Aider, n8n, custom code — can point to `localhost:4000` and access any backend.
+Unified OpenAI-compatible proxy that routes to Ollama, vLLM, and cloud APIs (OpenAI, Anthropic, Gemini) through a single endpoint. All tools — Open-WebUI, eval toolbox, data toolbox, n8n, custom code — can point to `localhost:4000` and access any backend.
 
 ```bash
 litellm             # http://localhost:4000
 litellm-stop
 ```
 
-Configuration lives in `~/.litellm/config.yaml`. On first run, a default config is created with Ollama models. Edit it to add vLLM endpoints and cloud API keys:
+**Quick setup:** Run the interactive config generator to auto-detect local services and set API keys:
+
+```bash
+litellm-config      # detects Ollama models + vLLM, prompts for cloud API keys
+```
+
+This creates `~/.litellm/config.yaml` and `~/.litellm/.env` automatically. Re-run anytime to regenerate.
+
+**Manual config:** Edit `~/.litellm/config.yaml` directly:
 
 ```yaml
 model_list:
+  # Local models
   - model_name: llama3.1
     litellm_params:
       model: ollama/llama3.1
       api_base: http://host.docker.internal:11434
-  - model_name: vllm-model
+  - model_name: nvidia/Llama-3.1-Nemotron-Nano-8B-v1
     litellm_params:
-      model: openai/your-model-name
+      model: openai/nvidia/Llama-3.1-Nemotron-Nano-8B-v1
       api_base: http://host.docker.internal:8020/v1
       api_key: "none"
+
+  # Cloud models
   - model_name: claude-sonnet
     litellm_params:
       model: anthropic/claude-sonnet-4-20250514
+  - model_name: gemini-2.5-pro
+    litellm_params:
+      model: gemini/gemini-2.5-pro-preview-06-05
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
 ```
 
-For cloud API keys, create `~/.litellm/.env`:
+Cloud API keys go in `~/.litellm/.env`:
 
 ```bash
 OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
+GEMINI_API_KEY=AI...
 ```
 
 #### Ollama (Local LLM Server)
@@ -185,8 +203,49 @@ curl http://localhost:11434/api/generate -d '{"model": "llama3.1", "prompt": "He
                            │
               routes to any backend:
               Ollama, vLLM, OpenAI,
-              Anthropic, etc.
+              Anthropic, Gemini, etc.
 ```
+
+### Cross-Tool Integrations
+
+All toolbox containers can reach host inference services (Ollama, vLLM, LiteLLM) via `host.docker.internal`. Data and model directories are cross-mounted so the toolboxes share artifacts.
+
+**Eval Toolbox → Inference backends:**
+
+```bash
+# Inside eval-toolbox: evaluate a model served by vLLM
+lm_eval --model local-completions \
+  --model_args model=nvidia/Llama-3.1-Nemotron-Nano-8B-v1,base_url=http://host.docker.internal:8020/v1,tokenizer_backend=huggingface \
+  --tasks hellaswag,arc_easy
+
+# Or evaluate via LiteLLM (any model configured there)
+lm_eval --model local-completions \
+  --model_args model=claude-sonnet,base_url=http://host.docker.internal:4000/v1 \
+  --tasks mmlu
+```
+
+**Data Toolbox → Synthetic data generation via local models:**
+
+```python
+# Inside data-toolbox: use distilabel with LiteLLM proxy
+from distilabel.llms import OpenAILLM
+from distilabel.steps.tasks import TextGeneration
+
+llm = OpenAILLM(
+    model="llama3.1",
+    base_url="http://host.docker.internal:4000/v1",
+    api_key="none",
+)
+```
+
+**n8n → LiteLLM:** In n8n's OpenAI-compatible nodes, set the base URL to `http://host.docker.internal:4000/v1` to access all local and cloud models.
+
+**Cross-mounts:**
+
+| Container | Extra Mount | Access |
+|-----------|------------|--------|
+| eval-toolbox | `~/data/exports` → `/data/exports` | Read curated training data |
+| data-toolbox | `~/eval/models` → `/models` | Read fine-tuned model checkpoints |
 
 ### GPU Containers
 

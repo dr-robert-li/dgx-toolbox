@@ -16,6 +16,7 @@ echo " LAN:    http://${IP}:${PORT}"
 echo "================================"
 
 exec docker run --gpus all --rm --ipc=host \
+  --add-host=host.docker.internal:host-gateway \
   -p 0.0.0.0:${PORT}:${PORT} \
   -v "$HOME/.cache/huggingface:/root/.cache/huggingface" \
   -v "$HOME/data/raw:/data/raw" \
@@ -23,6 +24,7 @@ exec docker run --gpus all --rm --ipc=host \
   -v "$HOME/data/curated:/data/curated" \
   -v "$HOME/data/synthetic:/data/synthetic" \
   -v "$HOME/data/exports:/data/exports" \
+  -v "$HOME/eval/models:/models:ro" \
   -v "$HOME:/workspace" -w /workspace \
   "$IMAGE" \
   -c "jupyter lab --ip=0.0.0.0 --port=${PORT} --allow-root --no-browser --NotebookApp.token='' --NotebookApp.password=''"

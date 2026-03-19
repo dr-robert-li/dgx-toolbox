@@ -8,6 +8,7 @@ alias vllm='~/dgx-toolbox/start-vllm.sh'
 alias vllm-stop='docker stop vllm && docker rm vllm'
 alias litellm='~/dgx-toolbox/start-litellm.sh'
 alias litellm-stop='docker stop litellm'
+alias litellm-config='~/dgx-toolbox/setup-litellm-config.sh'
 alias ollama-remote='~/dgx-toolbox/setup-ollama-remote.sh'
 
 # --- Fine-Tuning ---

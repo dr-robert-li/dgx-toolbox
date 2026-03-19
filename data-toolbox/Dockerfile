@@ -82,6 +82,10 @@ RUN pip install --no-cache-dir \
       "msgspec" \
       "zstandard"
 
+# LLM API clients (for distilabel synthetic generation via LiteLLM/vLLM/Ollama)
+RUN pip install --no-cache-dir \
+      "openai"
+
 # CLI & utilities
 RUN pip install --no-cache-dir \
       "typer[all]" \

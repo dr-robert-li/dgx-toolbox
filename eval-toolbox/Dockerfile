@@ -30,6 +30,7 @@ RUN pip install --upgrade pip && \
       "rich" \
       "lm-eval" \
       "ragas" \
-      "tritonclient[all]"
+      "tritonclient[all]" \
+      "openai"
 
 ENTRYPOINT ["/bin/bash"]
