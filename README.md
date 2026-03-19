@@ -27,7 +27,6 @@ source ~/.bashrc
 | Script | Purpose |
 |--------|---------|
 | `dgx-global-base-setup.sh` | Idempotent system init — installs build tools, Miniconda (aarch64), and pyenv |
-| `code-server-creds.sh` | Prints running code-server URL and password (port 8080) |
 
 ### GPU Containers
 

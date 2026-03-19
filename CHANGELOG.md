@@ -11,4 +11,3 @@
 - **unsloth-studio.sh** — Unsloth Studio launcher with browser auto-open and readiness polling
 - **unsloth-studio-sync.sh** — Unsloth Studio launcher optimized for NVIDIA Sync (background, no TTY)
 - **start-n8n.sh** — n8n workflow automation via Docker (port 5678)
-- **code-server-creds.sh** — Retrieve running code-server URL and password
