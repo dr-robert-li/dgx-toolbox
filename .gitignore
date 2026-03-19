@@ -1,0 +1,14 @@
+# Editor / OS
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Secrets / credentials
+.env
+*.pem
+*.key
+
+# Runtime artifacts
+*.log
