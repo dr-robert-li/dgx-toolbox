@@ -61,10 +61,25 @@ open-webui-stop
 | `start-vllm.sh` | vLLM OpenAI-compatible server — streams logs | 8020 |
 | `start-vllm-sync.sh` | NVIDIA Sync variant — returns immediately | 8020 |
 
-OpenAI-compatible API server optimized for high-throughput batched inference. Faster than Ollama for production workloads and batch evaluation. Requires a model name argument.
+OpenAI-compatible API server optimized for high-throughput batched inference. Faster than Ollama for production workloads and batch evaluation.
+
+**Setting the default model:**
 
 ```bash
-# Serve a HuggingFace model
+# Copy the example and edit with your preferred model
+cp ~/dgx-toolbox/example.vllm-model ~/.vllm-model
+
+# Or set it directly
+echo 'nvidia/Llama-3.1-Nemotron-Nano-8B-v1' > ~/.vllm-model
+```
+
+Both scripts read from `~/.vllm-model` when no model argument is passed. This is how the NVIDIA Sync custom app knows which model to serve — change the file to switch models.
+
+```bash
+# Start with default model from ~/.vllm-model
+vllm
+
+# Or pass a model explicitly (overrides ~/.vllm-model)
 vllm meta-llama/Llama-3.1-8B-Instruct
 
 # Serve a local fine-tuned model from ~/eval/models/
@@ -81,6 +96,8 @@ curl http://localhost:8020/v1/chat/completions \
 # Stop
 vllm-stop
 ```
+
+**Finding models:** Browse compatible models at [vLLM Supported Models](https://docs.vllm.ai/en/latest/models/supported_models.html) and on [HuggingFace](https://huggingface.co/models?apps=vllm&sort=trending). Any HuggingFace model with a supported architecture (Llama, Mistral, Qwen, Gemma, Phi, etc.) works out of the box.
 
 HuggingFace cache (`~/.cache/huggingface`) and model checkpoints (`~/eval/models`) are mounted automatically.
 
@@ -385,7 +402,7 @@ nvidia-sync exec -- bash ~/dgx-toolbox/start-open-webui-sync.sh
 nvidia-sync forward 12000
 
 # vLLM
-nvidia-sync exec -- bash ~/dgx-toolbox/start-vllm-sync.sh meta-llama/Llama-3.1-8B-Instruct
+nvidia-sync exec -- bash ~/dgx-toolbox/start-vllm-sync.sh
 nvidia-sync forward 8020
 
 # LiteLLM
@@ -450,7 +467,7 @@ Register these tools as custom apps in NVIDIA Sync so they appear in the Sync UI
 | Data Jupyter | `bash ~/dgx-toolbox/data-toolbox-jupyter.sh` | 8890 | Yes |
 | NGC Jupyter | `bash ~/dgx-toolbox/ngc-jupyter.sh` | 8888 | Yes |
 | Triton TRT-LLM | `bash ~/dgx-toolbox/triton-trtllm-sync.sh` | 8010 | No |
-| vLLM | `bash ~/dgx-toolbox/start-vllm-sync.sh meta-llama/Llama-3.1-8B-Instruct` | 8020 | No |
+| vLLM | `bash ~/dgx-toolbox/start-vllm-sync.sh` | 8020 | No |
 
 Refer to the [NVIDIA Sync custom apps documentation](https://docs.nvidia.com/dgx/dgx-spark/nvidia-sync.html#spark-nvidia-sync) for the exact configuration format.
 

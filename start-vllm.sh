@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # vLLM OpenAI-compatible inference server
 # Usage: start-vllm.sh [model_name] [extra_args...]
+#   If no model_name is given, reads from ~/.vllm-model
 # Example: start-vllm.sh meta-llama/Llama-3.1-8B-Instruct
 # Example: start-vllm.sh unsloth/Llama-3.1-8B-Instruct --max-model-len 4096
 set -e
@@ -13,13 +14,21 @@ shift 2>/dev/null || true
 EXTRA_ARGS="$*"
 IP=$(hostname -I | awk '{print $1}')
 
+# Fall back to config file if no model argument
+if [ -z "$MODEL" ] && [ -f "$HOME/.vllm-model" ]; then
+    MODEL=$(head -1 "$HOME/.vllm-model" | xargs)
+fi
+
 if [ -z "$MODEL" ]; then
-    echo "Usage: start-vllm.sh <model_name> [extra_args...]"
+    echo "Usage: start-vllm.sh [model_name] [extra_args...]"
     echo ""
     echo "Examples:"
     echo "  start-vllm.sh meta-llama/Llama-3.1-8B-Instruct"
     echo "  start-vllm.sh unsloth/Llama-3.1-8B-Instruct --max-model-len 4096"
     echo "  start-vllm.sh /models/my-finetuned-model"
+    echo ""
+    echo "Or set a default model in ~/.vllm-model:"
+    echo "  echo 'meta-llama/Llama-3.1-8B-Instruct' > ~/.vllm-model"
     echo ""
     echo "The model will be served as an OpenAI-compatible API on port ${PORT}."
     exit 1

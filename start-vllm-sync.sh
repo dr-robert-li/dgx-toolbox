@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # vLLM launcher for NVIDIA Sync — starts server, returns immediately
-# Usage: start-vllm-sync.sh <model_name> [extra_args...]
+# Usage: start-vllm-sync.sh [model_name] [extra_args...]
+#   If no model_name is given, reads from ~/.vllm-model
 set -e
 
 PORT=8020
@@ -10,8 +11,14 @@ MODEL="${1:-}"
 shift 2>/dev/null || true
 EXTRA_ARGS="$*"
 
+# Fall back to config file if no model argument
+if [ -z "$MODEL" ] && [ -f "$HOME/.vllm-model" ]; then
+    MODEL=$(head -1 "$HOME/.vllm-model" | xargs)
+fi
+
 if [ -z "$MODEL" ]; then
-    echo "Usage: start-vllm-sync.sh <model_name> [extra_args...]"
+    echo "No model specified. Pass a model name or create ~/.vllm-model"
+    echo "  echo 'meta-llama/Llama-3.1-8B-Instruct' > ~/.vllm-model"
     exit 1
 fi
 
