@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-03-19 — Eval Toolbox & Triton TRT-LLM
+
+### Added
+
+- **eval-toolbox/Dockerfile** — NGC PyTorch base + Python-level eval stack (lm-eval, ragas, torchmetrics, pycocotools, wandb, mlflow, tritonclient, etc.)
+- **eval-toolbox-build.sh** — Build the eval-toolbox Docker image
+- **eval-toolbox.sh** — Interactive eval container with GPU access and host mounts (`~/eval/`)
+- **eval-toolbox-jupyter.sh** — Jupyter Lab on eval-toolbox image (port 8889)
+- **triton-trtllm.sh** — Triton Inference Server + TensorRT-LLM backend (ports 8010-8012)
+- **triton-trtllm-sync.sh** — Triton launcher optimized for NVIDIA Sync (background, no TTY)
+
 ## 2026-03-19 — Initial release
 
 ### Scripts
