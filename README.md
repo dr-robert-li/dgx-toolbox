@@ -80,7 +80,7 @@ Both scripts read from `~/.vllm-model` when no model argument is passed. This is
 vllm
 
 # Or pass a model explicitly (overrides ~/.vllm-model)
-vllm meta-llama/Llama-3.1-8B-Instruct
+vllm nvidia/Llama-3.1-Nemotron-Nano-8B-v1
 
 # Serve a local fine-tuned model from ~/eval/models/
 vllm /models/my-finetuned-model
@@ -91,7 +91,7 @@ vllm unsloth/Llama-3.1-8B-Instruct --max-model-len 4096
 # Query the API
 curl http://localhost:8020/v1/chat/completions \
   -H 'Content-Type: application/json' \
-  -d '{"model": "meta-llama/Llama-3.1-8B-Instruct", "messages": [{"role": "user", "content": "Hello"}]}'
+  -d '{"model": "nvidia/Llama-3.1-Nemotron-Nano-8B-v1", "messages": [{"role": "user", "content": "Hello"}]}'
 
 # Stop
 vllm-stop
