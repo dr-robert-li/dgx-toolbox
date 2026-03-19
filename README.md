@@ -19,8 +19,9 @@ git clone <repo-url> ~/dgx-toolbox
 bash ~/dgx-toolbox/dgx-global-base-setup.sh
 source ~/.bashrc
 
-# Build the eval toolbox image (one-time)
+# Build toolbox images (one-time each)
 bash ~/dgx-toolbox/eval-toolbox-build.sh
+bash ~/dgx-toolbox/data-toolbox-build.sh
 ```
 
 ## Scripts
@@ -40,6 +41,75 @@ bash ~/dgx-toolbox/eval-toolbox-build.sh
 | `ngc-quickstart.sh` | In-container guide (available ML packages & workflows) | — |
 
 Both `ngc-pytorch.sh` and `ngc-jupyter.sh` use the `nvcr.io/nvidia/pytorch:26.02-py3` image and will auto-install packages from `~/requirements-gpu.txt` if present.
+
+### Data Toolbox
+
+A general-purpose data engineering container for processing, curating, labeling, and synthetic data generation — built for pretraining and fine-tuning data pipelines. Uses the NGC PyTorch base and layers Python-level data tools on top.
+
+| Script | Purpose | Port |
+|--------|---------|------|
+| `data-toolbox-build.sh` | Build the data-toolbox Docker image (one-time) | — |
+| `data-toolbox.sh` | Interactive data processing shell with GPU access | — |
+| `data-toolbox-jupyter.sh` | Jupyter Lab with data stack | 8890 |
+
+**Included libraries:**
+
+| Category | Packages |
+|----------|----------|
+| Processing | pandas, polars, pyarrow, duckdb, datasets |
+| Curation & dedup | datatrove, datasketch, mmh3, xxhash, simhash-pybind, ftfy |
+| Web & text extraction | trafilatura, resiliparse, beautifulsoup4, readability-lxml, lxml |
+| Document extraction | pdfplumber, python-docx, openpyxl |
+| Synthetic generation | distilabel, Faker, nlpaug |
+| Data quality | cleanlab, great-expectations |
+| Labeling clients | label-studio-sdk, argilla (clients — servers run separately) |
+| Cloud I/O | boto3, azure-storage-blob, google-cloud-storage, smart-open |
+| Serialization | orjson, msgspec, zstandard |
+| CLI | typer, rich, tqdm |
+| System tools | DuckDB CLI, csvkit, pigz, parallel, pv, tesseract-ocr, poppler-utils |
+
+Data directories are mounted from the host:
+
+| Host Path | Container Path | Purpose |
+|-----------|---------------|---------|
+| `~/data/raw` | `/data/raw` | Raw ingested data |
+| `~/data/processed` | `/data/processed` | Cleaned and transformed data |
+| `~/data/curated` | `/data/curated` | Deduplicated, quality-filtered data |
+| `~/data/synthetic` | `/data/synthetic` | Generated synthetic data |
+| `~/data/exports` | `/data/exports` | Final exports for training |
+| `~/.cache/huggingface` | `/root/.cache/huggingface` | HF model/dataset cache |
+
+```bash
+# Build once
+data-build
+
+# Interactive shell
+data-toolbox
+
+# Jupyter
+data-jupyter
+```
+
+### Labeling Platforms
+
+Persistent Docker services for data annotation. The data toolbox connects to these as a client via `label-studio-sdk` and `argilla`.
+
+| Script | Purpose | Port |
+|--------|---------|------|
+| `start-label-studio.sh` | Label Studio with persistent storage | 8081 |
+| `start-argilla.sh` | Argilla with persistent storage | 6900 |
+
+```bash
+# Start labeling platforms
+label-studio        # http://localhost:8081
+argilla             # http://localhost:6900 (default: argilla / 1234)
+
+# Stop
+label-studio-stop
+argilla-stop
+```
+
+Data is persisted in `~/label-studio-data` and within the Argilla container volume respectively.
 
 ### Eval Toolbox
 
@@ -133,13 +203,16 @@ Data is persisted in `~/.n8n`.
 | Port | Service |
 |------|---------|
 | 5678 | n8n |
+| 6900 | Argilla |
 | 8000 | Unsloth Studio |
 | 8010 | Triton TRT-LLM (HTTP) |
 | 8011 | Triton TRT-LLM (gRPC) |
 | 8012 | Triton TRT-LLM (metrics) |
 | 8080 | code-server |
+| 8081 | Label Studio |
 | 8888 | Jupyter Lab (NGC) |
 | 8889 | Jupyter Lab (Eval Toolbox) |
+| 8890 | Jupyter Lab (Data Toolbox) |
 
 ## Remote Access via NVIDIA Sync
 
@@ -159,14 +232,15 @@ Data is persisted in `~/.n8n`.
    nvidia-sync exec -- bash ~/dgx-toolbox/dgx-global-base-setup.sh
    ```
 
-4. Build the eval toolbox image:
+4. Build toolbox images:
    ```bash
    nvidia-sync exec -- bash ~/dgx-toolbox/eval-toolbox-build.sh
+   nvidia-sync exec -- bash ~/dgx-toolbox/data-toolbox-build.sh
    ```
 
 ### Launching Tools Remotely
 
-For **background services** (n8n, Unsloth Studio, Triton), launch with `nvidia-sync exec` and then forward the port:
+For **background services** (n8n, Unsloth Studio, Triton, Label Studio, Argilla), launch with `nvidia-sync exec` and then forward the port:
 
 ```bash
 # Launch Unsloth Studio (sync-optimized, returns immediately)
@@ -180,25 +254,33 @@ nvidia-sync forward 8000
 ```bash
 # Launch n8n
 nvidia-sync exec -- bash ~/dgx-toolbox/start-n8n.sh &
-
-# Forward port
 nvidia-sync forward 5678
-# Then open http://localhost:5678
 ```
 
 ```bash
 # Launch Triton TRT-LLM
 nvidia-sync exec -- bash ~/dgx-toolbox/triton-trtllm-sync.sh
-
-# Forward HTTP port
 nvidia-sync forward 8010
 ```
 
-For **interactive containers** (PyTorch shell, eval toolbox), use an SSH session or `nvidia-sync exec -it`:
+```bash
+# Launch Label Studio
+nvidia-sync exec -- bash ~/dgx-toolbox/start-label-studio.sh &
+nvidia-sync forward 8081
+```
+
+```bash
+# Launch Argilla
+nvidia-sync exec -- bash ~/dgx-toolbox/start-argilla.sh &
+nvidia-sync forward 6900
+```
+
+For **interactive containers** (PyTorch shell, eval/data toolbox), use an SSH session or `nvidia-sync exec -it`:
 
 ```bash
 nvidia-sync exec -it -- bash ~/dgx-toolbox/ngc-pytorch.sh
 nvidia-sync exec -it -- bash ~/dgx-toolbox/eval-toolbox.sh
+nvidia-sync exec -it -- bash ~/dgx-toolbox/data-toolbox.sh
 ```
 
 For **Jupyter Lab**:
@@ -211,52 +293,41 @@ nvidia-sync forward 8888
 # Eval Toolbox Jupyter
 nvidia-sync exec -- bash ~/dgx-toolbox/eval-toolbox-jupyter.sh &
 nvidia-sync forward 8889
+
+# Data Toolbox Jupyter
+nvidia-sync exec -- bash ~/dgx-toolbox/data-toolbox-jupyter.sh &
+nvidia-sync forward 8890
 ```
 
 ### NVIDIA Sync Custom App Configuration
 
-You can register these tools as custom apps in NVIDIA Sync so they appear in the Sync UI and auto-forward ports. Add entries to your Sync configuration on the **client machine**:
+Register these tools as custom apps in NVIDIA Sync so they appear in the Sync UI. Add one entry per app — Sync supports one port per custom app.
 
-```yaml
-# ~/.nvidia-sync/apps.yaml (example — adjust paths per Sync docs)
-apps:
-  - name: "Unsloth Studio"
-    command: "bash ~/dgx-toolbox/unsloth-studio-sync.sh"
-    ports: [8000]
-    icon: "beaker"
+| App Name | Command | Port | Auto-open |
+|----------|---------|------|-----------|
+| Unsloth Studio | `bash ~/dgx-toolbox/unsloth-studio-sync.sh` | 8000 | Yes |
+| n8n | `bash ~/dgx-toolbox/start-n8n.sh` | 5678 | Yes |
+| Label Studio | `bash ~/dgx-toolbox/start-label-studio.sh` | 8081 | Yes |
+| Argilla | `bash ~/dgx-toolbox/start-argilla.sh` | 6900 | Yes |
+| Eval Jupyter | `bash ~/dgx-toolbox/eval-toolbox-jupyter.sh` | 8889 | Yes |
+| Data Jupyter | `bash ~/dgx-toolbox/data-toolbox-jupyter.sh` | 8890 | Yes |
+| NGC Jupyter | `bash ~/dgx-toolbox/ngc-jupyter.sh` | 8888 | Yes |
+| Triton TRT-LLM | `bash ~/dgx-toolbox/triton-trtllm-sync.sh` | 8010 | No |
 
-  - name: "n8n"
-    command: "bash ~/dgx-toolbox/start-n8n.sh"
-    ports: [5678]
-    icon: "workflow"
-
-  - name: "Eval Jupyter"
-    command: "bash ~/dgx-toolbox/eval-toolbox-jupyter.sh"
-    ports: [8889]
-    icon: "notebook"
-
-  - name: "NGC Jupyter"
-    command: "bash ~/dgx-toolbox/ngc-jupyter.sh"
-    ports: [8888]
-    icon: "notebook"
-
-  - name: "Triton TRT-LLM"
-    command: "bash ~/dgx-toolbox/triton-trtllm-sync.sh"
-    ports: [8010, 8011, 8012]
-    icon: "server"
-```
-
-Refer to the [NVIDIA Sync custom apps documentation](https://docs.nvidia.com/dgx/dgx-spark/nvidia-sync.html#spark-nvidia-sync) for the exact configuration format and supported fields.
+Refer to the [NVIDIA Sync custom apps documentation](https://docs.nvidia.com/dgx/dgx-spark/nvidia-sync.html#spark-nvidia-sync) for the exact configuration format.
 
 ### Port Forwarding Summary
 
 ```bash
-nvidia-sync forward 8000   # Unsloth Studio
 nvidia-sync forward 5678   # n8n
+nvidia-sync forward 6900   # Argilla
+nvidia-sync forward 8000   # Unsloth Studio
 nvidia-sync forward 8010   # Triton TRT-LLM (HTTP)
 nvidia-sync forward 8011   # Triton TRT-LLM (gRPC)
+nvidia-sync forward 8081   # Label Studio
 nvidia-sync forward 8888   # Jupyter Lab (NGC)
 nvidia-sync forward 8889   # Jupyter Lab (Eval Toolbox)
+nvidia-sync forward 8890   # Jupyter Lab (Data Toolbox)
 nvidia-sync forward 8080   # code-server
 ```
 
@@ -278,6 +349,13 @@ alias eval-toolbox='bash ~/dgx-toolbox/eval-toolbox.sh'
 alias eval-jupyter='bash ~/dgx-toolbox/eval-toolbox-jupyter.sh'
 alias triton='bash ~/dgx-toolbox/triton-trtllm.sh'
 alias triton-stop='docker stop triton-trtllm'
+alias data-build='bash ~/dgx-toolbox/data-toolbox-build.sh'
+alias data-toolbox='bash ~/dgx-toolbox/data-toolbox.sh'
+alias data-jupyter='bash ~/dgx-toolbox/data-toolbox-jupyter.sh'
+alias label-studio='bash ~/dgx-toolbox/start-label-studio.sh'
+alias label-studio-stop='docker stop label-studio'
+alias argilla='bash ~/dgx-toolbox/start-argilla.sh'
+alias argilla-stop='docker stop argilla'
 ```
 
 For your **client machine** (remote via NVIDIA Sync):
@@ -288,9 +366,13 @@ alias dgx-unsloth='nvidia-sync exec -- bash ~/dgx-toolbox/unsloth-studio-sync.sh
 alias dgx-n8n='nvidia-sync exec -- bash ~/dgx-toolbox/start-n8n.sh && nvidia-sync forward 5678'
 alias dgx-jupyter='nvidia-sync exec -- bash ~/dgx-toolbox/ngc-jupyter.sh & nvidia-sync forward 8888'
 alias dgx-eval-jupyter='nvidia-sync exec -- bash ~/dgx-toolbox/eval-toolbox-jupyter.sh & nvidia-sync forward 8889'
+alias dgx-data-jupyter='nvidia-sync exec -- bash ~/dgx-toolbox/data-toolbox-jupyter.sh & nvidia-sync forward 8890'
 alias dgx-triton='nvidia-sync exec -- bash ~/dgx-toolbox/triton-trtllm-sync.sh && nvidia-sync forward 8010'
+alias dgx-label-studio='nvidia-sync exec -- bash ~/dgx-toolbox/start-label-studio.sh & nvidia-sync forward 8081'
+alias dgx-argilla='nvidia-sync exec -- bash ~/dgx-toolbox/start-argilla.sh & nvidia-sync forward 6900'
 alias dgx-pytorch='nvidia-sync exec -it -- bash ~/dgx-toolbox/ngc-pytorch.sh'
 alias dgx-eval='nvidia-sync exec -it -- bash ~/dgx-toolbox/eval-toolbox.sh'
+alias dgx-data='nvidia-sync exec -it -- bash ~/dgx-toolbox/data-toolbox.sh'
 ```
 
 ## GPU Requirements File

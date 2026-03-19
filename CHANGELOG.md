@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-03-19 — Data Engineering Toolbox
+
+### Added
+
+- **data-toolbox/Dockerfile** — NGC PyTorch base + data engineering stack (DuckDB, datatrove, datasketch, distilabel, Faker, cleanlab, great-expectations, trafilatura, resiliparse, pdfplumber, etc.)
+- **data-toolbox-build.sh** — Build the data-toolbox Docker image
+- **data-toolbox.sh** — Interactive data processing container with GPU access and host mounts (`~/data/`)
+- **data-toolbox-jupyter.sh** — Jupyter Lab on data-toolbox image (port 8890)
+- **start-label-studio.sh** — Label Studio in Docker with persistent storage (port 8081)
+- **start-argilla.sh** — Argilla in Docker with persistent storage (port 6900)
+
 ## 2026-03-19 — Eval Toolbox & Triton TRT-LLM
 
 ### Added
