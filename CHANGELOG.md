@@ -1,10 +1,22 @@
 # Changelog
 
+## 2026-03-19 — Inference Playground
+
+### Added
+
+- **start-open-webui.sh** — Open-WebUI chat interface with bundled Ollama (port 12000)
+- **start-open-webui-sync.sh** — Open-WebUI launcher optimized for NVIDIA Sync
+- **start-vllm.sh** — vLLM OpenAI-compatible inference server (port 8020)
+- **start-vllm-sync.sh** — vLLM launcher optimized for NVIDIA Sync
+- **start-litellm.sh** — LiteLLM unified API proxy for Ollama/vLLM/cloud APIs (port 4000)
+- **start-litellm-sync.sh** — LiteLLM launcher optimized for NVIDIA Sync
+- **setup-ollama-remote.sh** — Reconfigure Ollama systemd to listen on all interfaces
+
 ## 2026-03-19 — Data Engineering Toolbox
 
 ### Added
 
-- **data-toolbox/Dockerfile** — NGC PyTorch base + data engineering stack (DuckDB, datatrove, datasketch, distilabel, Faker, cleanlab, great-expectations, trafilatura, resiliparse, pdfplumber, etc.)
+- **data-toolbox/Dockerfile** — NGC PyTorch base + data engineering stack (DuckDB, datatrove, datasketch, distilabel, Faker, cleanlab, trafilatura, pdfplumber, etc.)
 - **data-toolbox-build.sh** — Build the data-toolbox Docker image
 - **data-toolbox.sh** — Interactive data processing container with GPU access and host mounts (`~/data/`)
 - **data-toolbox-jupyter.sh** — Jupyter Lab on data-toolbox image (port 8890)

@@ -22,6 +22,9 @@ source ~/.bashrc
 # Build toolbox images (one-time each)
 bash ~/dgx-toolbox/eval-toolbox-build.sh
 bash ~/dgx-toolbox/data-toolbox-build.sh
+
+# Enable Ollama for remote/LAN access
+bash ~/dgx-toolbox/setup-ollama-remote.sh
 ```
 
 ## Scripts
@@ -31,6 +34,131 @@ bash ~/dgx-toolbox/data-toolbox-build.sh
 | Script | Purpose |
 |--------|---------|
 | `dgx-global-base-setup.sh` | Idempotent system init — installs build tools, Miniconda (aarch64), and pyenv |
+| `setup-ollama-remote.sh` | Reconfigure Ollama to listen on all interfaces for Sync/LAN access (requires sudo) |
+
+### Inference Playground
+
+Tools for serving models and interacting with them — chat, code, agentic workflows. Covers both web UIs for non-technical users and CLI/API access for technical users.
+
+#### Open-WebUI (Chat Interface)
+
+| Script | Purpose | Port |
+|--------|---------|------|
+| `start-open-webui.sh` | Open-WebUI with bundled Ollama — streams logs | 12000 |
+| `start-open-webui-sync.sh` | NVIDIA Sync variant — returns immediately | 12000 |
+
+Full-featured chat interface with RAG, image generation, multi-model support, and conversation history. Uses the `ghcr.io/open-webui/open-webui:ollama` image with bundled Ollama. Data persisted in Docker volumes `open-webui` and `open-webui-ollama`.
+
+```bash
+open-webui          # http://localhost:12000
+open-webui-stop
+```
+
+#### vLLM (High-Throughput Inference Server)
+
+| Script | Purpose | Port |
+|--------|---------|------|
+| `start-vllm.sh` | vLLM OpenAI-compatible server — streams logs | 8020 |
+| `start-vllm-sync.sh` | NVIDIA Sync variant — returns immediately | 8020 |
+
+OpenAI-compatible API server optimized for high-throughput batched inference. Faster than Ollama for production workloads and batch evaluation. Requires a model name argument.
+
+```bash
+# Serve a HuggingFace model
+vllm meta-llama/Llama-3.1-8B-Instruct
+
+# Serve a local fine-tuned model from ~/eval/models/
+vllm /models/my-finetuned-model
+
+# With extra args
+vllm unsloth/Llama-3.1-8B-Instruct --max-model-len 4096
+
+# Query the API
+curl http://localhost:8020/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model": "meta-llama/Llama-3.1-8B-Instruct", "messages": [{"role": "user", "content": "Hello"}]}'
+
+# Stop
+vllm-stop
+```
+
+HuggingFace cache (`~/.cache/huggingface`) and model checkpoints (`~/eval/models`) are mounted automatically.
+
+#### LiteLLM (Unified API Proxy)
+
+| Script | Purpose | Port |
+|--------|---------|------|
+| `start-litellm.sh` | LiteLLM proxy — streams logs | 4000 |
+| `start-litellm-sync.sh` | NVIDIA Sync variant — returns immediately | 4000 |
+
+Unified OpenAI-compatible proxy that routes to Ollama, vLLM, and cloud APIs (OpenAI, Anthropic, etc.) through a single endpoint. All tools — Open-WebUI, Aider, n8n, custom code — can point to `localhost:4000` and access any backend.
+
+```bash
+litellm             # http://localhost:4000
+litellm-stop
+```
+
+Configuration lives in `~/.litellm/config.yaml`. On first run, a default config is created with Ollama models. Edit it to add vLLM endpoints and cloud API keys:
+
+```yaml
+model_list:
+  - model_name: llama3.1
+    litellm_params:
+      model: ollama/llama3.1
+      api_base: http://host.docker.internal:11434
+  - model_name: vllm-model
+    litellm_params:
+      model: openai/your-model-name
+      api_base: http://host.docker.internal:8020/v1
+      api_key: "none"
+  - model_name: claude-sonnet
+    litellm_params:
+      model: anthropic/claude-sonnet-4-20250514
+```
+
+For cloud API keys, create `~/.litellm/.env`:
+
+```bash
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+#### Ollama (Local LLM Server)
+
+Ollama runs as a systemd service (pre-installed on DGX Spark). By default it listens on `localhost:11434` only.
+
+```bash
+# Enable remote/LAN access (one-time, requires sudo)
+ollama-remote
+
+# Pull and run models
+ollama pull llama3.1
+ollama run llama3.1
+
+# API access
+curl http://localhost:11434/api/generate -d '{"model": "llama3.1", "prompt": "Hello"}'
+```
+
+#### Inference Architecture
+
+```
+                    ┌─────────────────┐
+                    │   Open-WebUI     │ :12000  (chat UI)
+                    └────────┬────────┘
+                             │
+    ┌────────────────────────┼────────────────────────┐
+    │                        │                         │
+    ▼                        ▼                         ▼
+┌────────┐           ┌────────────┐            ┌────────────┐
+│ Ollama │ :11434    │  LiteLLM   │ :4000      │   vLLM     │ :8020
+│ (local │           │  (proxy)   │            │ (OpenAI    │
+│  LLMs) │           │            │            │  compat)   │
+└────────┘           └─────┬──────┘            └────────────┘
+                           │
+              routes to any backend:
+              Ollama, vLLM, OpenAI,
+              Anthropic, etc.
+```
 
 ### GPU Containers
 
@@ -57,11 +185,11 @@ A general-purpose data engineering container for processing, curating, labeling,
 | Category | Packages |
 |----------|----------|
 | Processing | pandas, polars, pyarrow, duckdb, datasets |
-| Curation & dedup | datatrove, datasketch, mmh3, xxhash, simhash-pybind, ftfy |
-| Web & text extraction | trafilatura, resiliparse, beautifulsoup4, readability-lxml, lxml |
+| Curation & dedup | datatrove, datasketch, mmh3, xxhash, ftfy |
+| Web & text extraction | trafilatura, beautifulsoup4, readability-lxml, lxml |
 | Document extraction | pdfplumber, python-docx, openpyxl |
-| Synthetic generation | distilabel, Faker, nlpaug |
-| Data quality | cleanlab, great-expectations |
+| Synthetic generation | distilabel, Faker |
+| Data quality | cleanlab |
 | Labeling clients | label-studio-sdk, argilla (clients — servers run separately) |
 | Cloud I/O | boto3, azure-storage-blob, google-cloud-storage, smart-open |
 | Serialization | orjson, msgspec, zstandard |
@@ -202,17 +330,21 @@ Data is persisted in `~/.n8n`.
 
 | Port | Service |
 |------|---------|
+| 4000 | LiteLLM Proxy |
 | 5678 | n8n |
 | 6900 | Argilla |
 | 8000 | Unsloth Studio |
 | 8010 | Triton TRT-LLM (HTTP) |
 | 8011 | Triton TRT-LLM (gRPC) |
 | 8012 | Triton TRT-LLM (metrics) |
+| 8020 | vLLM |
 | 8080 | code-server |
 | 8081 | Label Studio |
 | 8888 | Jupyter Lab (NGC) |
 | 8889 | Jupyter Lab (Eval Toolbox) |
 | 8890 | Jupyter Lab (Data Toolbox) |
+| 11434 | Ollama |
+| 12000 | Open-WebUI |
 
 ## Remote Access via NVIDIA Sync
 
@@ -238,44 +370,50 @@ Data is persisted in `~/.n8n`.
    nvidia-sync exec -- bash ~/dgx-toolbox/data-toolbox-build.sh
    ```
 
+5. Enable Ollama remote access:
+   ```bash
+   nvidia-sync exec -- bash ~/dgx-toolbox/setup-ollama-remote.sh
+   ```
+
 ### Launching Tools Remotely
 
-For **background services** (n8n, Unsloth Studio, Triton, Label Studio, Argilla), launch with `nvidia-sync exec` and then forward the port:
+For **background services**, launch with `nvidia-sync exec` and then forward the port:
 
 ```bash
-# Launch Unsloth Studio (sync-optimized, returns immediately)
+# Open-WebUI
+nvidia-sync exec -- bash ~/dgx-toolbox/start-open-webui-sync.sh
+nvidia-sync forward 12000
+
+# vLLM
+nvidia-sync exec -- bash ~/dgx-toolbox/start-vllm-sync.sh meta-llama/Llama-3.1-8B-Instruct
+nvidia-sync forward 8020
+
+# LiteLLM
+nvidia-sync exec -- bash ~/dgx-toolbox/start-litellm-sync.sh
+nvidia-sync forward 4000
+
+# Unsloth Studio
 nvidia-sync exec -- bash ~/dgx-toolbox/unsloth-studio-sync.sh
-
-# Forward port to access in your local browser
 nvidia-sync forward 8000
-# Then open http://localhost:8000
-```
 
-```bash
-# Launch n8n
+# n8n
 nvidia-sync exec -- bash ~/dgx-toolbox/start-n8n.sh &
 nvidia-sync forward 5678
-```
 
-```bash
-# Launch Triton TRT-LLM
+# Triton TRT-LLM
 nvidia-sync exec -- bash ~/dgx-toolbox/triton-trtllm-sync.sh
 nvidia-sync forward 8010
-```
 
-```bash
-# Launch Label Studio
+# Label Studio
 nvidia-sync exec -- bash ~/dgx-toolbox/start-label-studio.sh &
 nvidia-sync forward 8081
-```
 
-```bash
-# Launch Argilla
+# Argilla
 nvidia-sync exec -- bash ~/dgx-toolbox/start-argilla.sh &
 nvidia-sync forward 6900
 ```
 
-For **interactive containers** (PyTorch shell, eval/data toolbox), use an SSH session or `nvidia-sync exec -it`:
+For **interactive containers**, use `nvidia-sync exec -it`:
 
 ```bash
 nvidia-sync exec -it -- bash ~/dgx-toolbox/ngc-pytorch.sh
@@ -286,15 +424,12 @@ nvidia-sync exec -it -- bash ~/dgx-toolbox/data-toolbox.sh
 For **Jupyter Lab**:
 
 ```bash
-# NGC Jupyter
 nvidia-sync exec -- bash ~/dgx-toolbox/ngc-jupyter.sh &
 nvidia-sync forward 8888
 
-# Eval Toolbox Jupyter
 nvidia-sync exec -- bash ~/dgx-toolbox/eval-toolbox-jupyter.sh &
 nvidia-sync forward 8889
 
-# Data Toolbox Jupyter
 nvidia-sync exec -- bash ~/dgx-toolbox/data-toolbox-jupyter.sh &
 nvidia-sync forward 8890
 ```
@@ -305,6 +440,8 @@ Register these tools as custom apps in NVIDIA Sync so they appear in the Sync UI
 
 | App Name | Command | Port | Auto-open |
 |----------|---------|------|-----------|
+| Open-WebUI | `bash ~/dgx-toolbox/start-open-webui-sync.sh` | 12000 | Yes |
+| LiteLLM | `bash ~/dgx-toolbox/start-litellm-sync.sh` | 4000 | No |
 | Unsloth Studio | `bash ~/dgx-toolbox/unsloth-studio-sync.sh` | 8000 | Yes |
 | n8n | `bash ~/dgx-toolbox/start-n8n.sh` | 5678 | Yes |
 | Label Studio | `bash ~/dgx-toolbox/start-label-studio.sh` | 8081 | Yes |
@@ -313,22 +450,27 @@ Register these tools as custom apps in NVIDIA Sync so they appear in the Sync UI
 | Data Jupyter | `bash ~/dgx-toolbox/data-toolbox-jupyter.sh` | 8890 | Yes |
 | NGC Jupyter | `bash ~/dgx-toolbox/ngc-jupyter.sh` | 8888 | Yes |
 | Triton TRT-LLM | `bash ~/dgx-toolbox/triton-trtllm-sync.sh` | 8010 | No |
+| vLLM | `bash ~/dgx-toolbox/start-vllm-sync.sh meta-llama/Llama-3.1-8B-Instruct` | 8020 | No |
 
 Refer to the [NVIDIA Sync custom apps documentation](https://docs.nvidia.com/dgx/dgx-spark/nvidia-sync.html#spark-nvidia-sync) for the exact configuration format.
 
 ### Port Forwarding Summary
 
 ```bash
-nvidia-sync forward 5678   # n8n
-nvidia-sync forward 6900   # Argilla
-nvidia-sync forward 8000   # Unsloth Studio
-nvidia-sync forward 8010   # Triton TRT-LLM (HTTP)
-nvidia-sync forward 8011   # Triton TRT-LLM (gRPC)
-nvidia-sync forward 8081   # Label Studio
-nvidia-sync forward 8888   # Jupyter Lab (NGC)
-nvidia-sync forward 8889   # Jupyter Lab (Eval Toolbox)
-nvidia-sync forward 8890   # Jupyter Lab (Data Toolbox)
-nvidia-sync forward 8080   # code-server
+nvidia-sync forward 4000    # LiteLLM Proxy
+nvidia-sync forward 5678    # n8n
+nvidia-sync forward 6900    # Argilla
+nvidia-sync forward 8000    # Unsloth Studio
+nvidia-sync forward 8010    # Triton TRT-LLM (HTTP)
+nvidia-sync forward 8011    # Triton TRT-LLM (gRPC)
+nvidia-sync forward 8020    # vLLM
+nvidia-sync forward 8080    # code-server
+nvidia-sync forward 8081    # Label Studio
+nvidia-sync forward 8888    # Jupyter Lab (NGC)
+nvidia-sync forward 8889    # Jupyter Lab (Eval Toolbox)
+nvidia-sync forward 8890    # Jupyter Lab (Data Toolbox)
+nvidia-sync forward 11434   # Ollama
+nvidia-sync forward 12000   # Open-WebUI
 ```
 
 ## Suggested Aliases
@@ -356,12 +498,21 @@ alias label-studio='bash ~/dgx-toolbox/start-label-studio.sh'
 alias label-studio-stop='docker stop label-studio'
 alias argilla='bash ~/dgx-toolbox/start-argilla.sh'
 alias argilla-stop='docker stop argilla'
+alias open-webui='bash ~/dgx-toolbox/start-open-webui.sh'
+alias open-webui-stop='docker stop open-webui'
+alias vllm='bash ~/dgx-toolbox/start-vllm.sh'
+alias vllm-stop='docker stop vllm && docker rm vllm'
+alias litellm='bash ~/dgx-toolbox/start-litellm.sh'
+alias litellm-stop='docker stop litellm'
+alias ollama-remote='bash ~/dgx-toolbox/setup-ollama-remote.sh'
 ```
 
 For your **client machine** (remote via NVIDIA Sync):
 
 ```bash
 # --- Remote DGX aliases ---
+alias dgx-open-webui='nvidia-sync exec -- bash ~/dgx-toolbox/start-open-webui-sync.sh && nvidia-sync forward 12000'
+alias dgx-litellm='nvidia-sync exec -- bash ~/dgx-toolbox/start-litellm-sync.sh && nvidia-sync forward 4000'
 alias dgx-unsloth='nvidia-sync exec -- bash ~/dgx-toolbox/unsloth-studio-sync.sh && nvidia-sync forward 8000'
 alias dgx-n8n='nvidia-sync exec -- bash ~/dgx-toolbox/start-n8n.sh && nvidia-sync forward 5678'
 alias dgx-jupyter='nvidia-sync exec -- bash ~/dgx-toolbox/ngc-jupyter.sh & nvidia-sync forward 8888'
