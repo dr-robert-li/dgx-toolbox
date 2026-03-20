@@ -90,13 +90,50 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| | | |
+| INIT-01 | Phase 1 | Pending |
+| INIT-02 | Phase 1 | Pending |
+| INIT-03 | Phase 1 | Pending |
+| INIT-04 | Phase 1 | Pending |
+| INIT-05 | Phase 1 | Pending |
+| INIT-06 | Phase 1 | Pending |
+| INIT-07 | Phase 1 | Pending |
+| INIT-08 | Phase 1 | Pending |
+| TRCK-01 | Phase 2 | Pending |
+| TRCK-02 | Phase 2 | Pending |
+| SAFE-01 | Phase 2 | Pending |
+| SAFE-02 | Phase 2 | Pending |
+| SAFE-06 | Phase 2 | Pending |
+| MIGR-01 | Phase 3 | Pending |
+| MIGR-02 | Phase 3 | Pending |
+| MIGR-03 | Phase 3 | Pending |
+| MIGR-04 | Phase 3 | Pending |
+| MIGR-05 | Phase 3 | Pending |
+| MIGR-06 | Phase 3 | Pending |
+| MIGR-07 | Phase 3 | Pending |
+| MIGR-08 | Phase 3 | Pending |
+| RECL-01 | Phase 3 | Pending |
+| RECL-02 | Phase 3 | Pending |
+| RECL-03 | Phase 3 | Pending |
+| SAFE-03 | Phase 3 | Pending |
+| SAFE-04 | Phase 3 | Pending |
+| SAFE-05 | Phase 3 | Pending |
+| CLI-01 | Phase 4 | Pending |
+| CLI-02 | Phase 4 | Pending |
+| CLI-03 | Phase 4 | Pending |
+| CLI-04 | Phase 4 | Pending |
+| CLI-05 | Phase 4 | Pending |
+| CLI-06 | Phase 4 | Pending |
+| CLI-07 | Phase 4 | Pending |
+| DOCS-01 | Phase 4 | Pending |
+| DOCS-02 | Phase 4 | Pending |
+| DOCS-03 | Phase 4 | Pending |
+| DOCS-04 | Phase 4 | Pending |
 
 **Coverage:**
-- v1 requirements: 30 total
-- Mapped to phases: 0
-- Unmapped: 30
+- v1 requirements: 38 total
+- Mapped to phases: 38
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-21*
-*Last updated: 2026-03-21 after initial definition*
+*Last updated: 2026-03-21 after roadmap creation*
