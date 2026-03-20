@@ -42,8 +42,8 @@ created: 2026-03-21
 | 01-01-02 | 01 | 1 | SAFE-01 | unit | `bash -c 'source modelstore/lib/common.sh && type -t check_mount'` | ❌ W0 | ⬜ pending |
 | 01-02-01 | 02 | 1 | INIT-01 | integration | `echo "" \| bash modelstore/cmd/init.sh --test` | ❌ W0 | ⬜ pending |
 | 01-02-02 | 02 | 1 | INIT-06 | integration | `bash modelstore/test/test-fs-validation.sh` | ❌ W0 | ⬜ pending |
-| 01-02-03 | 02 | 1 | INIT-07 | integration | `bash modelstore/test/test-model-scan.sh` | ❌ W0 | ⬜ pending |
-| 01-02-04 | 02 | 1 | INIT-08 | integration | `bash modelstore/test/test-reinit.sh` | ❌ W0 | ⬜ pending |
+| 01-02-03 | 02 | 1 | INIT-07 | integration | `bash modelstore/test/test-init.sh` | ❌ W0 | ⬜ pending |
+| 01-02-04 | 02 | 1 | INIT-08 | integration | `bash modelstore/test/test-init.sh` | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -54,9 +54,7 @@ created: 2026-03-21
 - [ ] `modelstore/test/smoke.sh` — basic function existence and config read/write
 - [ ] `modelstore/test/run-all.sh` — runs all test scripts
 - [ ] `modelstore/test/test-fs-validation.sh` — filesystem rejection tests
-- [ ] `modelstore/test/test-model-scan.sh` — model enumeration tests
-- [ ] `modelstore/test/test-reinit.sh` — reinit with backup tests
-
+- [ ] `modelstore/test/test-init.sh` — init function integration tests (model scan, config round-trip, dir creation)
 *Wave 0 creates test infrastructure alongside implementation.*
 
 ---
