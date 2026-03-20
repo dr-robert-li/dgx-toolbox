@@ -29,11 +29,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. After init, a config file exists on disk with retention period, cron schedule, and drive paths — all values match what the user entered
   4. User can run `modelstore init` again (reinit) to reconfigure drives, and existing model locations are shown with sizes before any migration begins
   5. Init scans and displays all existing HuggingFace and Ollama models with their sizes so the user sees what will be managed
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 01-01: Project scaffold, lib/config.sh, lib/common.sh (mount check, space check, logging)
-- [ ] 01-02: cmd/init.sh with gum/read-p fallback, filesystem validation, reinit support
+- [ ] 01-01-PLAN.md — Project scaffold, lib/config.sh, lib/common.sh with mount check, space check, logging, and test infrastructure
+- [ ] 01-02-PLAN.md — cmd/init.sh with gum/read-p fallback, filesystem validation, model scan, crontab, reinit support
 
 ### Phase 2: Adapters and Usage Tracking
 **Goal**: HuggingFace and Ollama models can each be enumerated, sized, and individually identified, and every model load from a launcher updates a persistent usage timestamp
