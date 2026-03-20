@@ -15,30 +15,87 @@ Battle-tested scripts for spinning up ML/AI tools on the **NVIDIA DGX Spark**, d
 # Clone to your DGX
 git clone <repo-url> ~/dgx-toolbox
 
+# Copy aliases
+cp ~/dgx-toolbox/example.bash_aliases ~/.bash_aliases && source ~/.bash_aliases
+
 # One-time system setup (Python, Miniconda, pyenv)
 bash ~/dgx-toolbox/dgx-global-base-setup.sh
 source ~/.bashrc
 
-# Build toolbox images (one-time each)
-bash ~/dgx-toolbox/eval-toolbox-build.sh
-bash ~/dgx-toolbox/data-toolbox-build.sh
+# Build all toolbox images (base → eval + data)
+build-all
 
 # Enable Ollama for remote/LAN access
-bash ~/dgx-toolbox/setup-ollama-remote.sh
+ollama-remote
+
+# Configure LiteLLM (auto-detects services, prompts for API keys)
+litellm-config
+
+# Check what's running
+dgx-status
 ```
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                      DGX Toolbox                             │
+├──────────────┬──────────────┬──────────────┬─────────────────┤
+│  Inference   │    Data      │  Evaluation  │  Fine-Tuning    │
+│              │              │              │                 │
+│ Open-WebUI   │ data-toolbox │ eval-toolbox │ Unsloth Studio  │
+│ Ollama       │ Label Studio │ lm-eval      │                 │
+│ vLLM         │ Argilla      │ Triton       │                 │
+│ LiteLLM      │ distilabel   │ tritonclient │                 │
+├──────────────┴──────────────┴──────────────┴─────────────────┤
+│  Shared: base-toolbox image │ lib.sh │ docker-compose        │
+├──────────────────────────────────────────────────────────────┤
+│  NGC PyTorch base (nvcr.io/nvidia/pytorch:26.02-py3)         │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Image Hierarchy
+
+```
+nvcr.io/nvidia/pytorch:26.02-py3  (21GB, CUDA + PyTorch)
+  └─ base-toolbox                 (shared: pandas, pyarrow, datasets, openai, scikit-learn, typer, rich)
+       ├─ eval-toolbox            (+lm-eval, ragas, torchmetrics, wandb, mlflow, tritonclient)
+       └─ data-toolbox            (+polars, duckdb, datatrove, distilabel, cleanlab, trafilatura, pdfplumber)
+```
+
+Shared layers mean `eval-toolbox` and `data-toolbox` rebuild in seconds when only their specific packages change.
 
 ## Scripts
 
-### System Setup
+### System Setup & Operations
 
 | Script | Purpose |
 |--------|---------|
 | `dgx-global-base-setup.sh` | Idempotent system init — installs build tools, Miniconda (aarch64), and pyenv |
 | `setup-ollama-remote.sh` | Reconfigure Ollama to listen on all interfaces for Sync/LAN access (requires sudo) |
+| `build-toolboxes.sh` | Build all Docker images: base → eval + data (alias: `build-all`) |
+| `status.sh` | Show all services, image sizes, and disk usage (alias: `dgx-status`) |
+| `lib.sh` | Shared functions for launcher scripts (sourced, not run directly) |
 
 ### Inference Playground
 
 Tools for serving models and interacting with them — chat, code, agentic workflows. Covers both web UIs for non-technical users and CLI/API access for technical users.
+
+#### Docker Compose (recommended for multi-service stacks)
+
+```bash
+# Start Open-WebUI + LiteLLM (inference stack without vLLM)
+inference-up
+
+# Start Open-WebUI + LiteLLM + vLLM
+VLLM_MODEL=nvidia/Llama-3.1-Nemotron-Nano-8B-v1 docker compose -f ~/dgx-toolbox/docker-compose.inference.yml --profile with-vllm up -d
+
+# View logs / stop
+inference-logs
+inference-down
+```
+
+Individual scripts still work for standalone use and NVIDIA Sync custom apps.
 
 #### Open-WebUI (Chat Interface)
 
@@ -118,6 +175,7 @@ HuggingFace cache (`~/.cache/huggingface`) and model checkpoints (`~/eval/models
 |--------|---------|------|
 | `start-litellm.sh` | LiteLLM proxy — streams logs | 4000 |
 | `start-litellm-sync.sh` | NVIDIA Sync variant — returns immediately | 4000 |
+| `setup-litellm-config.sh` | Interactive config generator | — |
 
 Unified OpenAI-compatible proxy that routes to Ollama, vLLM, and cloud APIs (OpenAI, Anthropic, Gemini) through a single endpoint. All tools — Open-WebUI, eval toolbox, data toolbox, n8n, custom code — can point to `localhost:4000` and access any backend.
 
@@ -259,13 +317,20 @@ Both `ngc-pytorch.sh` and `ngc-jupyter.sh` use the `nvcr.io/nvidia/pytorch:26.02
 
 ### Data Toolbox
 
-A general-purpose data engineering container for processing, curating, labeling, and synthetic data generation — built for pretraining and fine-tuning data pipelines. Uses the NGC PyTorch base and layers Python-level data tools on top.
+A general-purpose data engineering container for processing, curating, labeling, and synthetic data generation — built for pretraining and fine-tuning data pipelines. Built on `base-toolbox` with data-specific packages layered on top.
 
 | Script | Purpose | Port |
 |--------|---------|------|
-| `data-toolbox-build.sh` | Build the data-toolbox Docker image (one-time) | — |
+| `data-toolbox-build.sh` | Build the data-toolbox Docker image (auto-builds base if needed) | — |
 | `data-toolbox.sh` | Interactive data processing shell with GPU access | — |
 | `data-toolbox-jupyter.sh` | Jupyter Lab with data stack | 8890 |
+
+**Docker Compose:** Label Studio and Argilla can be started together:
+
+```bash
+data-stack-up       # starts Label Studio + Argilla
+data-stack-down     # stops both
+```
 
 **Included libraries:**
 
@@ -295,7 +360,7 @@ Data directories are mounted from the host:
 | `~/.cache/huggingface` | `/root/.cache/huggingface` | HF model/dataset cache |
 
 ```bash
-# Build once
+# Build once (auto-builds base if needed)
 data-build
 
 # Interactive shell
@@ -315,9 +380,12 @@ Persistent Docker services for data annotation. The data toolbox connects to the
 | `start-argilla.sh` | Argilla with persistent storage | 6900 |
 
 ```bash
-# Start labeling platforms
+# Start individually
 label-studio        # http://localhost:8081
 argilla             # http://localhost:6900 (default: argilla / 1234)
+
+# Or start together via compose
+data-stack-up
 
 # Stop
 label-studio-stop
@@ -328,15 +396,15 @@ Data is persisted in `~/label-studio-data` and within the Argilla container volu
 
 ### Eval Toolbox
 
-A general-purpose evaluation container built on the NGC PyTorch base with metrics, LLM eval, CV eval, and Triton client libraries pre-installed. Does **not** reinstall CUDA/PyTorch — only layers Python-level eval packages on top.
+A general-purpose evaluation container built on `base-toolbox` with metrics, LLM eval, CV eval, and Triton client libraries. Does **not** reinstall CUDA/PyTorch — only layers eval-specific packages on top.
 
 | Script | Purpose | Port |
 |--------|---------|------|
-| `eval-toolbox-build.sh` | Build the eval-toolbox Docker image (one-time) | — |
+| `eval-toolbox-build.sh` | Build the eval-toolbox Docker image (auto-builds base if needed) | — |
 | `eval-toolbox.sh` | Interactive eval shell with GPU access | — |
 | `eval-toolbox-jupyter.sh` | Jupyter Lab with eval stack | 8889 |
 
-**Included libraries:** `lm-eval`, `ragas`, `evaluate`, `datasets`, `torchmetrics`, `pycocotools`, `albumentations`, `scikit-learn`, `pandas`, `scipy`, `wandb`, `mlflow`, `tritonclient[all]`, `typer`, `rich`
+**Included libraries:** `lm-eval`, `ragas`, `evaluate`, `datasets`, `torchmetrics`, `pycocotools`, `albumentations`, `scikit-learn`, `pandas`, `scipy`, `wandb`, `mlflow`, `tritonclient[all]`, `openai`, `typer`, `rich`
 
 Data directories are mounted from the host:
 
@@ -348,7 +416,7 @@ Data directories are mounted from the host:
 | `~/.cache/huggingface` | `/root/.cache/huggingface` | HF model/dataset cache |
 
 ```bash
-# Build once
+# Build once (auto-builds base if needed)
 eval-build
 
 # Interactive shell
@@ -451,10 +519,9 @@ Data is persisted in `~/.n8n`.
    nvidia-sync exec -- bash ~/dgx-toolbox/dgx-global-base-setup.sh
    ```
 
-4. Build toolbox images:
+4. Build all toolbox images:
    ```bash
-   nvidia-sync exec -- bash ~/dgx-toolbox/eval-toolbox-build.sh
-   nvidia-sync exec -- bash ~/dgx-toolbox/data-toolbox-build.sh
+   nvidia-sync exec -- bash ~/dgx-toolbox/build-toolboxes.sh
    ```
 
 5. Enable Ollama remote access:
@@ -564,56 +631,23 @@ nvidia-sync forward 12000   # Open-WebUI
 
 ## Suggested Aliases
 
-Add these to your `~/.bash_aliases` on the **DGX Spark**:
+See `example.bash_aliases` for the complete set. Install with:
 
 ```bash
-# --- DGX Toolbox aliases ---
-alias dgx-setup='bash ~/dgx-toolbox/dgx-global-base-setup.sh'
-alias pytorch='bash ~/dgx-toolbox/ngc-pytorch.sh'
-alias jupyter='bash ~/dgx-toolbox/ngc-jupyter.sh'
-alias unsloth='bash ~/dgx-toolbox/unsloth-studio.sh'
-alias unsloth-stop='docker stop unsloth-studio && docker rm unsloth-studio'
-alias n8n='bash ~/dgx-toolbox/start-n8n.sh'
-alias n8n-stop='docker stop n8n'
-alias eval-build='bash ~/dgx-toolbox/eval-toolbox-build.sh'
-alias eval-toolbox='bash ~/dgx-toolbox/eval-toolbox.sh'
-alias eval-jupyter='bash ~/dgx-toolbox/eval-toolbox-jupyter.sh'
-alias triton='bash ~/dgx-toolbox/triton-trtllm.sh'
-alias triton-stop='docker stop triton-trtllm'
-alias data-build='bash ~/dgx-toolbox/data-toolbox-build.sh'
-alias data-toolbox='bash ~/dgx-toolbox/data-toolbox.sh'
-alias data-jupyter='bash ~/dgx-toolbox/data-toolbox-jupyter.sh'
-alias label-studio='bash ~/dgx-toolbox/start-label-studio.sh'
-alias label-studio-stop='docker stop label-studio'
-alias argilla='bash ~/dgx-toolbox/start-argilla.sh'
-alias argilla-stop='docker stop argilla'
-alias open-webui='bash ~/dgx-toolbox/start-open-webui.sh'
-alias open-webui-stop='docker stop open-webui'
-alias vllm='bash ~/dgx-toolbox/start-vllm.sh'
-alias vllm-stop='docker stop vllm && docker rm vllm'
-alias litellm='bash ~/dgx-toolbox/start-litellm.sh'
-alias litellm-stop='docker stop litellm'
-alias ollama-remote='bash ~/dgx-toolbox/setup-ollama-remote.sh'
+cp ~/dgx-toolbox/example.bash_aliases ~/.bash_aliases && source ~/.bash_aliases
 ```
 
-For your **client machine** (remote via NVIDIA Sync):
+Key aliases:
 
-```bash
-# --- Remote DGX aliases ---
-alias dgx-open-webui='nvidia-sync exec -- bash ~/dgx-toolbox/start-open-webui-sync.sh && nvidia-sync forward 12000'
-alias dgx-litellm='nvidia-sync exec -- bash ~/dgx-toolbox/start-litellm-sync.sh && nvidia-sync forward 4000'
-alias dgx-unsloth='nvidia-sync exec -- bash ~/dgx-toolbox/unsloth-studio-sync.sh && nvidia-sync forward 8000'
-alias dgx-n8n='nvidia-sync exec -- bash ~/dgx-toolbox/start-n8n.sh && nvidia-sync forward 5678'
-alias dgx-jupyter='nvidia-sync exec -- bash ~/dgx-toolbox/ngc-jupyter.sh & nvidia-sync forward 8888'
-alias dgx-eval-jupyter='nvidia-sync exec -- bash ~/dgx-toolbox/eval-toolbox-jupyter.sh & nvidia-sync forward 8889'
-alias dgx-data-jupyter='nvidia-sync exec -- bash ~/dgx-toolbox/data-toolbox-jupyter.sh & nvidia-sync forward 8890'
-alias dgx-triton='nvidia-sync exec -- bash ~/dgx-toolbox/triton-trtllm-sync.sh && nvidia-sync forward 8010'
-alias dgx-label-studio='nvidia-sync exec -- bash ~/dgx-toolbox/start-label-studio.sh & nvidia-sync forward 8081'
-alias dgx-argilla='nvidia-sync exec -- bash ~/dgx-toolbox/start-argilla.sh & nvidia-sync forward 6900'
-alias dgx-pytorch='nvidia-sync exec -it -- bash ~/dgx-toolbox/ngc-pytorch.sh'
-alias dgx-eval='nvidia-sync exec -it -- bash ~/dgx-toolbox/eval-toolbox.sh'
-alias dgx-data='nvidia-sync exec -it -- bash ~/dgx-toolbox/data-toolbox.sh'
-```
+| Alias | Action |
+|-------|--------|
+| `build-all` | Build base → eval → data toolbox images |
+| `dgx-status` | Show all services, images, and disk usage |
+| `inference-up` / `inference-down` | Start/stop inference stack (Open-WebUI + LiteLLM) |
+| `data-stack-up` / `data-stack-down` | Start/stop data stack (Label Studio + Argilla) |
+| `litellm-config` | Interactive LiteLLM config generator |
+| `eval-toolbox` / `data-toolbox` | Interactive toolbox shells |
+| `docker-stop-all` | Stop all running containers |
 
 ## GPU Requirements File
 

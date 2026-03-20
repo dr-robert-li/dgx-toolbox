@@ -1,0 +1,24 @@
+# Data engineering stack: Label Studio + Argilla
+# The data-toolbox container is interactive (not a compose service)
+#
+# Usage:
+#   docker compose -f docker-compose.data.yml up -d
+#   docker compose -f docker-compose.data.yml down
+#   docker compose -f docker-compose.data.yml logs -f
+
+services:
+  label-studio:
+    image: heartexlabs/label-studio:latest
+    container_name: label-studio
+    ports:
+      - "0.0.0.0:8081:8080"
+    volumes:
+      - ${HOME}/label-studio-data:/label-studio/data
+    restart: unless-stopped
+
+  argilla:
+    image: argilla/argilla-quickstart:latest
+    container_name: argilla
+    ports:
+      - "0.0.0.0:6900:6900"
+    restart: unless-stopped

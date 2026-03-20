@@ -43,5 +43,14 @@ alias triton-stop='docker stop triton-trtllm'
 alias n8n='~/dgx-toolbox/start-n8n.sh'
 alias n8n-stop='docker stop n8n'
 
+# --- Orchestration (docker-compose) ---
+alias build-all='~/dgx-toolbox/build-toolboxes.sh'
+alias inference-up='docker compose -f ~/dgx-toolbox/docker-compose.inference.yml up -d'
+alias inference-down='docker compose -f ~/dgx-toolbox/docker-compose.inference.yml down'
+alias inference-logs='docker compose -f ~/dgx-toolbox/docker-compose.inference.yml logs -f'
+alias data-stack-up='docker compose -f ~/dgx-toolbox/docker-compose.data.yml up -d'
+alias data-stack-down='docker compose -f ~/dgx-toolbox/docker-compose.data.yml down'
+
 # --- Utilities ---
+alias dgx-status='~/dgx-toolbox/status.sh'
 alias docker-stop-all='docker stop $(docker ps -q) 2>/dev/null && echo "All containers stopped" || echo "No running containers"'

@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-03-20 — Optimization & Orchestration
+
+### Added
+
+- **base-toolbox/Dockerfile** — Shared base image (NGC PyTorch + common packages: pandas, pyarrow, datasets, openai, scikit-learn, typer, rich); eval and data toolboxes now build on top
+- **build-toolboxes.sh** — Single command to build all three images in order (alias: `build-all`)
+- **lib.sh** — Shared function library for launcher scripts (`get_ip`, `is_running`, `ensure_container`, `print_banner`, `stream_logs`, `sync_exit`)
+- **docker-compose.inference.yml** — Compose stack for Open-WebUI + LiteLLM + vLLM (aliases: `inference-up`, `inference-down`)
+- **docker-compose.data.yml** — Compose stack for Label Studio + Argilla (aliases: `data-stack-up`, `data-stack-down`)
+- **status.sh** — Service status, image sizes, and disk usage dashboard (alias: `dgx-status`)
+
+### Changed
+
+- **eval-toolbox/Dockerfile** — Now `FROM base-toolbox:latest` (shared layer with data-toolbox)
+- **data-toolbox/Dockerfile** — Now `FROM base-toolbox:latest` (shared layer with eval-toolbox)
+- **eval-toolbox-build.sh** / **data-toolbox-build.sh** — Auto-build base image if missing
+- Refactored launcher scripts to use `lib.sh`: `start-n8n.sh`, `start-label-studio.sh`, `start-argilla.sh`, `start-open-webui.sh`, `start-open-webui-sync.sh`
+
 ## 2026-03-19 — Cross-Tool Integrations
 
 ### Added

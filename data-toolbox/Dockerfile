@@ -1,14 +1,7 @@
-FROM nvcr.io/nvidia/pytorch:26.02-py3
+FROM base-toolbox:latest
 
-ENV DEBIAN_FRONTEND=noninteractive \
-    PIP_NO_CACHE_DIR=1 \
-    PYTHONUNBUFFERED=1
-
-# System deps for PDF extraction, text processing, compression
+# Extra system deps for PDF extraction, text processing, compression
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git \
-    build-essential \
-    libgl1 \
     poppler-utils \
     tesseract-ocr \
     pigz \
@@ -25,17 +18,10 @@ RUN ARCH=$(dpkg --print-architecture) && \
     chmod +x /usr/local/bin/duckdb && \
     rm /tmp/duckdb.zip
 
-WORKDIR /workspace
-
-# Data processing & dataframes
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir \
-      "pandas" \
+# Data processing (polars, duckdb python not in base)
+RUN pip install --no-cache-dir \
       "polars" \
-      "pyarrow" \
-      "duckdb" \
-      "datasets" \
-      "huggingface_hub"
+      "duckdb"
 
 # Curation & deduplication
 RUN pip install --no-cache-dir \
@@ -81,15 +67,5 @@ RUN pip install --no-cache-dir \
       "orjson" \
       "msgspec" \
       "zstandard"
-
-# LLM API clients (for distilabel synthetic generation via LiteLLM/vLLM/Ollama)
-RUN pip install --no-cache-dir \
-      "openai"
-
-# CLI & utilities
-RUN pip install --no-cache-dir \
-      "typer[all]" \
-      "rich" \
-      "tqdm"
 
 ENTRYPOINT ["/bin/bash"]
