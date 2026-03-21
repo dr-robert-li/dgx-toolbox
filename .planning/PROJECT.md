@@ -37,6 +37,9 @@ Models are always accessible regardless of which tier they're on — symlinks en
 - [ ] Pre-model guardrails via NeMo Guardrails: content filters, prompt injection, PII/secrets detection
 - [ ] Post-model guardrails: toxicity, bias, PII leakage, jailbreak-success detection
 - [ ] Constitutional AI-style self-critique with configurable judge model (default same-model, swappable)
+- [ ] User-editable constitutional AI principles (review, customize, tune the constitution)
+- [ ] User-tunable pre/post guardrail rules: review, customize thresholds, enable/disable individual checks
+- [ ] Judge model provides guided suggestions for guardrail and constitution tuning (optional)
 - [ ] Refusal calibration: helpful refusal, soft steering, threshold tuning
 - [ ] Streaming guardrails: evaluate every N tokens and at end of stream with redaction
 - [ ] Full trace logging (prompt, tools, model outputs, guardrail decisions)
@@ -65,6 +68,7 @@ Models are always accessible regardless of which tier they're on — symlinks en
 - Gateway service (FastAPI) with full request pipeline: routing → guardrails → model → critique → evals
 - NeMo Guardrails for pluggable input/output safety checks
 - Constitutional AI-style two-pass critique with configurable judge model
+- User-tunable guardrails and constitutional principles with AI-guided suggestions from the judge model
 - Dual eval harness (custom replay + lm-eval-harness) with CI/CD integration
 - Distributed live red teaming with adversarial prompt generation from past results
 - Optional human-in-the-loop dashboard for eval steering and threshold calibration
