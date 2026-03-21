@@ -89,7 +89,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation and Init | 2/2 | Complete   | 2026-03-21 |
+| 1. Foundation and Init | 2/2 | Complete    | 2026-03-21 |
 | 2. Adapters and Usage Tracking | 0/2 | Not started | - |
 | 3. Migration, Recall, and Safety | 0/2 | Not started | - |
 | 4. CLI, Status, Revert, and Docs | 0/2 | Not started | - |
