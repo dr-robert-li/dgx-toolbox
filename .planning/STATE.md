@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning
-stopped_at: Phase 1 context gathered
-last_updated: "2026-03-20T23:28:15.835Z"
-last_activity: 2026-03-21 — Roadmap created
+status: in-progress
+stopped_at: "Completed 01-foundation-and-init/01-01-PLAN.md"
+last_updated: "2026-03-21T00:02:42Z"
+last_activity: 2026-03-21 — Completed plan 01-01 (project scaffold, config.sh, common.sh, test suite)
 progress:
   total_phases: 4
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 2
+  completed_plans: 1
+  percent: 12
 ---
 
 # Project State
@@ -26,27 +26,27 @@ See: .planning/PROJECT.md (updated 2026-03-21)
 ## Current Position
 
 Phase: 1 of 4 (Foundation and Init)
-Plan: 0 of 2 in current phase
-Status: Ready to plan
-Last activity: 2026-03-21 — Roadmap created
+Plan: 1 of 2 in current phase (01-01 complete)
+Status: In progress
+Last activity: 2026-03-21 — Completed plan 01-01 (scaffold + lib files + tests)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█░░░░░░░░░] 12%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
-- Average duration: -
-- Total execution time: 0 hours
+- Total plans completed: 1
+- Average duration: 7 min
+- Total execution time: 0.12 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 01-foundation-and-init | 1/2 | 7min | 7min |
 
 **Recent Trend:**
-- Last 5 plans: none yet
+- Last 5 plans: 01-01 (7min)
 - Trend: -
 
 *Updated after each plan completion*
@@ -62,6 +62,9 @@ Recent decisions affecting current work:
 - Configurable hot/cold at init (user may swap drives later)
 - Bash only, no Python (host execution, minimize dependencies)
 - Single modelstore CLI + individual cron scripts (interactive vs headless separation)
+- PASS=$((PASS+1)) not ((PASS++)) in bash test scripts with set -e (arithmetic expansion returns exit code 1 when result is 0)
+- validate_cold_fs returns 1 not exit 1 (callers handle rejection gracefully)
+- No bats dependency — inline bash assertion pattern runs everywhere
 
 ### Pending Todos
 
@@ -75,6 +78,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-20T23:28:15.833Z
-Stopped at: Phase 1 context gathered
-Resume file: .planning/phases/01-foundation-and-init/01-CONTEXT.md
+Last session: 2026-03-21T00:02:42Z
+Stopped at: Completed 01-foundation-and-init/01-01-PLAN.md
+Resume file: .planning/phases/01-foundation-and-init/01-02-PLAN.md

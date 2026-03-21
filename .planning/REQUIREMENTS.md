@@ -13,8 +13,8 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **INIT-02**: Init creates directory structure on both drives with user confirmation
 - [ ] **INIT-03**: User can configure retention period (default 14 days) during init
 - [ ] **INIT-04**: User can configure cron schedule (default 2 AM) during init
-- [ ] **INIT-05**: Init persists all settings to a config file on disk
-- [ ] **INIT-06**: Init validates cold drive filesystem (rejects exFAT, requires ext4/xfs)
+- [x] **INIT-05**: Init persists all settings to a config file on disk
+- [x] **INIT-06**: Init validates cold drive filesystem (rejects exFAT, requires ext4/xfs)
 - [ ] **INIT-07**: Init scans existing models and shows what's where with sizes
 - [ ] **INIT-08**: User can reinitialize to different drives with progress bars for migration and garbage collection on old paths
 
@@ -94,8 +94,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INIT-02 | Phase 1 | Pending |
 | INIT-03 | Phase 1 | Pending |
 | INIT-04 | Phase 1 | Pending |
-| INIT-05 | Phase 1 | Pending |
-| INIT-06 | Phase 1 | Pending |
+| INIT-05 | Phase 1 | Complete |
+| INIT-06 | Phase 1 | Complete |
 | INIT-07 | Phase 1 | Pending |
 | INIT-08 | Phase 1 | Pending |
 | TRCK-01 | Phase 2 | Pending |

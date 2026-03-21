@@ -32,7 +32,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans:** 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Project scaffold, lib/config.sh, lib/common.sh with mount check, space check, logging, and test infrastructure
+- [x] 01-01-PLAN.md — Project scaffold, lib/config.sh, lib/common.sh with mount check, space check, logging, and test infrastructure
 - [ ] 01-02-PLAN.md — cmd/init.sh with gum/read-p fallback, filesystem validation, model scan, crontab, reinit support
 
 ### Phase 2: Adapters and Usage Tracking
@@ -89,7 +89,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation and Init | 0/2 | Not started | - |
+| 1. Foundation and Init | 1/2 | In progress | - |
 | 2. Adapters and Usage Tracking | 0/2 | Not started | - |
 | 3. Migration, Recall, and Safety | 0/2 | Not started | - |
 | 4. CLI, Status, Revert, and Docs | 0/2 | Not started | - |
