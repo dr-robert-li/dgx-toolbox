@@ -30,6 +30,7 @@ run_test_script "${SCRIPT_DIR}/test-fs-validation.sh" "test-fs-validation.sh" ||
 run_test_script "${SCRIPT_DIR}/test-init.sh"          "test-init.sh"          || true
 run_test_script "${SCRIPT_DIR}/test-hf-adapter.sh"    "test-hf-adapter.sh"    || true
 run_test_script "${SCRIPT_DIR}/test-ollama-adapter.sh" "test-ollama-adapter.sh" || true
+run_test_script "${SCRIPT_DIR}/test-watcher.sh"        "test-watcher.sh"        || true
 
 echo ""
 echo "================================"
