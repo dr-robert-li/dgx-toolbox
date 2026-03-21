@@ -67,6 +67,12 @@ hf_migrate_model() {
   local model_id="$1"
   local cold_base="$2"
 
+  # Skip if already a symlink (already migrated — check before mount/space guards)
+  if [[ -L "$model_id" ]]; then
+    ms_log "Already migrated: $model_id"
+    return 0
+  fi
+
   # Guard 1: cold drive must be mounted (ms_die on failure)
   check_cold_mounted "$cold_base"
 
@@ -75,12 +81,6 @@ hf_migrate_model() {
   size=$(hf_get_model_size "$model_id")
   if ! check_space "$cold_base" "$size"; then
     return 1
-  fi
-
-  # Skip if already a symlink (already migrated)
-  if [[ -L "$model_id" ]]; then
-    ms_log "Already migrated: $model_id"
-    return 0
   fi
 
   # Compute cold target path: <cold_base>/hf/<models--org--name>
