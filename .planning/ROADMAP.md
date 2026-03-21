@@ -44,11 +44,11 @@ Plans:
   2. The cold drive mount state is checked before any operation that touches cold paths — unmounted drive produces a clear error, not a silent failure
   3. A space check with 10% safety margin is available as a shared function and correctly prevents operations when the destination is too full
   4. Ollama server running state is detected before any Ollama model operation, with a warning emitted if it is active
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 02-01: lib/hf_adapter.sh (whole-directory enumeration, size measurement, migrate/recall unit logic)
-- [ ] 02-02: lib/ollama_adapter.sh (manifest parsing, blob ref-counting, server state check) and hooks/tracker.sh with launcher hook integration
+- [ ] 02-01-PLAN.md — HF and Ollama storage adapters with full operation sets (list, size, path, migrate, recall) and safety guards
+- [ ] 02-02-PLAN.md — Background watcher daemon (docker events + inotifywait) for zero-touch usage tracking with usage.json manifest
 
 ### Phase 3: Migration, Recall, and Safety
 **Goal**: Stale models are moved to cold storage automatically on a cron schedule and recalled transparently when needed, with atomic symlinks, concurrency guards, and disk warnings keeping the system safe
