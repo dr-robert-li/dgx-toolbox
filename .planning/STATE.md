@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Defining requirements
-stopped_at: Completed 04-02-PLAN.md (directory reorganization + TTY guards + docs)
-last_updated: "2026-03-21T22:17:38.032Z"
+stopped_at: Completed 04-02-PLAN.md — human verification approved
+last_updated: "2026-03-21T23:20:46.336Z"
 last_activity: 2026-03-22 — Milestone v1.1 started
 progress:
   total_phases: 4
@@ -65,6 +65,8 @@ Recent decisions affecting current work:
 - [Phase 04-cli-status-revert-and-docs]: test-revert.sh mock pattern: generate mock_cmd/revert.sh with inline check_cold_mounted override + tail -n +21 for body (common.sh uses mountpoint -q which fails in temp dirs)
 - [Phase 04-cli-status-revert-and-docs]: rsync_flags variable approach for TTY guard in adapter rsync calls — cleaner than inline substitution
 - [Phase 04-cli-status-revert-and-docs]: modelstore.sh stays in root alongside status.sh and lib.sh (not moved to subdirectory)
+- [Phase 04-cli-status-revert-and-docs]: rsync_flags variable approach for TTY guard in adapter rsync calls — cleaner than inline substitution
+- [Phase 04-cli-status-revert-and-docs]: Mock rsync in test-hf-adapter.sh must preserve directory structure (cp -r), not just mkdir destination
 
 ### Pending Todos
 
@@ -78,6 +80,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-21T22:17:38.029Z
-Stopped at: Completed 04-02-PLAN.md (directory reorganization + TTY guards + docs)
+Last session: 2026-03-21T23:20:41.735Z
+Stopped at: Completed 04-02-PLAN.md — human verification approved
 Resume file: None

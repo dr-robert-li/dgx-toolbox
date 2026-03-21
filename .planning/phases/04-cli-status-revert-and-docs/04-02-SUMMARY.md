@@ -88,6 +88,7 @@ Each task was committed atomically:
 1. **Task 1a: Reorganize root into subdirectories** - `a20086f` (feat)
 2. **Task 1b: Add progress bar TTY guards to adapter rsync calls** - `42a64bc` (feat)
 3. **Task 2: Update documentation** - `8028982` (docs)
+4. **Deviation fix: mock rsync directory structure in test-hf-adapter.sh** - `4ffd502` (fix)
 
 ## Files Created/Modified
 
@@ -114,11 +115,24 @@ Each task was committed atomically:
 
 ## Deviations from Plan
 
-None - plan executed exactly as written.
+### Auto-fixed Issues
+
+**1. [Rule 1 - Bug] Fixed mock rsync in test-hf-adapter.sh to preserve directory structure**
+- **Found during:** Task 1b (TTY guard implementation — full test suite run revealed failures)
+- **Issue:** Mock rsync function in test-hf-adapter.sh only created the destination directory but did not copy source contents, causing hf_migrate_model post-condition checks to fail (model files absent in cold destination)
+- **Fix:** Changed mock rsync to use `cp -r "$src/" "$dst/"` so directory contents are preserved, matching real rsync behavior
+- **Files modified:** modelstore/test/test-hf-adapter.sh
+- **Verification:** bash modelstore/test/run-all.sh passed (all tests green)
+- **Committed in:** 4ffd502 (separate fix commit after task 1b)
+
+---
+
+**Total deviations:** 1 auto-fixed (Rule 1 - bug)
+**Impact on plan:** Fix necessary for test correctness; no scope creep.
 
 ## Issues Encountered
 
-None.
+None beyond the auto-fixed test mock issue above.
 
 ## User Setup Required
 
@@ -130,18 +144,9 @@ None - no external service configuration required.
 - Users should re-copy example.bash_aliases: `cp ~/dgx-toolbox/example.bash_aliases ~/.bash_aliases && source ~/.bash_aliases`
 - Cron scripts in modelstore/cron/ already headless-compatible (no TTY assumption); TTY guards now ensure adapters are also clean
 
-## Checkpoint
-
-Task 3 is a `checkpoint:human-verify` gate. Human should verify:
-1. `ls inference/ data/ eval/ containers/ setup/` — scripts in correct subdirectories
-2. `bash -n inference/start-open-webui.sh` — lib.sh source path works
-3. README.md Model Store section exists with subcommands table and Sync entry
-4. example.bash_aliases paths point to subdirectories, modelstore alias exists
-5. `bash modelstore/test/run-all.sh` — no regressions
-
 ## Self-Check: PASSED
 
-All key files verified present. All 3 task commits verified in git log (a20086f, 42a64bc, 8028982).
+All key files verified present. All task commits verified in git log (a20086f, 42a64bc, 8028982, 4ffd502). Task 3 human-verify checkpoint approved by user.
 
 ---
 *Phase: 04-cli-status-revert-and-docs*
