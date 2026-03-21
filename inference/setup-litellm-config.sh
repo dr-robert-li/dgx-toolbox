@@ -237,6 +237,18 @@ EOF
 
 echo ""
 echo "Config written to $CONFIG_FILE"
+
+# Auto-apply: restart LiteLLM if running, or start it
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if docker ps --format '{{.Names}}' | grep -q "^litellm$"; then
+    echo "Restarting LiteLLM to apply new config..."
+    docker stop litellm >/dev/null 2>&1
+    docker rm litellm >/dev/null 2>&1
+    "$SCRIPT_DIR/start-litellm-sync.sh"
+else
+    echo "Starting LiteLLM..."
+    "$SCRIPT_DIR/start-litellm-sync.sh"
+fi
+
 echo ""
-echo "To apply: litellm-stop && litellm"
 echo "To regenerate: ~/dgx-toolbox/setup-litellm-config.sh"

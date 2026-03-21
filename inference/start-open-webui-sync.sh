@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Open-WebUI launcher for NVIDIA Sync — returns immediately
-source "$(dirname "$0")/lib.sh"
+source "$(dirname "$0")/../lib.sh"
 set -e
 
 PORT=12000

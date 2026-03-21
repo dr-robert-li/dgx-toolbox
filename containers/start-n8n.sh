@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # n8n launcher with persistent storage
-source "$(dirname "$0")/lib.sh"
+source "$(dirname "$0")/../lib.sh"
 set -e
 
 PORT=5678
