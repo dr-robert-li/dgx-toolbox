@@ -86,10 +86,47 @@ prompt_choose() {
 # ---------------------------------------------------------------------------
 
 # scan_hf_models [hf_hub_path]
-# Prints a formatted table of HuggingFace models with sizes and last-used dates.
+# Prints a formatted table of HuggingFace models — uses Python API first, falls back to directory scan.
 scan_hf_models() {
   local hf_hub="${1:-}"
   [[ -z "$hf_hub" ]] && hf_hub="${HOT_HF_PATH:-}"
+
+  # Primary: use huggingface_hub Python API (authoritative)
+  # Skip API if an explicit path was passed (testing with temp dirs)
+  if [[ -z "${1:-}" ]] && python3 -c "from huggingface_hub import scan_cache_dir" &>/dev/null; then
+    local hf_output
+    hf_output=$(python3 -c "
+from huggingface_hub import scan_cache_dir
+info = scan_cache_dir()
+if not info.repos:
+    print('EMPTY')
+else:
+    for repo in sorted(info.repos, key=lambda r: r.size_on_disk, reverse=True):
+        print(f'{repo.repo_id}\t{repo.size_on_disk}\t{repo.nb_files}')
+    print(f'TOTAL\t{info.size_on_disk}')
+" 2>/dev/null)
+    if [[ "$hf_output" == "EMPTY" ]]; then
+      echo "  (no HuggingFace models cached)"
+      return 0
+    fi
+    if [[ -n "$hf_output" ]]; then
+      printf "%-50s %10s %8s\n" "MODEL" "SIZE" "FILES"
+      printf "%-50s %10s %8s\n" "-----" "----" "-----"
+      while IFS=$'\t' read -r name size files; do
+        [[ -z "$name" ]] && continue
+        local size_human
+        size_human=$(numfmt --to=iec-i --suffix=B "$size" 2>/dev/null || echo "${size}B")
+        if [[ "$name" == "TOTAL" ]]; then
+          printf "%-50s %10s\n" "HuggingFace TOTAL" "$size_human"
+        else
+          printf "%-50s %10s %8s\n" "$name" "$size_human" "$files"
+        fi
+      done <<< "$hf_output"
+      return 0
+    fi
+  fi
+
+  # Fallback: directory scan
   if [[ -z "$hf_hub" ]] || [[ ! -d "$hf_hub" ]]; then
     echo "  (no HuggingFace hub directory found at ${hf_hub:-unset})"
     return 0
@@ -116,12 +153,41 @@ scan_hf_models() {
 }
 
 # scan_ollama_models
-# Prints a formatted table of Ollama models with sizes and last-used dates.
+# Prints a formatted table of Ollama models — uses Ollama API first, falls back to manifest scan.
 scan_ollama_models() {
+  # Primary: use Ollama API (works regardless of file permissions)
+  if curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; then
+    local ollama_output
+    ollama_output=$(curl -sf http://localhost:11434/api/tags 2>/dev/null \
+      | jq -r '.models[] | [.name, (.size|tostring), .modified_at] | @tsv' 2>/dev/null)
+    if [[ -z "$ollama_output" ]]; then
+      echo "  (Ollama running but no models pulled)"
+      return 0
+    fi
+    printf "\n%-50s %10s %12s\n" "MODEL" "SIZE" "MODIFIED"
+    printf "%-50s %10s %12s\n" "-----" "----" "--------"
+    local total_bytes=0
+    while IFS=$'\t' read -r name size modified; do
+      [[ -z "$name" ]] && continue
+      total_bytes=$(( total_bytes + size ))
+      local size_human modified_human
+      size_human=$(numfmt --to=iec-i --suffix=B "$size" 2>/dev/null \
+        || awk "BEGIN{printf \"%.1fGiB\n\", ${size}/1073741824}")
+      modified_human=$(echo "$modified" | cut -dT -f1)
+      printf "%-50s %10s %12s\n" "$name" "$size_human" "$modified_human"
+    done <<< "$ollama_output"
+    local total_human
+    total_human=$(numfmt --to=iec-i --suffix=B "$total_bytes" 2>/dev/null \
+      || awk "BEGIN{printf \"%.1fGiB\n\", ${total_bytes}/1073741824}")
+    printf "%-50s %10s\n" "Ollama TOTAL" "$total_human"
+    return 0
+  fi
+
+  # Fallback: direct manifest scan (only works if user can read the dir)
   local ollama_path="${HOT_OLLAMA_PATH:-${HOME}/.ollama/models}"
   local manifests_dir="${ollama_path}/manifests"
   if [[ ! -d "$manifests_dir" ]]; then
-    echo "  (no Ollama manifests directory found at ${manifests_dir})"
+    echo "  (Ollama not running and no readable manifests directory)"
     return 0
   fi
   local total_bytes=0
@@ -172,11 +238,21 @@ show_existing_models() {
 
 install_cron() {
   local cron_hour="$1"
+  local cron_dir_path
+  cron_dir_path="$(dirname "${BASH_SOURCE[0]}")/../cron"
+
+  # Cron scripts are created in Phase 3 — skip if not yet available
+  if [[ ! -d "$cron_dir_path" ]]; then
+    ms_log "Cron scripts not yet installed (created in Phase 3). Cron hour saved to config."
+    ms_log "Run 'modelstore init' again after Phase 3 to install cron entries."
+    return 0
+  fi
+
   local cron_dir
-  cron_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../cron" && pwd)"
+  cron_dir="$(cd "$cron_dir_path" && pwd)"
 
   local migrate_cron="0 ${cron_hour} * * * ${cron_dir}/migrate_cron.sh"
-  local diskcheck_cron="30 ${cron_hour} * * * ${cron_dir}/disk_check_cron.sh"
+  local diskcheck_cron="30 ${cron_hour} * * * ${cron_dir}/disk_cron.sh"
 
   # Remove old modelstore cron entries, append new ones
   (crontab -l 2>/dev/null | grep -v "modelstore" || true
@@ -226,19 +302,57 @@ main() {
     esac
   fi
 
-  # -- Section 3: Hot path detection --
-  local HOT_HF_DEFAULT="${HF_HOME:-${HOME}/.cache/huggingface}/hub"
-  local HOT_OLLAMA_DEFAULT="${HOME}/.ollama/models"
+  # -- Section 3: Hot path auto-detection via application CLIs --
+  # Hot paths are owned by upstream applications — detect via their APIs, not path guessing
+
+  # HuggingFace: use Python API to get exact cache path
+  local HOT_HF_PATH=""
+  local HF_SIZE_HUMAN=""
+  if python3 -c "from huggingface_hub import constants; print(constants.HF_HUB_CACHE)" &>/dev/null; then
+    HOT_HF_PATH=$(python3 -c "from huggingface_hub import constants; print(constants.HF_HUB_CACHE)" 2>/dev/null)
+    HF_SIZE_HUMAN=$(python3 -c "from huggingface_hub import scan_cache_dir; print(scan_cache_dir().size_on_disk_str)" 2>/dev/null) || HF_SIZE_HUMAN=""
+  fi
+  # Fallback to env/default if Python unavailable
+  [[ -z "$HOT_HF_PATH" ]] && HOT_HF_PATH="${HF_HOME:-${HOME}/.cache/huggingface}/hub"
+
+  # Ollama: derive models path from `ollama show` output (works regardless of permissions)
+  local HOT_OLLAMA_PATH=""
+  local OLLAMA_SIZE_HUMAN=""
+  if [[ -n "${OLLAMA_MODELS:-}" ]]; then
+    HOT_OLLAMA_PATH="$OLLAMA_MODELS"
+  elif command -v ollama &>/dev/null && curl -sf http://localhost:11434/api/tags &>/dev/null; then
+    # Get first model's blob path and derive the models root
+    local _blob_path
+    _blob_path=$(ollama list 2>/dev/null | awk 'NR==2{print $1}' | xargs -I{} ollama show {} --modelfile 2>/dev/null | grep "^FROM /" | head -1 | awk '{print $2}')
+    if [[ -n "$_blob_path" ]]; then
+      # Blob path is like .../models/blobs/sha256-... → strip /blobs/*
+      HOT_OLLAMA_PATH="${_blob_path%/blobs/*}"
+    fi
+    # Get total size from API
+    OLLAMA_SIZE_HUMAN=$(curl -sf http://localhost:11434/api/tags 2>/dev/null \
+      | jq '[.models[].size] | add' 2>/dev/null \
+      | xargs -I{} numfmt --to=iec-i --suffix=B {} 2>/dev/null) || OLLAMA_SIZE_HUMAN=""
+  fi
+  # Final fallback
+  [[ -z "$HOT_OLLAMA_PATH" ]] && HOT_OLLAMA_PATH="${HOME}/.ollama/models"
 
   echo ""
-  echo "Hot storage paths:"
-  echo "  HuggingFace hub: ${HOT_HF_DEFAULT}"
-  echo "  Ollama models:   ${HOT_OLLAMA_DEFAULT}"
+  echo "Detected hot storage paths (set by upstream applications):"
+  echo "  HuggingFace hub: ${HOT_HF_PATH}"
+  if [[ -n "$HF_SIZE_HUMAN" ]]; then
+    echo "    └─ ${HF_SIZE_HUMAN} used"
+  elif [[ -d "$HOT_HF_PATH" ]]; then
+    echo "    └─ $(du -sh "$HOT_HF_PATH" 2>/dev/null | cut -f1) used"
+  else
+    echo "    └─ (not yet created)"
+  fi
+  echo "  Ollama models:   ${HOT_OLLAMA_PATH}"
+  if [[ -n "$OLLAMA_SIZE_HUMAN" ]]; then
+    echo "    └─ ${OLLAMA_SIZE_HUMAN} used"
+  else
+    echo "    └─ (query ollama list for model sizes)"
+  fi
   echo ""
-
-  local HOT_HF_PATH HOT_OLLAMA_PATH
-  prompt_input "HuggingFace hub path" "$HOT_HF_DEFAULT" HOT_HF_PATH
-  prompt_input "Ollama models path" "$HOT_OLLAMA_DEFAULT" HOT_OLLAMA_PATH
 
   # -- Section 4: Cold drive selection --
   echo ""
@@ -249,8 +363,10 @@ main() {
   local COLD_MOUNT=""
   if $GUM_AVAILABLE; then
     local -a MOUNTS
-    mapfile -t MOUNTS < <(findmnt -o TARGET,FSTYPE,SIZE --real --noheadings \
-      | awk '{print $1"  ("$2", "$3")"}')
+    # Filter to real data drives; -l (list mode) avoids tree drawing characters
+    mapfile -t MOUNTS < <(findmnt -l -o TARGET,FSTYPE,SIZE --real --noheadings \
+      | grep -v -E "snap|tmpfs|fuse\.portal|squashfs|/boot|/run|cgroup|devtmpfs|proc|sysfs" \
+      | awk 'NF>=2 {print $1"  ("$2", "$3")"}')
     local COLD_MOUNT_RAW
     COLD_MOUNT_RAW=$(gum choose --header "Select cold drive mount point:" "${MOUNTS[@]}")
     COLD_MOUNT="${COLD_MOUNT_RAW%%  (*}"
@@ -279,7 +395,7 @@ main() {
   # -- Section 5: Retention and cron config --
   echo ""
   local RETENTION_DAYS CRON_HOUR BACKUP_RETENTION_DAYS
-  prompt_input "Retention period (days)" "14" RETENTION_DAYS
+  prompt_input "Hot storage retention policy (days)" "14" RETENTION_DAYS
   if ! [[ "$RETENTION_DAYS" =~ ^[0-9]+$ ]]; then
     ms_die "Retention must be a positive integer, got: ${RETENTION_DAYS}"
   fi

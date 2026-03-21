@@ -57,9 +57,9 @@ check_space() {
 # Filesystem validation
 # ---------------------------------------------------------------------------
 
-# Validate that cold_path is on a Linux filesystem that supports symlinks.
-# Accepts: ext4, xfs, btrfs
-# Rejects: exfat, vfat, ntfs (with clear error and reformatting hint)
+# Validate that cold_path is on a filesystem that supports symlinks.
+# Accepts: ext4, xfs, btrfs (local), nfs, nfs4, cifs, fuse.sshfs, fuse.rclone (network)
+# Rejects: exfat, vfat, ntfs (no symlink support)
 # Unknown filesystems: warns but returns 0 (non-blocking)
 # Usage: validate_cold_fs <cold_path>
 # Returns 0 if acceptable, 1 if rejected.
@@ -73,13 +73,13 @@ validate_cold_fs() {
     return 1
   fi
   case "$fstype" in
-    ext4|xfs|btrfs)
+    ext4|xfs|btrfs|zfs|nfs|nfs4|cifs|fuse.sshfs|fuse.rclone|fuse.s3fs|fuse.gcsfuse|fuse.azblob|fuse.blobfuse*)
       return 0
       ;;
     exfat|vfat|ntfs)
       echo "[modelstore] ERROR: Cold drive filesystem is '$fstype' — symlinks are not supported." >&2
-      echo "[modelstore] ERROR: Modelstore requires ext4, xfs, or btrfs for the cold drive." >&2
-      echo "[modelstore] ERROR: To reformat (WARNING: destroys all data): sudo mkfs.ext4 /dev/sdX" >&2
+      echo "[modelstore] ERROR: Use ext4, xfs, btrfs, ZFS, NFS, CIFS, SSHFS, or cloud FUSE mounts (rclone, s3fs, gcsfuse)." >&2
+      echo "[modelstore] ERROR: To reformat a local drive (WARNING: destroys all data): sudo mkfs.ext4 /dev/sdX" >&2
       return 1
       ;;
     *)
