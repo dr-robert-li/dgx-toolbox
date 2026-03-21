@@ -37,8 +37,8 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Usage Tracking
 
-- [ ] **TRCK-01**: Usage tracker maintains a timestamp manifest file per model, updated on every load
-- [ ] **TRCK-02**: Existing DGX Toolbox launcher scripts (vLLM, eval-toolbox, data-toolbox, Unsloth) are hooked to call the usage tracker
+- [x] **TRCK-01**: Usage tracker maintains a timestamp manifest file per model, updated on every load
+- [x] **TRCK-02**: Existing DGX Toolbox launcher scripts (vLLM, eval-toolbox, data-toolbox, Unsloth) are hooked to call the usage tracker
 
 ### Safety
 
@@ -98,8 +98,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INIT-06 | Phase 1 | Complete |
 | INIT-07 | Phase 1 | Complete |
 | INIT-08 | Phase 1 | Complete |
-| TRCK-01 | Phase 2 | Pending |
-| TRCK-02 | Phase 2 | Pending |
+| TRCK-01 | Phase 2 | Complete |
+| TRCK-02 | Phase 2 | Complete |
 | SAFE-01 | Phase 2 | Complete |
 | SAFE-02 | Phase 2 | Complete |
 | SAFE-06 | Phase 2 | Complete |

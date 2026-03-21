@@ -13,7 +13,7 @@ Four phases take the project from a working configuration foundation through ada
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation and Init** - Config infrastructure, shared library, and interactive init wizard (completed 2026-03-21)
-- [ ] **Phase 2: Adapters and Usage Tracking** - HF and Ollama storage adapters, usage timestamp manifest, launcher hooks
+- [x] **Phase 2: Adapters and Usage Tracking** - HF and Ollama storage adapters, usage timestamp manifest, launcher hooks (completed 2026-03-21)
 - [ ] **Phase 3: Migration, Recall, and Safety** - Automated tiering cron, recall from cold, full safety envelope
 - [ ] **Phase 4: CLI, Status, Revert, and Docs** - Unified CLI dispatcher, status/revert commands, documentation
 
@@ -44,7 +44,7 @@ Plans:
   2. The cold drive mount state is checked before any operation that touches cold paths — unmounted drive produces a clear error, not a silent failure
   3. A space check with 10% safety margin is available as a shared function and correctly prevents operations when the destination is too full
   4. Ollama server running state is detected before any Ollama model operation, with a warning emitted if it is active
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 02-01-PLAN.md — HF and Ollama storage adapters with full operation sets (list, size, path, migrate, recall) and safety guards
@@ -90,6 +90,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation and Init | 2/2 | Complete    | 2026-03-21 |
-| 2. Adapters and Usage Tracking | 1/2 | In Progress|  |
+| 2. Adapters and Usage Tracking | 2/2 | Complete   | 2026-03-21 |
 | 3. Migration, Recall, and Safety | 0/2 | Not started | - |
 | 4. CLI, Status, Revert, and Docs | 0/2 | Not started | - |

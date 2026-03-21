@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-01-PLAN.md
-last_updated: "2026-03-21T01:20:51.382Z"
-last_activity: 2026-03-21 — Completed plan 01-01 (scaffold + lib files + tests)
+stopped_at: Completed 02-02-PLAN.md
+last_updated: "2026-03-21T02:06:27.406Z"
+last_activity: 2026-03-21 — Completed plan 02-01 (HF adapter + Ollama adapter + tests)
 progress:
   total_phases: 4
-  completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  completed_phases: 2
+  total_plans: 4
+  completed_plans: 4
   percent: 25
 ---
 
@@ -51,6 +51,7 @@ Progress: [██░░░░░░░░] 25%
 - Trend: stable
 
 *Updated after each plan completion*
+| Phase 02-adapters-and-usage-tracking P02 | 3 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -72,6 +73,9 @@ Recent decisions affecting current work:
 - [Phase 02-adapters-and-usage-tracking]: hf_migrate_model symlink-already-migrated check placed BEFORE mount/space guards (idempotent re-run works without cold drive mounted)
 - [Phase 02-adapters-and-usage-tracking]: Ollama migrate/recall stubs defer actual ollama cp/rm to Phase 3 — guards are complete (SAFE-06 block, SAFE-01 mount, SAFE-02 space)
 - [Phase 02-adapters-and-usage-tracking]: Test comment strings avoid grep pattern words (sudo, set -e) to keep acceptance criteria grep checks from matching comments
+- [Phase 02-adapters-and-usage-tracking]: Function definitions copied inline in test file rather than sourcing watcher.sh — avoids BASH_SOURCE path resolution issues with process substitution
+- [Phase 02-adapters-and-usage-tracking]: ms_track_usage debounce reads last timestamp before acquiring flock to avoid contention on frequent access events
+- [Phase 02-adapters-and-usage-tracking]: Daemon uses wait -n with fallback to wait so either watcher subprocess exiting terminates the parent daemon
 
 ### Pending Todos
 
@@ -85,6 +89,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-21T01:20:51.379Z
-Stopped at: Phase 2 context gathered
-Resume file: .planning/phases/02-adapters-and-usage-tracking/02-CONTEXT.md
+Last session: 2026-03-21T02:06:27.405Z
+Stopped at: Completed 02-02-PLAN.md
+Resume file: None
