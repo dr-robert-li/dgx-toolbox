@@ -60,11 +60,11 @@ Plans:
   3. Running two migration processes at the same time is prevented — the second invocation exits immediately with a clear message
   4. `modelstore migrate --dry-run` shows exactly which models would be moved without moving any data
   5. If either drive exceeds 98% usage, a desktop notification is sent — and if no desktop session is available, the warning is written to the log file instead
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 03-01: cmd/migrate.sh (flock, adapter dispatch, atomic symlink swap, dry-run, audit log) and cron/migrate_cron.sh
-- [ ] 03-02: cmd/recall.sh (symlink detection, cold-to-hot, timer reset, interrupt-safe state file) and cron/disk_check_cron.sh with notify-send/log fallback
+- [ ] 03-01-PLAN.md — lib/audit.sh, Ollama adapter bodies, cmd/migrate.sh with stale detection + dry-run + flock + state file, cron/migrate_cron.sh, tests
+- [ ] 03-02-PLAN.md — lib/notify.sh, cmd/recall.sh with usage reset, cron/disk_check_cron.sh with threshold alerting, watcher auto-recall trigger, tests
 
 ### Phase 4: CLI, Status, Revert, and Docs
 **Goal**: All functionality is accessible through a single `modelstore` CLI, users can inspect the full tier state at a glance, fully revert tiering, and the project is documented
