@@ -51,13 +51,13 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### CLI & Operations
 
-- [ ] **CLI-01**: Single `modelstore` CLI entry point dispatches to subcommands: init, status, recall, revert, migrate
+- [x] **CLI-01**: Single `modelstore` CLI entry point dispatches to subcommands: init, status, recall, revert, migrate
 - [ ] **CLI-02**: Individual scripts exist for cron and NVIDIA Sync integration
-- [ ] **CLI-03**: `modelstore status` shows what's on each tier with sizes, last-used timestamps, and space available
-- [ ] **CLI-04**: `modelstore revert` moves all models back to internal, removes all symlinks, undoes all tiering
-- [ ] **CLI-05**: Revert is interrupt-safe and idempotent (can be re-run if interrupted)
+- [x] **CLI-03**: `modelstore status` shows what's on each tier with sizes, last-used timestamps, and space available
+- [x] **CLI-04**: `modelstore revert` moves all models back to internal, removes all symlinks, undoes all tiering
+- [x] **CLI-05**: Revert is interrupt-safe and idempotent (can be re-run if interrupted)
 - [ ] **CLI-06**: Large migrations show progress bars (pv/rsync --info=progress2)
-- [ ] **CLI-07**: Non-interactive commands work headless for NVIDIA Sync (no TTY required)
+- [x] **CLI-07**: Non-interactive commands work headless for NVIDIA Sync (no TTY required)
 
 ### Documentation
 
@@ -117,13 +117,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SAFE-03 | Phase 3 | Complete |
 | SAFE-04 | Phase 3 | Complete |
 | SAFE-05 | Phase 3 | Complete |
-| CLI-01 | Phase 4 | Pending |
+| CLI-01 | Phase 4 | Complete |
 | CLI-02 | Phase 4 | Pending |
-| CLI-03 | Phase 4 | Pending |
-| CLI-04 | Phase 4 | Pending |
-| CLI-05 | Phase 4 | Pending |
+| CLI-03 | Phase 4 | Complete |
+| CLI-04 | Phase 4 | Complete |
+| CLI-05 | Phase 4 | Complete |
 | CLI-06 | Phase 4 | Pending |
-| CLI-07 | Phase 4 | Pending |
+| CLI-07 | Phase 4 | Complete |
 | DOCS-01 | Phase 4 | Pending |
 | DOCS-02 | Phase 4 | Pending |
 | DOCS-03 | Phase 4 | Pending |

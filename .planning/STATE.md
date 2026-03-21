@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 4 context gathered
-last_updated: "2026-03-21T21:29:11.393Z"
+stopped_at: Completed 04-01-PLAN.md (status + revert commands)
+last_updated: "2026-03-21T22:10:00.489Z"
 last_activity: 2026-03-21 — Completed plan 03-02 (recall pipeline, disk safety, notifications)
 progress:
   total_phases: 4
   completed_phases: 3
-  total_plans: 6
-  completed_plans: 6
+  total_plans: 8
+  completed_plans: 7
   percent: 50
 ---
 
@@ -54,6 +54,7 @@ Progress: [█████░░░░░] 50%
 | Phase 02-adapters-and-usage-tracking P02 | 3 | 2 tasks | 3 files |
 | Phase 03-migration-recall-and-safety P01 | 6min | 3 tasks | 6 files |
 | Phase 03-migration-recall-and-safety P02 | 6min | 3 tasks | 6 files |
+| Phase 04-cli-status-revert-and-docs P01 | 10min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -83,6 +84,9 @@ Recent decisions affecting current work:
 - [Phase 03-migration-recall-and-safety]: find_stale_hf_models checks symlink status in both usage.json and directory walk paths to avoid re-migrating already-migrated models
 - [Phase 03-migration-recall-and-safety]: Test RECL-03 launcher_hook sets COLD_PATH directly ($TMP/cold) instead of calling load_config to avoid reading real system config
 - [Phase 03-migration-recall-and-safety]: check_disk_threshold inlined in test-disk-check.sh to allow df/notify_user mocking as shell functions without subprocess complications
+- [Phase 04-cli-status-revert-and-docs]: status.sh uses find -maxdepth 1 (not hf_list_models Python API) to detect all tiers including BROKEN dangling symlinks
+- [Phase 04-cli-status-revert-and-docs]: revert.sh completed_models JSON array in op_state.json enables interrupt-safe multi-model tracking via _append_completed/_is_completed helpers
+- [Phase 04-cli-status-revert-and-docs]: test-revert.sh mock pattern: generate mock_cmd/revert.sh with inline check_cold_mounted override + tail -n +21 for body (common.sh uses mountpoint -q which fails in temp dirs)
 
 ### Pending Todos
 
@@ -96,6 +100,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-21T21:29:11.391Z
-Stopped at: Phase 4 context gathered
-Resume file: .planning/phases/04-cli-status-revert-and-docs/04-CONTEXT.md
+Last session: 2026-03-21T22:10:00.487Z
+Stopped at: Completed 04-01-PLAN.md (status + revert commands)
+Resume file: None
