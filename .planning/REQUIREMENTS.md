@@ -52,19 +52,19 @@ Requirements for initial release. Each maps to roadmap phases.
 ### CLI & Operations
 
 - [x] **CLI-01**: Single `modelstore` CLI entry point dispatches to subcommands: init, status, recall, revert, migrate
-- [ ] **CLI-02**: Individual scripts exist for cron and NVIDIA Sync integration
+- [x] **CLI-02**: Individual scripts exist for cron and NVIDIA Sync integration
 - [x] **CLI-03**: `modelstore status` shows what's on each tier with sizes, last-used timestamps, and space available
 - [x] **CLI-04**: `modelstore revert` moves all models back to internal, removes all symlinks, undoes all tiering
 - [x] **CLI-05**: Revert is interrupt-safe and idempotent (can be re-run if interrupted)
-- [ ] **CLI-06**: Large migrations show progress bars (pv/rsync --info=progress2)
+- [x] **CLI-06**: Large migrations show progress bars (pv/rsync --info=progress2)
 - [x] **CLI-07**: Non-interactive commands work headless for NVIDIA Sync (no TTY required)
 
 ### Documentation
 
-- [ ] **DOCS-01**: README updated with modelstore section, aliases, and NVIDIA Sync instructions
-- [ ] **DOCS-02**: CHANGELOG updated with modelstore release entry
-- [ ] **DOCS-03**: .gitignore updated for modelstore runtime artifacts
-- [ ] **DOCS-04**: example.bash_aliases updated with modelstore aliases
+- [x] **DOCS-01**: README updated with modelstore section, aliases, and NVIDIA Sync instructions
+- [x] **DOCS-02**: CHANGELOG updated with modelstore release entry
+- [x] **DOCS-03**: .gitignore updated for modelstore runtime artifacts
+- [x] **DOCS-04**: example.bash_aliases updated with modelstore aliases
 
 ## v2 Requirements
 
@@ -118,16 +118,16 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SAFE-04 | Phase 3 | Complete |
 | SAFE-05 | Phase 3 | Complete |
 | CLI-01 | Phase 4 | Complete |
-| CLI-02 | Phase 4 | Pending |
+| CLI-02 | Phase 4 | Complete |
 | CLI-03 | Phase 4 | Complete |
 | CLI-04 | Phase 4 | Complete |
 | CLI-05 | Phase 4 | Complete |
-| CLI-06 | Phase 4 | Pending |
+| CLI-06 | Phase 4 | Complete |
 | CLI-07 | Phase 4 | Complete |
-| DOCS-01 | Phase 4 | Pending |
-| DOCS-02 | Phase 4 | Pending |
-| DOCS-03 | Phase 4 | Pending |
-| DOCS-04 | Phase 4 | Pending |
+| DOCS-01 | Phase 4 | Complete |
+| DOCS-02 | Phase 4 | Complete |
+| DOCS-03 | Phase 4 | Complete |
+| DOCS-04 | Phase 4 | Complete |
 
 **Coverage:**
 - v1 requirements: 38 total

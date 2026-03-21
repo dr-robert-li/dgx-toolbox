@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Foundation and Init** - Config infrastructure, shared library, and interactive init wizard (completed 2026-03-21)
 - [x] **Phase 2: Adapters and Usage Tracking** - HF and Ollama storage adapters, usage timestamp manifest, launcher hooks (completed 2026-03-21)
 - [x] **Phase 3: Migration, Recall, and Safety** - Automated tiering cron, recall from cold, full safety envelope (completed 2026-03-21)
-- [ ] **Phase 4: CLI, Status, Revert, and Docs** - Unified CLI dispatcher, status/revert commands, documentation
+- [x] **Phase 4: CLI, Status, Revert, and Docs** - Unified CLI dispatcher, status/revert commands, documentation (completed 2026-03-21)
 
 ## Phase Details
 
@@ -76,7 +76,7 @@ Plans:
   3. All commands produce correct output with no TTY — cron and NVIDIA Sync can invoke any script headlessly
   4. Large migrations and reverts show progress bars using pv or rsync --info=progress2 fallback
   5. README contains a modelstore section with aliases and NVIDIA Sync instructions; CHANGELOG has a release entry; .gitignore excludes runtime artifacts
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 04-01-PLAN.md — cmd/status.sh (model table + dashboard) and cmd/revert.sh (interrupt-safe with --force, cleanup) with full test coverage
@@ -92,4 +92,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | 1. Foundation and Init | 2/2 | Complete    | 2026-03-21 |
 | 2. Adapters and Usage Tracking | 2/2 | Complete    | 2026-03-21 |
 | 3. Migration, Recall, and Safety | 2/2 | Complete    | 2026-03-21 |
-| 4. CLI, Status, Revert, and Docs | 0/2 | Not started | - |
+| 4. CLI, Status, Revert, and Docs | 2/2 | Complete   | 2026-03-21 |
