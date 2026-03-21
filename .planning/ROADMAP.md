@@ -76,11 +76,11 @@ Plans:
   3. All commands produce correct output with no TTY — cron and NVIDIA Sync can invoke any script headlessly
   4. Large migrations and reverts show progress bars using pv or rsync --info=progress2 fallback
   5. README contains a modelstore section with aliases and NVIDIA Sync instructions; CHANGELOG has a release entry; .gitignore excludes runtime artifacts
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 04-01: bin/modelstore dispatcher, cmd/status.sh, cmd/revert.sh (interrupt-safe JSON state file, idempotent)
-- [ ] 04-02: Progress bars (pv/rsync fallback), CLI-02 cron/sync scripts, headless hardening, docs update (README, CHANGELOG, .gitignore, example.bash_aliases)
+- [ ] 04-01-PLAN.md — cmd/status.sh (model table + dashboard) and cmd/revert.sh (interrupt-safe with --force, cleanup) with full test coverage
+- [ ] 04-02-PLAN.md — Root reorganization into inference/data/eval/containers/setup subdirs, progress bar TTY guards, docs update (README, CHANGELOG, .gitignore, aliases)
 
 ## Progress
 
