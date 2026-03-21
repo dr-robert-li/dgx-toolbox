@@ -146,20 +146,26 @@ echo "fake" > "$MIGRATE_MODEL/blobs/testfile"
 mountpoint() { return 0; }
 df() { echo "107374182400"; }  # 100 GiB available
 rsync() {
-  # Simulate rsync --remove-source-files: move files from src/ to dst/
+  # Simulate rsync -a --remove-source-files: copy tree then remove source files
   local src="" dst=""
   local args=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      -a|--remove-source-files) shift ;;
+      -a|--remove-source-files|--info=*) shift ;;
       *) args+=("$1"); shift ;;
     esac
   done
   src="${args[0]%/}"
   dst="${args[1]%/}"
-  mkdir -p "$dst"
-  # Move all files (removing from source, simulating --remove-source-files)
-  [[ -d "$src" ]] && find "$src" -type f -exec mv {} "$dst/" \; 2>/dev/null || true
+  # Copy preserving directory structure, then remove source files
+  if [[ -d "$src" ]]; then
+    cd "$src" && find . -type f | while read -r f; do
+      mkdir -p "$dst/$(dirname "$f")"
+      cp "$f" "$dst/$f"
+      rm "$f"
+    done
+    cd - >/dev/null
+  fi
 }
 MIGRATE_RESULT=0
 hf_migrate_model "$MIGRATE_MODEL" "$COLD_BASE" 2>/dev/null || MIGRATE_RESULT=$?
