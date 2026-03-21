@@ -21,21 +21,31 @@ Models are always accessible regardless of which tier they're on — symlinks en
 
 ### Active
 
-- [ ] Interactive init: select hot/cold drives and paths with filesystem tree preview, confirm folder creation
-- [ ] Usage tracker: touch timestamp per model on every load via launcher hooks
-- [ ] Migration cron: daily at configurable time (default 2 AM), move stale models to cold store with symlinks
-- [ ] Recall script: move model back from cold to hot on active use, replace symlink, reset timer
-- [ ] Configurable retention period (default 14 days)
-- [ ] Space checks: prevent migration if destination drive lacks space
-- [ ] Disk usage monitoring: cron warns via `notify-send` if either drive exceeds 98% usage
-- [ ] Drive mount check: migration refuses to create symlinks if cold drive is unmounted
-- [ ] Reinitialize: reconfigure hot/cold drives with progress bars for migration and garbage collection
-- [ ] Full revert: undo all tiering, move everything back to internal, remove all symlinks
-- [ ] Status command: show what's on each tier, sizes, last-used timestamps, space available
-- [ ] Single CLI entry point (`modelstore`) dispatching to subcommands: `init`, `status`, `recall`, `revert`, `migrate`
+#### v1.0 Phase 4 (completing separately)
+
+- [ ] Single CLI entry point (`modelstore`) dispatching to subcommands
+- [ ] `modelstore status` — tier view with sizes, timestamps, space
+- [ ] `modelstore revert` — undo all tiering, remove symlinks
 - [ ] Individual scripts for cron and Sync integration
-- [ ] Hook existing DGX Toolbox launchers (vLLM, eval-toolbox, data-toolbox, Unsloth) to call usage tracker
-- [ ] Update README, CHANGELOG, .gitignore for modelstore functionality
+- [ ] README, CHANGELOG, .gitignore updates
+
+#### v1.1 Safety Harness
+
+- [ ] Gateway service (FastAPI) with POST /chat orchestrating the full safety pipeline
+- [ ] Pluggable model adapters via LiteLLM (optional — harness can be bypassed)
+- [ ] Auth, rate limiting, and per-tenant policy enforcement at ingress
+- [ ] Pre-model guardrails via NeMo Guardrails: content filters, prompt injection, PII/secrets detection
+- [ ] Post-model guardrails: toxicity, bias, PII leakage, jailbreak-success detection
+- [ ] Constitutional AI-style self-critique with configurable judge model (default same-model, swappable)
+- [ ] Refusal calibration: helpful refusal, soft steering, threshold tuning
+- [ ] Streaming guardrails: evaluate every N tokens and at end of stream with redaction
+- [ ] Full trace logging (prompt, tools, model outputs, guardrail decisions)
+- [ ] Custom replay eval harness for safety/refusal metrics against POST /chat
+- [ ] lm-eval-harness integration for general capability benchmarks
+- [ ] CI/CD eval integration: block promotion if safety metrics regress
+- [ ] Distributed live red teaming: adversarial prompt generation from past critiques/evals/logs
+- [ ] Human-in-the-loop review dashboard for eval steering and correction (optional)
+- [ ] Feedback loop: corrections feed into threshold calibration and fine-tuning data
 
 ### Out of Scope
 
@@ -43,6 +53,21 @@ Models are always accessible regardless of which tier they're on — symlinks en
 - Automatic model downloading/pulling — only manages storage of already-downloaded models
 - Cloud storage tiering (S3, GCS) — local drives only
 - Per-model pinning (always keep on hot) — all models follow the same retention policy
+- Fine-tuning orchestration — harness feeds data for fine-tuning but doesn't run training jobs
+- Model hosting/serving — LiteLLM and vLLM handle that; harness is a safety layer only
+- Web UI for policy editing — policies are code/config, not a CMS
+
+## Current Milestone: v1.1 Safety Harness
+
+**Goal:** A reusable, model-agnostic safety harness that wraps any open-source model with guardrails, constitutional self-critique, evals, and human-in-the-loop feedback — usable at inference or training time.
+
+**Target features:**
+- Gateway service (FastAPI) with full request pipeline: routing → guardrails → model → critique → evals
+- NeMo Guardrails for pluggable input/output safety checks
+- Constitutional AI-style two-pass critique with configurable judge model
+- Dual eval harness (custom replay + lm-eval-harness) with CI/CD integration
+- Distributed live red teaming with adversarial prompt generation from past results
+- Optional human-in-the-loop dashboard for eval steering and threshold calibration
 
 ## Context
 
@@ -52,6 +77,9 @@ Models are always accessible regardless of which tier they're on — symlinks en
 - All model consumers (vLLM, transformers, Ollama) resolve through symlinks transparently
 - Existing `lib.sh` provides shared functions for DGX Toolbox scripts
 - Desktop notifications via `notify-send` work on the GNOME session
+- LiteLLM proxy already running as model router (Ollama, vLLM, cloud APIs)
+- Safety harness sits optionally in front of LiteLLM — can be bypassed for direct model access
+- Python is available on host and in containers; harness is the first Python component in this repo
 
 ## Constraints
 
@@ -72,4 +100,4 @@ Models are always accessible regardless of which tier they're on — symlinks en
 | Bash only (no Python) | Core scripts run on host, not in containers; minimize dependencies | — Pending |
 
 ---
-*Last updated: 2026-03-21 after initialization*
+*Last updated: 2026-03-22 after v1.1 Safety Harness milestone start*

@@ -1,60 +1,36 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: executing
-stopped_at: Completed 04-01-PLAN.md (status + revert commands)
-last_updated: "2026-03-21T22:10:00.489Z"
-last_activity: 2026-03-21 — Completed plan 03-02 (recall pipeline, disk safety, notifications)
+milestone: v1.1
+milestone_name: Safety Harness
+status: defining
+stopped_at: null
+last_updated: "2026-03-22T00:00:00.000Z"
+last_activity: 2026-03-22 — Milestone v1.1 started
 progress:
-  total_phases: 4
-  completed_phases: 3
-  total_plans: 8
-  completed_plans: 7
-  percent: 50
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-21)
+See: .planning/PROJECT.md (updated 2026-03-22)
 
 **Core value:** Models are always accessible regardless of which tier they're on while the hot drive never fills up with stale models.
-**Current focus:** Phase 1 — Foundation and Init
+**Current focus:** v1.1 Safety Harness — defining requirements
 
 ## Current Position
 
-Phase: 3 of 4 (Migration, Recall, and Safety)
-Plan: 2 of 2 in current phase (03-02 complete)
-Status: In progress
-Last activity: 2026-03-21 — Completed plan 03-02 (recall pipeline, disk safety, notifications)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-22 — Milestone v1.1 started
 
-Progress: [█████░░░░░] 50%
-
-## Performance Metrics
-
-**Velocity:**
-- Total plans completed: 2
-- Average duration: 7 min
-- Total execution time: 0.22 hours
-
-**By Phase:**
-
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| 01-foundation-and-init | 1/2 | 7min | 7min |
-| 02-adapters-and-usage-tracking | 1/3 | 6min | 6min |
-
-**Recent Trend:**
-- Last 5 plans: 01-01 (7min), 02-01 (6min)
-- Trend: stable
-
-*Updated after each plan completion*
-| Phase 02-adapters-and-usage-tracking P02 | 3 | 2 tasks | 3 files |
-| Phase 03-migration-recall-and-safety P01 | 6min | 3 tasks | 6 files |
-| Phase 03-migration-recall-and-safety P02 | 6min | 3 tasks | 6 files |
-| Phase 04-cli-status-revert-and-docs P01 | 10min | 2 tasks | 5 files |
+Progress: [░░░░░░░░░░] 0%
 
 ## Accumulated Context
 
