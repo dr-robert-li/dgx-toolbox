@@ -23,9 +23,11 @@ run_test_script() {
 }
 
 # Run all test scripts
-run_test_script "${SCRIPT_DIR}/smoke.sh"        "smoke.sh"        || true
-run_test_script "${SCRIPT_DIR}/test-config.sh"  "test-config.sh"  || true
-run_test_script "${SCRIPT_DIR}/test-common.sh"  "test-common.sh"  || true
+run_test_script "${SCRIPT_DIR}/smoke.sh"              "smoke.sh"              || true
+run_test_script "${SCRIPT_DIR}/test-config.sh"        "test-config.sh"        || true
+run_test_script "${SCRIPT_DIR}/test-common.sh"        "test-common.sh"        || true
+run_test_script "${SCRIPT_DIR}/test-fs-validation.sh" "test-fs-validation.sh" || true
+run_test_script "${SCRIPT_DIR}/test-init.sh"          "test-init.sh"          || true
 
 echo ""
 echo "================================"

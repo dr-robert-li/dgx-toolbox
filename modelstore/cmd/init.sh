@@ -100,7 +100,7 @@ scan_hf_models() {
   for model_dir in "${hf_hub}"/models--*/; do
     [[ -d "$model_dir" ]] || continue
     local model_name size_bytes last_used size_human last_human
-    model_name=$(basename "$model_dir" | sed 's/^models--//' | tr -- '--' '/')
+    model_name=$(basename "$model_dir" | sed 's/^models--//' | sed 's/--/\//g')
     size_bytes=$(du -sb "$model_dir" 2>/dev/null | cut -f1)
     last_used=$(stat --format="%Y" "$model_dir" 2>/dev/null)
     total_bytes=$(( total_bytes + size_bytes ))
