@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 2 context gathered
+stopped_at: Completed 02-01-PLAN.md
 last_updated: "2026-03-21T01:20:51.382Z"
 last_activity: 2026-03-21 — Completed plan 01-01 (scaffold + lib files + tests)
 progress:
   total_phases: 4
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
-  percent: 12
+  total_plans: 3
+  completed_plans: 3
+  percent: 25
 ---
 
 # Project State
@@ -25,29 +25,30 @@ See: .planning/PROJECT.md (updated 2026-03-21)
 
 ## Current Position
 
-Phase: 1 of 4 (Foundation and Init)
-Plan: 1 of 2 in current phase (01-01 complete)
+Phase: 2 of 4 (Adapters and Usage Tracking)
+Plan: 1 of 3 in current phase (02-01 complete)
 Status: In progress
-Last activity: 2026-03-21 — Completed plan 01-01 (scaffold + lib files + tests)
+Last activity: 2026-03-21 — Completed plan 02-01 (HF adapter + Ollama adapter + tests)
 
-Progress: [█░░░░░░░░░] 12%
+Progress: [██░░░░░░░░] 25%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
+- Total plans completed: 2
 - Average duration: 7 min
-- Total execution time: 0.12 hours
+- Total execution time: 0.22 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-foundation-and-init | 1/2 | 7min | 7min |
+| 02-adapters-and-usage-tracking | 1/3 | 6min | 6min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (7min)
-- Trend: -
+- Last 5 plans: 01-01 (7min), 02-01 (6min)
+- Trend: stable
 
 *Updated after each plan completion*
 
@@ -68,6 +69,9 @@ Recent decisions affecting current work:
 - [Phase 01-foundation-and-init]: Hot paths auto-detected via HF Python API and Ollama /api/tags rather than user-entered — eliminates user-entry errors and handles non-standard install paths
 - [Phase 01-foundation-and-init]: validate_cold_fs extended to accept network/cloud mounts (nfs, nfs4, cifs, fuse.sshfs, fuse.rclone, fuse.s3fs, fuse.gcsfuse) for NAS/cloud cold storage
 - [Phase 01-foundation-and-init]: Cron install skips gracefully if Phase 3 scripts not yet present — init safe to run before Phase 3
+- [Phase 02-adapters-and-usage-tracking]: hf_migrate_model symlink-already-migrated check placed BEFORE mount/space guards (idempotent re-run works without cold drive mounted)
+- [Phase 02-adapters-and-usage-tracking]: Ollama migrate/recall stubs defer actual ollama cp/rm to Phase 3 — guards are complete (SAFE-06 block, SAFE-01 mount, SAFE-02 space)
+- [Phase 02-adapters-and-usage-tracking]: Test comment strings avoid grep pattern words (sudo, set -e) to keep acceptance criteria grep checks from matching comments
 
 ### Pending Todos
 

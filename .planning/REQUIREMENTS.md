@@ -42,12 +42,12 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Safety
 
-- [ ] **SAFE-01**: Migration refuses to create symlinks if cold drive is not mounted (verified via `mountpoint -q`)
-- [ ] **SAFE-02**: Migration checks available space on destination drive with 10% safety margin before moving
+- [x] **SAFE-01**: Migration refuses to create symlinks if cold drive is not mounted (verified via `mountpoint -q`)
+- [x] **SAFE-02**: Migration checks available space on destination drive with 10% safety margin before moving
 - [ ] **SAFE-03**: Cron job sends desktop notification via `notify-send` if either drive exceeds 98% usage
 - [ ] **SAFE-04**: Notifications fall back to log file when desktop session is unavailable
 - [ ] **SAFE-05**: All multi-step operations use a state file for interrupt-safe, idempotent resumption
-- [ ] **SAFE-06**: Ollama server state is checked before migrating Ollama models (warn if running)
+- [x] **SAFE-06**: Ollama server state is checked before migrating Ollama models (warn if running)
 
 ### CLI & Operations
 
@@ -100,9 +100,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INIT-08 | Phase 1 | Complete |
 | TRCK-01 | Phase 2 | Pending |
 | TRCK-02 | Phase 2 | Pending |
-| SAFE-01 | Phase 2 | Pending |
-| SAFE-02 | Phase 2 | Pending |
-| SAFE-06 | Phase 2 | Pending |
+| SAFE-01 | Phase 2 | Complete |
+| SAFE-02 | Phase 2 | Complete |
+| SAFE-06 | Phase 2 | Complete |
 | MIGR-01 | Phase 3 | Pending |
 | MIGR-02 | Phase 3 | Pending |
 | MIGR-03 | Phase 3 | Pending |

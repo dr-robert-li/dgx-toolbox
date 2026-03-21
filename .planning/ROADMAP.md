@@ -44,7 +44,7 @@ Plans:
   2. The cold drive mount state is checked before any operation that touches cold paths — unmounted drive produces a clear error, not a silent failure
   3. A space check with 10% safety margin is available as a shared function and correctly prevents operations when the destination is too full
   4. Ollama server running state is detected before any Ollama model operation, with a warning emitted if it is active
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 - [ ] 02-01-PLAN.md — HF and Ollama storage adapters with full operation sets (list, size, path, migrate, recall) and safety guards
@@ -90,6 +90,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation and Init | 2/2 | Complete    | 2026-03-21 |
-| 2. Adapters and Usage Tracking | 0/2 | Not started | - |
+| 2. Adapters and Usage Tracking | 1/2 | In Progress|  |
 | 3. Migration, Recall, and Safety | 0/2 | Not started | - |
 | 4. CLI, Status, Revert, and Docs | 0/2 | Not started | - |
