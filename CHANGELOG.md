@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-03-22 -- Model Store
+
+### Added
+
+- **modelstore.sh** -- Tiered model storage CLI (init, status, migrate, recall, revert)
+- **modelstore/cmd/status.sh** -- Dashboard showing all models by tier with sizes, last-used timestamps, drive totals, watcher/cron status
+- **modelstore/cmd/revert.sh** -- Interrupt-safe full revert with preview, --force flag, cleanup of cron/watcher/cold dirs
+- **modelstore/cmd/migrate.sh** -- Automated hot-to-cold migration with dry-run, stale detection, flock concurrency guard
+- **modelstore/cmd/recall.sh** -- Cold-to-hot recall with usage timestamp reset, auto-trigger from watcher
+- **modelstore/cmd/init.sh** -- Interactive setup wizard with filesystem validation, model scan, cron install
+- Tiered storage automation via cron (migrate stale models, disk space alerts)
+- Usage tracking via docker events + inotifywait watcher daemon
+- HuggingFace and Ollama storage adapters with safety guards
+
+### Changed
+
+- Reorganized project root into subdirectories: inference/, data/, eval/, containers/, setup/
+- Updated example.bash_aliases with new script paths and modelstore alias
+
 ## 2026-03-20 — Optimization & Orchestration
 
 ### Added

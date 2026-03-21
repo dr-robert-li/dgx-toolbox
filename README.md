@@ -19,7 +19,7 @@ git clone <repo-url> ~/dgx-toolbox
 cp ~/dgx-toolbox/example.bash_aliases ~/.bash_aliases && source ~/.bash_aliases
 
 # One-time system setup (Python, Miniconda, pyenv)
-bash ~/dgx-toolbox/dgx-global-base-setup.sh
+bash ~/dgx-toolbox/setup/dgx-global-base-setup.sh
 source ~/.bashrc
 
 # Build all toolbox images (base → eval + data)
@@ -71,8 +71,8 @@ Shared layers mean `eval-toolbox` and `data-toolbox` rebuild in seconds when onl
 
 | Script | Purpose |
 |--------|---------|
-| `dgx-global-base-setup.sh` | Idempotent system init — installs build tools, Miniconda (aarch64), and pyenv |
-| `setup-ollama-remote.sh` | Reconfigure Ollama to listen on all interfaces for Sync/LAN access (requires sudo) |
+| `setup/dgx-global-base-setup.sh` | Idempotent system init — installs build tools, Miniconda (aarch64), and pyenv |
+| `inference/setup-ollama-remote.sh` | Reconfigure Ollama to listen on all interfaces for Sync/LAN access (requires sudo) |
 | `build-toolboxes.sh` | Build all Docker images: base → eval + data (alias: `build-all`) |
 | `status.sh` | Show all services, image sizes, and disk usage (alias: `dgx-status`) |
 | `lib.sh` | Shared functions for launcher scripts (sourced, not run directly) |
@@ -101,8 +101,8 @@ Individual scripts still work for standalone use and NVIDIA Sync custom apps.
 
 | Script | Purpose | Port |
 |--------|---------|------|
-| `start-open-webui.sh` | Open-WebUI with bundled Ollama — streams logs | 12000 |
-| `start-open-webui-sync.sh` | NVIDIA Sync variant — returns immediately | 12000 |
+| `inference/start-open-webui.sh` | Open-WebUI with bundled Ollama — streams logs | 12000 |
+| `inference/start-open-webui-sync.sh` | NVIDIA Sync variant — returns immediately | 12000 |
 
 Full-featured chat interface with RAG, image generation, multi-model support, and conversation history. Uses the `ghcr.io/open-webui/open-webui:ollama` image with bundled Ollama. Data persisted in Docker volumes `open-webui` and `open-webui-ollama`.
 
@@ -126,8 +126,8 @@ Once added, all models from all backends appear in Open-WebUI's model dropdown. 
 
 | Script | Purpose | Port |
 |--------|---------|------|
-| `start-vllm.sh` | vLLM OpenAI-compatible server — streams logs | 8020 |
-| `start-vllm-sync.sh` | NVIDIA Sync variant — returns immediately | 8020 |
+| `inference/start-vllm.sh` | vLLM OpenAI-compatible server — streams logs | 8020 |
+| `inference/start-vllm-sync.sh` | NVIDIA Sync variant — returns immediately | 8020 |
 
 OpenAI-compatible API server optimized for high-throughput batched inference. Faster than Ollama for production workloads and batch evaluation.
 
@@ -173,9 +173,9 @@ HuggingFace cache (`~/.cache/huggingface`) and model checkpoints (`~/eval/models
 
 | Script | Purpose | Port |
 |--------|---------|------|
-| `start-litellm.sh` | LiteLLM proxy — streams logs | 4000 |
-| `start-litellm-sync.sh` | NVIDIA Sync variant — returns immediately | 4000 |
-| `setup-litellm-config.sh` | Interactive config generator | — |
+| `inference/start-litellm.sh` | LiteLLM proxy — streams logs | 4000 |
+| `inference/start-litellm-sync.sh` | NVIDIA Sync variant — returns immediately | 4000 |
+| `inference/setup-litellm-config.sh` | Interactive config generator | — |
 
 Unified OpenAI-compatible proxy that routes to Ollama, vLLM, and cloud APIs (OpenAI, Anthropic, Gemini) through a single endpoint. All tools — Open-WebUI, eval toolbox, data toolbox, n8n, custom code — can point to `localhost:4000` and access any backend.
 
@@ -309,9 +309,9 @@ llm = OpenAILLM(
 
 | Script | Purpose | Port |
 |--------|---------|------|
-| `ngc-pytorch.sh` | Interactive PyTorch shell with GPU access | — |
-| `ngc-jupyter.sh` | Jupyter Lab on NGC PyTorch container | 8888 |
-| `ngc-quickstart.sh` | In-container guide (available ML packages & workflows) | — |
+| `containers/ngc-pytorch.sh` | Interactive PyTorch shell with GPU access | — |
+| `containers/ngc-jupyter.sh` | Jupyter Lab on NGC PyTorch container | 8888 |
+| `containers/ngc-quickstart.sh` | In-container guide (available ML packages & workflows) | — |
 
 Both `ngc-pytorch.sh` and `ngc-jupyter.sh` use the `nvcr.io/nvidia/pytorch:26.02-py3` image and will auto-install packages from `~/requirements-gpu.txt` if present.
 
@@ -321,9 +321,9 @@ A general-purpose data engineering container for processing, curating, labeling,
 
 | Script | Purpose | Port |
 |--------|---------|------|
-| `data-toolbox-build.sh` | Build the data-toolbox Docker image (auto-builds base if needed) | — |
-| `data-toolbox.sh` | Interactive data processing shell with GPU access | — |
-| `data-toolbox-jupyter.sh` | Jupyter Lab with data stack | 8890 |
+| `data/data-toolbox-build.sh` | Build the data-toolbox Docker image (auto-builds base if needed) | — |
+| `data/data-toolbox.sh` | Interactive data processing shell with GPU access | — |
+| `data/data-toolbox-jupyter.sh` | Jupyter Lab with data stack | 8890 |
 
 **Docker Compose:** Label Studio and Argilla can be started together:
 
@@ -376,8 +376,8 @@ Persistent Docker services for data annotation. The data toolbox connects to the
 
 | Script | Purpose | Port |
 |--------|---------|------|
-| `start-label-studio.sh` | Label Studio with persistent storage | 8081 |
-| `start-argilla.sh` | Argilla with persistent storage | 6900 |
+| `data/start-label-studio.sh` | Label Studio with persistent storage | 8081 |
+| `data/start-argilla.sh` | Argilla with persistent storage | 6900 |
 
 ```bash
 # Start individually
@@ -400,9 +400,9 @@ A general-purpose evaluation container built on `base-toolbox` with metrics, LLM
 
 | Script | Purpose | Port |
 |--------|---------|------|
-| `eval-toolbox-build.sh` | Build the eval-toolbox Docker image (auto-builds base if needed) | — |
-| `eval-toolbox.sh` | Interactive eval shell with GPU access | — |
-| `eval-toolbox-jupyter.sh` | Jupyter Lab with eval stack | 8889 |
+| `eval/eval-toolbox-build.sh` | Build the eval-toolbox Docker image (auto-builds base if needed) | — |
+| `eval/eval-toolbox.sh` | Interactive eval shell with GPU access | — |
+| `eval/eval-toolbox-jupyter.sh` | Jupyter Lab with eval stack | 8889 |
 
 **Included libraries:** `lm-eval`, `ragas`, `evaluate`, `datasets`, `torchmetrics`, `pycocotools`, `albumentations`, `scikit-learn`, `pandas`, `scipy`, `wandb`, `mlflow`, `tritonclient[all]`, `openai`, `typer`, `rich`
 
@@ -432,8 +432,8 @@ Runs NVIDIA Triton Inference Server with the TensorRT-LLM backend as a sidecar. 
 
 | Script | Purpose | Ports |
 |--------|---------|-------|
-| `triton-trtllm.sh` | Full launcher — streams logs | 8010 (HTTP), 8011 (gRPC), 8012 (metrics) |
-| `triton-trtllm-sync.sh` | NVIDIA Sync variant — returns immediately | 8010, 8011, 8012 |
+| `eval/triton-trtllm.sh` | Full launcher — streams logs | 8010 (HTTP), 8011 (gRPC), 8012 (metrics) |
+| `eval/triton-trtllm-sync.sh` | NVIDIA Sync variant — returns immediately | 8010, 8011, 8012 |
 
 Ports are offset from default (8000-8002) to avoid conflict with Unsloth Studio.
 
@@ -463,8 +463,8 @@ client.is_server_live()
 
 | Script | Purpose | Port |
 |--------|---------|------|
-| `unsloth-studio.sh` | Full launcher — streams logs, auto-opens browser when ready | 8000 |
-| `unsloth-studio-sync.sh` | NVIDIA Sync variant — returns immediately, runs in background | 8000 |
+| `containers/unsloth-studio.sh` | Full launcher — streams logs, auto-opens browser when ready | 8000 |
+| `containers/unsloth-studio-sync.sh` | NVIDIA Sync variant — returns immediately, runs in background | 8000 |
 
 Fine-tuning data is persisted in `~/unsloth-data`. Use `unsloth-studio-sync.sh` when launching remotely via NVIDIA Sync (no TTY required). First launch takes up to 30 minutes while dependencies install.
 
@@ -477,9 +477,45 @@ docker logs -f unsloth-studio
 
 | Script | Purpose | Port |
 |--------|---------|------|
-| `start-n8n.sh` | n8n automation platform with persistent config | 5678 |
+| `containers/start-n8n.sh` | n8n automation platform with persistent config | 5678 |
 
 Data is persisted in `~/.n8n`.
+
+## Model Store
+
+Tiered model storage management for DGX Spark. Automatically migrates stale models from the hot NVMe drive to a cold drive (external SSD, NAS, or cloud mount) and recalls them on demand. Hot storage stays free for active models while all models remain accessible via symlinks.
+
+### Quick Start
+
+```bash
+# One-time setup: configure hot/cold paths, scan existing models, install cron
+modelstore init
+
+# Check current state: all models by tier with sizes and last-used timestamps
+modelstore status
+
+# Migration runs automatically via cron; run manually to preview
+modelstore migrate --dry-run
+modelstore migrate
+```
+
+### Subcommands
+
+| Command | Description |
+|---------|-------------|
+| `modelstore init` | Interactive setup wizard — configure hot/cold paths, scan models, install cron |
+| `modelstore status` | Show all models by tier with sizes, last-used timestamps, drive totals, watcher/cron status |
+| `modelstore migrate` | Move stale models hot→cold (reads stale threshold from config) |
+| `modelstore migrate --dry-run` | Preview what would migrate without making changes |
+| `modelstore recall <model>` | Move a specific model cold→hot on demand |
+| `modelstore revert` | Move all models back to hot, remove symlinks, clean up cron/watcher/cold dirs |
+| `modelstore revert --force` | Revert without confirmation prompt |
+
+### How It Works
+
+Models are tracked via a usage watcher (docker events + inotifywait). When a model hasn't been accessed for the configured stale threshold, the cron job migrates it: the model directory is moved to cold storage and replaced with a symlink so tools continue to work transparently. `modelstore recall` reverses this for a specific model; `modelstore revert` restores everything to the original flat-file layout.
+
+Supports HuggingFace (`~/.cache/huggingface/hub/`) and Ollama (`~/.ollama/models/`) storage backends.
 
 ## Port Reference
 
@@ -516,7 +552,7 @@ Data is persisted in `~/.n8n`.
 
 3. Run the base setup:
    ```bash
-   nvidia-sync exec -- bash ~/dgx-toolbox/dgx-global-base-setup.sh
+   nvidia-sync exec -- bash ~/dgx-toolbox/setup/dgx-global-base-setup.sh
    ```
 
 4. Build all toolbox images:
@@ -526,7 +562,7 @@ Data is persisted in `~/.n8n`.
 
 5. Enable Ollama remote access:
    ```bash
-   nvidia-sync exec -- bash ~/dgx-toolbox/setup-ollama-remote.sh
+   nvidia-sync exec -- bash ~/dgx-toolbox/inference/setup-ollama-remote.sh
    ```
 
 ### Launching Tools Remotely
@@ -535,56 +571,56 @@ For **background services**, launch with `nvidia-sync exec` and then forward the
 
 ```bash
 # Open-WebUI
-nvidia-sync exec -- bash ~/dgx-toolbox/start-open-webui-sync.sh
+nvidia-sync exec -- bash ~/dgx-toolbox/inference/start-open-webui-sync.sh
 nvidia-sync forward 12000
 
 # vLLM
-nvidia-sync exec -- bash ~/dgx-toolbox/start-vllm-sync.sh
+nvidia-sync exec -- bash ~/dgx-toolbox/inference/start-vllm-sync.sh
 nvidia-sync forward 8020
 
 # LiteLLM
-nvidia-sync exec -- bash ~/dgx-toolbox/start-litellm-sync.sh
+nvidia-sync exec -- bash ~/dgx-toolbox/inference/start-litellm-sync.sh
 nvidia-sync forward 4000
 
 # Unsloth Studio
-nvidia-sync exec -- bash ~/dgx-toolbox/unsloth-studio-sync.sh
+nvidia-sync exec -- bash ~/dgx-toolbox/containers/unsloth-studio-sync.sh
 nvidia-sync forward 8000
 
 # n8n
-nvidia-sync exec -- bash ~/dgx-toolbox/start-n8n.sh &
+nvidia-sync exec -- bash ~/dgx-toolbox/containers/start-n8n.sh &
 nvidia-sync forward 5678
 
 # Triton TRT-LLM
-nvidia-sync exec -- bash ~/dgx-toolbox/triton-trtllm-sync.sh
+nvidia-sync exec -- bash ~/dgx-toolbox/eval/triton-trtllm-sync.sh
 nvidia-sync forward 8010
 
 # Label Studio
-nvidia-sync exec -- bash ~/dgx-toolbox/start-label-studio.sh &
+nvidia-sync exec -- bash ~/dgx-toolbox/data/start-label-studio.sh &
 nvidia-sync forward 8081
 
 # Argilla
-nvidia-sync exec -- bash ~/dgx-toolbox/start-argilla.sh &
+nvidia-sync exec -- bash ~/dgx-toolbox/data/start-argilla.sh &
 nvidia-sync forward 6900
 ```
 
 For **interactive containers**, use `nvidia-sync exec -it`:
 
 ```bash
-nvidia-sync exec -it -- bash ~/dgx-toolbox/ngc-pytorch.sh
-nvidia-sync exec -it -- bash ~/dgx-toolbox/eval-toolbox.sh
-nvidia-sync exec -it -- bash ~/dgx-toolbox/data-toolbox.sh
+nvidia-sync exec -it -- bash ~/dgx-toolbox/containers/ngc-pytorch.sh
+nvidia-sync exec -it -- bash ~/dgx-toolbox/eval/eval-toolbox.sh
+nvidia-sync exec -it -- bash ~/dgx-toolbox/data/data-toolbox.sh
 ```
 
 For **Jupyter Lab**:
 
 ```bash
-nvidia-sync exec -- bash ~/dgx-toolbox/ngc-jupyter.sh &
+nvidia-sync exec -- bash ~/dgx-toolbox/containers/ngc-jupyter.sh &
 nvidia-sync forward 8888
 
-nvidia-sync exec -- bash ~/dgx-toolbox/eval-toolbox-jupyter.sh &
+nvidia-sync exec -- bash ~/dgx-toolbox/eval/eval-toolbox-jupyter.sh &
 nvidia-sync forward 8889
 
-nvidia-sync exec -- bash ~/dgx-toolbox/data-toolbox-jupyter.sh &
+nvidia-sync exec -- bash ~/dgx-toolbox/data/data-toolbox-jupyter.sh &
 nvidia-sync forward 8890
 ```
 
@@ -594,17 +630,18 @@ Register these tools as custom apps in NVIDIA Sync so they appear in the Sync UI
 
 | App Name | Command | Port | Auto-open |
 |----------|---------|------|-----------|
-| Open-WebUI | `bash ~/dgx-toolbox/start-open-webui-sync.sh` | 12000 | Yes |
-| LiteLLM | `bash ~/dgx-toolbox/start-litellm-sync.sh` | 4000 | No |
-| Unsloth Studio | `bash ~/dgx-toolbox/unsloth-studio-sync.sh` | 8000 | Yes |
-| n8n | `bash ~/dgx-toolbox/start-n8n.sh` | 5678 | Yes |
-| Label Studio | `bash ~/dgx-toolbox/start-label-studio.sh` | 8081 | Yes |
-| Argilla | `bash ~/dgx-toolbox/start-argilla.sh` | 6900 | Yes |
-| Eval Jupyter | `bash ~/dgx-toolbox/eval-toolbox-jupyter.sh` | 8889 | Yes |
-| Data Jupyter | `bash ~/dgx-toolbox/data-toolbox-jupyter.sh` | 8890 | Yes |
-| NGC Jupyter | `bash ~/dgx-toolbox/ngc-jupyter.sh` | 8888 | Yes |
-| Triton TRT-LLM | `bash ~/dgx-toolbox/triton-trtllm-sync.sh` | 8010 | No |
-| vLLM | `bash ~/dgx-toolbox/start-vllm-sync.sh` | 8020 | No |
+| Open-WebUI | `bash ~/dgx-toolbox/inference/start-open-webui-sync.sh` | 12000 | Yes |
+| LiteLLM | `bash ~/dgx-toolbox/inference/start-litellm-sync.sh` | 4000 | No |
+| Unsloth Studio | `bash ~/dgx-toolbox/containers/unsloth-studio-sync.sh` | 8000 | Yes |
+| n8n | `bash ~/dgx-toolbox/containers/start-n8n.sh` | 5678 | Yes |
+| Label Studio | `bash ~/dgx-toolbox/data/start-label-studio.sh` | 8081 | Yes |
+| Argilla | `bash ~/dgx-toolbox/data/start-argilla.sh` | 6900 | Yes |
+| Eval Jupyter | `bash ~/dgx-toolbox/eval/eval-toolbox-jupyter.sh` | 8889 | Yes |
+| Data Jupyter | `bash ~/dgx-toolbox/data/data-toolbox-jupyter.sh` | 8890 | Yes |
+| NGC Jupyter | `bash ~/dgx-toolbox/containers/ngc-jupyter.sh` | 8888 | Yes |
+| Triton TRT-LLM | `bash ~/dgx-toolbox/eval/triton-trtllm-sync.sh` | 8010 | No |
+| vLLM | `bash ~/dgx-toolbox/inference/start-vllm-sync.sh` | 8020 | No |
+| Model Store | `bash ~/dgx-toolbox/modelstore.sh status` | -- | No |
 
 Refer to the [NVIDIA Sync custom apps documentation](https://docs.nvidia.com/dgx/dgx-spark/nvidia-sync.html#spark-nvidia-sync) for the exact configuration format.
 

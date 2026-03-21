@@ -12,3 +12,7 @@ Thumbs.db
 
 # Runtime artifacts
 *.log
+
+# Modelstore test artifacts
+modelstore/test/tmp*
+modelstore/test/fixtures/tmp*
