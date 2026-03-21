@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: in-progress
-stopped_at: "Completed 01-foundation-and-init/01-01-PLAN.md"
-last_updated: "2026-03-21T00:02:42Z"
-last_activity: 2026-03-21 — Completed plan 01-01 (project scaffold, config.sh, common.sh, test suite)
+status: executing
+stopped_at: Completed 01-foundation-and-init/01-02-PLAN.md
+last_updated: "2026-03-21T00:48:52.725Z"
+last_activity: 2026-03-21 — Completed plan 01-01 (scaffold + lib files + tests)
 progress:
   total_phases: 4
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
+  completed_plans: 2
   percent: 12
 ---
 
@@ -65,6 +65,9 @@ Recent decisions affecting current work:
 - PASS=$((PASS+1)) not ((PASS++)) in bash test scripts with set -e (arithmetic expansion returns exit code 1 when result is 0)
 - validate_cold_fs returns 1 not exit 1 (callers handle rejection gracefully)
 - No bats dependency — inline bash assertion pattern runs everywhere
+- [Phase 01-foundation-and-init]: Hot paths auto-detected via HF Python API and Ollama /api/tags rather than user-entered — eliminates user-entry errors and handles non-standard install paths
+- [Phase 01-foundation-and-init]: validate_cold_fs extended to accept network/cloud mounts (nfs, nfs4, cifs, fuse.sshfs, fuse.rclone, fuse.s3fs, fuse.gcsfuse) for NAS/cloud cold storage
+- [Phase 01-foundation-and-init]: Cron install skips gracefully if Phase 3 scripts not yet present — init safe to run before Phase 3
 
 ### Pending Todos
 
@@ -78,6 +81,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-21T00:02:42Z
-Stopped at: Completed 01-foundation-and-init/01-01-PLAN.md
-Resume file: .planning/phases/01-foundation-and-init/01-02-PLAN.md
+Last session: 2026-03-21T00:48:52.724Z
+Stopped at: Completed 01-foundation-and-init/01-02-PLAN.md
+Resume file: None

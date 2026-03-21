@@ -12,7 +12,7 @@ Four phases take the project from a working configuration foundation through ada
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation and Init** - Config infrastructure, shared library, and interactive init wizard
+- [x] **Phase 1: Foundation and Init** - Config infrastructure, shared library, and interactive init wizard (completed 2026-03-21)
 - [ ] **Phase 2: Adapters and Usage Tracking** - HF and Ollama storage adapters, usage timestamp manifest, launcher hooks
 - [ ] **Phase 3: Migration, Recall, and Safety** - Automated tiering cron, recall from cold, full safety envelope
 - [ ] **Phase 4: CLI, Status, Revert, and Docs** - Unified CLI dispatcher, status/revert commands, documentation
@@ -29,7 +29,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. After init, a config file exists on disk with retention period, cron schedule, and drive paths — all values match what the user entered
   4. User can run `modelstore init` again (reinit) to reconfigure drives, and existing model locations are shown with sizes before any migration begins
   5. Init scans and displays all existing HuggingFace and Ollama models with their sizes so the user sees what will be managed
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 Plans:
 - [x] 01-01-PLAN.md — Project scaffold, lib/config.sh, lib/common.sh with mount check, space check, logging, and test infrastructure
@@ -89,7 +89,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation and Init | 1/2 | In progress | - |
+| 1. Foundation and Init | 2/2 | Complete   | 2026-03-21 |
 | 2. Adapters and Usage Tracking | 0/2 | Not started | - |
 | 3. Migration, Recall, and Safety | 0/2 | Not started | - |
 | 4. CLI, Status, Revert, and Docs | 0/2 | Not started | - |
