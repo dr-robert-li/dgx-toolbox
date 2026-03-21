@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Safety Harness
-status: Defining requirements
-stopped_at: Completed 04-02-PLAN.md — human verification approved
-last_updated: "2026-03-21T23:24:53.924Z"
-last_activity: 2026-03-22 — Milestone v1.1 started
+status: Roadmap defined — ready for Phase 5 planning
+stopped_at: v1.1 roadmap created (phases 5–10, 39 requirements mapped)
+last_updated: "2026-03-22"
+last_activity: 2026-03-22 — v1.1 roadmap created
 progress:
   total_phases: 10
   completed_phases: 4
@@ -21,16 +21,27 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-22)
 
 **Core value:** Models are always accessible regardless of which tier they're on while the hot drive never fills up with stale models.
-**Current focus:** v1.1 Safety Harness — defining requirements
+**Current focus:** v1.1 Safety Harness — roadmap defined, ready to plan Phase 5
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 5 (not started)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-03-22 — Milestone v1.1 started
+Status: Roadmap defined
+Last activity: 2026-03-22 — v1.1 roadmap created
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [░░░░░░░░░░] 0% (v1.1)
+
+## v1.1 Phase Map
+
+| Phase | Name | Requirements | Status |
+|-------|------|--------------|--------|
+| 5 | Gateway and Trace Foundation | GATE-01–05, TRAC-01–04 | Not started |
+| 6 | Input/Output Guardrails and Refusal | INRL-01–05, OURL-01–04, REFU-01–04 | Not started |
+| 7 | Constitutional AI Critique | CSTL-01–05 | Not started |
+| 8 | Eval Harness and CI Gate | EVAL-01–04 | Not started |
+| 9 | Red Teaming | RDTM-01–04 | Not started |
+| 10 | HITL Dashboard | HITL-01–04 | Not started |
 
 ## Accumulated Context
 
@@ -64,22 +75,40 @@ Recent decisions affecting current work:
 - [Phase 04-cli-status-revert-and-docs]: revert.sh completed_models JSON array in op_state.json enables interrupt-safe multi-model tracking via _append_completed/_is_completed helpers
 - [Phase 04-cli-status-revert-and-docs]: test-revert.sh mock pattern: generate mock_cmd/revert.sh with inline check_cold_mounted override + tail -n +21 for body (common.sh uses mountpoint -q which fails in temp dirs)
 - [Phase 04-cli-status-revert-and-docs]: rsync_flags variable approach for TTY guard in adapter rsync calls — cleaner than inline substitution
-- [Phase 04-cli-status-revert-and-docs]: modelstore.sh stays in root alongside status.sh and lib.sh (not moved to subdirectory)
-- [Phase 04-cli-status-revert-and-docs]: rsync_flags variable approach for TTY guard in adapter rsync calls — cleaner than inline substitution
 - [Phase 04-cli-status-revert-and-docs]: Mock rsync in test-hf-adapter.sh must preserve directory structure (cp -r), not just mkdir destination
+- [Phase 04-cli-status-revert-and-docs]: modelstore.sh stays in root alongside status.sh and lib.sh (not moved to subdirectory)
+
+### v1.1 Architecture Decisions (Pre-Phase 5)
+
+- FastAPI gateway on port 8080 (verify code-server not running before assigning)
+- NeMo Guardrails imported in-process as library — not a sidecar
+- LLMRails MUST be instantiated at module top level before uvicorn.run(), never inside async handler
+- No uvloop — nest_asyncio cannot patch uvloop C extension; pin asyncio event loop explicitly
+- Unicode NFC/NFKC normalization + zero-width stripping is the first preprocessing step, before every classifier
+- PII redaction pass happens before trace record is written — raw PII never lands in SQLite
+- CAI critique is risk-gated — only triggered for high-risk outputs, not unconditional
+- lm-eval loglikelihood tasks route to LiteLLM directly, not through POST /v1/chat/completions
+- Red teaming requires stable trace data — cannot start before Phase 8 (eval harness) is complete
+- HITL dashboard requires eval harness and red team data — must come last (Phase 10)
 
 ### Pending Todos
 
-None yet.
+- Verify NeMo Guardrails aarch64 pip install on DGX Spark in fresh venv before Phase 5 planning (Annoy C++ build risk)
+- Confirm port 8080 is not in use by code-server in target deployment
+- Benchmark 7B judge model P95 latency on aarch64 before committing CAI async/sync split in Phase 7
 
 ### Blockers/Concerns
 
 - Phase 2: Ollama manifest JSON schema field paths not fully specified in research — verify with `cat ~/.ollama/models/manifests/...` on actual DGX before writing ollama_adapter.sh
 - Phase 3: DBUS session address injection for notify-send from cron is MEDIUM confidence on aarch64 — test on actual machine before committing approach
 - Phase 4: Revert state file JSON schema not yet specified — design during Phase 4 planning before writing revert.sh
+- Phase 5: NeMo Guardrails aarch64 Annoy build is the highest-risk dependency — must validate before writing any application code
+- Phase 7: CAI judge model latency on DGX Spark aarch64 is unknown — async timeout values depend on actual hardware numbers
+- Phase 9: deepteam 1.0.6 (March 2026) is newly released — feedback-loop red-teaming pattern is research-frontier; plan Phase 9 with a research step
 
 ## Session Continuity
 
-Last session: 2026-03-21T23:20:41.735Z
-Stopped at: Completed 04-02-PLAN.md — human verification approved
+Last session: 2026-03-22
+Stopped at: v1.1 roadmap created (phases 5–10, 39 requirements mapped)
 Resume file: None
+Next action: `/gsd:plan-phase 5`

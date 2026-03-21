@@ -209,47 +209,47 @@ Which phases cover which requirements. Updated during roadmap creation.
 | GATE-03 | Phase 5 | Pending |
 | GATE-04 | Phase 5 | Pending |
 | GATE-05 | Phase 5 | Pending |
-| INRL-01 | — | Pending |
-| INRL-02 | — | Pending |
-| INRL-03 | — | Pending |
-| INRL-04 | — | Pending |
-| INRL-05 | — | Pending |
-| OURL-01 | — | Pending |
-| OURL-02 | — | Pending |
-| OURL-03 | — | Pending |
-| OURL-04 | — | Pending |
-| CSTL-01 | — | Pending |
-| CSTL-02 | — | Pending |
-| CSTL-03 | — | Pending |
-| CSTL-04 | — | Pending |
-| CSTL-05 | — | Pending |
-| REFU-01 | — | Pending |
-| REFU-02 | — | Pending |
-| REFU-03 | — | Pending |
-| REFU-04 | — | Pending |
-| TRAC-01 | — | Pending |
-| TRAC-02 | — | Pending |
-| TRAC-03 | — | Pending |
-| TRAC-04 | — | Pending |
-| EVAL-01 | — | Pending |
-| EVAL-02 | — | Pending |
-| EVAL-03 | — | Pending |
-| EVAL-04 | — | Pending |
-| RDTM-01 | — | Pending |
-| RDTM-02 | — | Pending |
-| RDTM-03 | — | Pending |
-| RDTM-04 | — | Pending |
-| HITL-01 | — | Pending |
-| HITL-02 | — | Pending |
-| HITL-03 | — | Pending |
-| HITL-04 | — | Pending |
+| TRAC-01 | Phase 5 | Pending |
+| TRAC-02 | Phase 5 | Pending |
+| TRAC-03 | Phase 5 | Pending |
+| TRAC-04 | Phase 5 | Pending |
+| INRL-01 | Phase 6 | Pending |
+| INRL-02 | Phase 6 | Pending |
+| INRL-03 | Phase 6 | Pending |
+| INRL-04 | Phase 6 | Pending |
+| INRL-05 | Phase 6 | Pending |
+| OURL-01 | Phase 6 | Pending |
+| OURL-02 | Phase 6 | Pending |
+| OURL-03 | Phase 6 | Pending |
+| OURL-04 | Phase 6 | Pending |
+| REFU-01 | Phase 6 | Pending |
+| REFU-02 | Phase 6 | Pending |
+| REFU-03 | Phase 6 | Pending |
+| REFU-04 | Phase 6 | Pending |
+| CSTL-01 | Phase 7 | Pending |
+| CSTL-02 | Phase 7 | Pending |
+| CSTL-03 | Phase 7 | Pending |
+| CSTL-04 | Phase 7 | Pending |
+| CSTL-05 | Phase 7 | Pending |
+| EVAL-01 | Phase 8 | Pending |
+| EVAL-02 | Phase 8 | Pending |
+| EVAL-03 | Phase 8 | Pending |
+| EVAL-04 | Phase 8 | Pending |
+| RDTM-01 | Phase 9 | Pending |
+| RDTM-02 | Phase 9 | Pending |
+| RDTM-03 | Phase 9 | Pending |
+| RDTM-04 | Phase 9 | Pending |
+| HITL-01 | Phase 10 | Pending |
+| HITL-02 | Phase 10 | Pending |
+| HITL-03 | Phase 10 | Pending |
+| HITL-04 | Phase 10 | Pending |
 
 **Coverage:**
 - v1.0 requirements: 38 total (38 complete)
-- v1.1 requirements: 36 total
-- Mapped to phases: 5 (gateway only — rest pending roadmap)
-- Unmapped: 31 ⚠️
+- v1.1 requirements: 39 total (note: REQUIREMENTS.md previously stated 36; actual count is 39 — GATE-05, CSTL-04, CSTL-05 were present in the file but not counted)
+- Mapped to phases: 39/39 (100%)
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-21 (v1.0), 2026-03-22 (v1.1)*
-*Last updated: 2026-03-22 after v1.1 requirements definition*
+*Last updated: 2026-03-22 after v1.1 roadmap creation*
