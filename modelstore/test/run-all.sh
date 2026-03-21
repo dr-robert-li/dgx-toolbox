@@ -31,6 +31,8 @@ run_test_script "${SCRIPT_DIR}/test-init.sh"          "test-init.sh"          ||
 run_test_script "${SCRIPT_DIR}/test-hf-adapter.sh"    "test-hf-adapter.sh"    || true
 run_test_script "${SCRIPT_DIR}/test-ollama-adapter.sh" "test-ollama-adapter.sh" || true
 run_test_script "${SCRIPT_DIR}/test-watcher.sh"        "test-watcher.sh"        || true
+run_test_script "${SCRIPT_DIR}/test-status.sh"         "test-status.sh"         || true
+run_test_script "${SCRIPT_DIR}/test-revert.sh"         "test-revert.sh"         || true
 
 echo ""
 echo "================================"
