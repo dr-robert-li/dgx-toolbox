@@ -115,6 +115,16 @@ watch_inotify() {
       local model_path
       model_path=$(extract_model_id_from_path "$accessed_path") || continue
       [[ -n "$model_path" ]] && ms_track_usage "$model_path"
+      # Auto-recall: if accessed path is a symlink pointing to cold storage, trigger recall
+      if [[ -L "$model_path" ]]; then
+        local link_target
+        link_target=$(readlink -f "$model_path" 2>/dev/null || true)
+        if [[ -n "$link_target" && "$link_target" == "${COLD_PATH}"/* ]]; then
+          ms_log "Cold symlink access detected: $model_path -- triggering recall"
+          "${SCRIPT_DIR}/../cmd/recall.sh" "$model_path" --trigger=auto 2>/dev/null || \
+            ms_log "Auto-recall failed for $model_path"
+        fi
+      fi
     done
 }
 
