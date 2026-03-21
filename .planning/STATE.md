@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-03-21T13:05:55.351Z"
-last_activity: 2026-03-21 — Completed plan 02-01 (HF adapter + Ollama adapter + tests)
+stopped_at: Completed 03-02-PLAN.md
+last_updated: "2026-03-21T13:14:00.000Z"
+last_activity: 2026-03-21 — Completed plan 03-02 (recall pipeline, disk safety, notifications)
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 6
-  completed_plans: 5
-  percent: 25
+  completed_plans: 6
+  percent: 50
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-03-21)
 
 ## Current Position
 
-Phase: 2 of 4 (Adapters and Usage Tracking)
-Plan: 1 of 3 in current phase (02-01 complete)
+Phase: 3 of 4 (Migration, Recall, and Safety)
+Plan: 2 of 2 in current phase (03-02 complete)
 Status: In progress
-Last activity: 2026-03-21 — Completed plan 02-01 (HF adapter + Ollama adapter + tests)
+Last activity: 2026-03-21 — Completed plan 03-02 (recall pipeline, disk safety, notifications)
 
-Progress: [██░░░░░░░░] 25%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Progress: [██░░░░░░░░] 25%
 *Updated after each plan completion*
 | Phase 02-adapters-and-usage-tracking P02 | 3 | 2 tasks | 3 files |
 | Phase 03-migration-recall-and-safety P01 | 6min | 3 tasks | 6 files |
+| Phase 03-migration-recall-and-safety P02 | 6min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -80,6 +81,8 @@ Recent decisions affecting current work:
 - [Phase 03-migration-recall-and-safety]: Ollama recall derives cold_base by following hot blob symlink via readlink — more robust than requiring cold_base as parameter
 - [Phase 03-migration-recall-and-safety]: cron_output unbound variable with set -uo pipefail fixed by tee to temp file instead of command substitution with background process
 - [Phase 03-migration-recall-and-safety]: find_stale_hf_models checks symlink status in both usage.json and directory walk paths to avoid re-migrating already-migrated models
+- [Phase 03-migration-recall-and-safety]: Test RECL-03 launcher_hook sets COLD_PATH directly ($TMP/cold) instead of calling load_config to avoid reading real system config
+- [Phase 03-migration-recall-and-safety]: check_disk_threshold inlined in test-disk-check.sh to allow df/notify_user mocking as shell functions without subprocess complications
 
 ### Pending Todos
 

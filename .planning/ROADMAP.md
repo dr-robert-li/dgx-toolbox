@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation and Init** - Config infrastructure, shared library, and interactive init wizard (completed 2026-03-21)
 - [x] **Phase 2: Adapters and Usage Tracking** - HF and Ollama storage adapters, usage timestamp manifest, launcher hooks (completed 2026-03-21)
-- [ ] **Phase 3: Migration, Recall, and Safety** - Automated tiering cron, recall from cold, full safety envelope
+- [x] **Phase 3: Migration, Recall, and Safety** - Automated tiering cron, recall from cold, full safety envelope (completed 2026-03-21)
 - [ ] **Phase 4: CLI, Status, Revert, and Docs** - Unified CLI dispatcher, status/revert commands, documentation
 
 ## Phase Details
@@ -60,7 +60,7 @@ Plans:
   3. Running two migration processes at the same time is prevented — the second invocation exits immediately with a clear message
   4. `modelstore migrate --dry-run` shows exactly which models would be moved without moving any data
   5. If either drive exceeds 98% usage, a desktop notification is sent — and if no desktop session is available, the warning is written to the log file instead
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 03-01-PLAN.md — lib/audit.sh, Ollama adapter bodies, cmd/migrate.sh with stale detection + dry-run + flock + state file, cron/migrate_cron.sh, tests
@@ -91,5 +91,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Foundation and Init | 2/2 | Complete    | 2026-03-21 |
 | 2. Adapters and Usage Tracking | 2/2 | Complete    | 2026-03-21 |
-| 3. Migration, Recall, and Safety | 1/2 | In Progress|  |
+| 3. Migration, Recall, and Safety | 2/2 | Complete   | 2026-03-21 |
 | 4. CLI, Status, Revert, and Docs | 0/2 | Not started | - |

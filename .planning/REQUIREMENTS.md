@@ -31,9 +31,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Recall
 
-- [ ] **RECL-01**: When a model is actively needed, it is moved back from cold to hot store automatically
-- [ ] **RECL-02**: Recall replaces the symlink with real files and resets the retention timer
-- [ ] **RECL-03**: Launcher hooks in vLLM, eval-toolbox, data-toolbox, and Unsloth scripts trigger recall and update usage timestamps
+- [x] **RECL-01**: When a model is actively needed, it is moved back from cold to hot store automatically
+- [x] **RECL-02**: Recall replaces the symlink with real files and resets the retention timer
+- [x] **RECL-03**: Launcher hooks in vLLM, eval-toolbox, data-toolbox, and Unsloth scripts trigger recall and update usage timestamps
 
 ### Usage Tracking
 
@@ -44,8 +44,8 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [x] **SAFE-01**: Migration refuses to create symlinks if cold drive is not mounted (verified via `mountpoint -q`)
 - [x] **SAFE-02**: Migration checks available space on destination drive with 10% safety margin before moving
-- [ ] **SAFE-03**: Cron job sends desktop notification via `notify-send` if either drive exceeds 98% usage
-- [ ] **SAFE-04**: Notifications fall back to log file when desktop session is unavailable
+- [x] **SAFE-03**: Cron job sends desktop notification via `notify-send` if either drive exceeds 98% usage
+- [x] **SAFE-04**: Notifications fall back to log file when desktop session is unavailable
 - [x] **SAFE-05**: All multi-step operations use a state file for interrupt-safe, idempotent resumption
 - [x] **SAFE-06**: Ollama server state is checked before migrating Ollama models (warn if running)
 
@@ -111,11 +111,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MIGR-06 | Phase 3 | Complete |
 | MIGR-07 | Phase 3 | Complete |
 | MIGR-08 | Phase 3 | Complete |
-| RECL-01 | Phase 3 | Pending |
-| RECL-02 | Phase 3 | Pending |
-| RECL-03 | Phase 3 | Pending |
-| SAFE-03 | Phase 3 | Pending |
-| SAFE-04 | Phase 3 | Pending |
+| RECL-01 | Phase 3 | Complete |
+| RECL-02 | Phase 3 | Complete |
+| RECL-03 | Phase 3 | Complete |
+| SAFE-03 | Phase 3 | Complete |
+| SAFE-04 | Phase 3 | Complete |
 | SAFE-05 | Phase 3 | Complete |
 | CLI-01 | Phase 4 | Pending |
 | CLI-02 | Phase 4 | Pending |
