@@ -92,7 +92,9 @@ hf_migrate_model() {
   mkdir -p "${cold_base}/hf"
 
   # Move files using rsync with --remove-source-files (safe cross-filesystem move)
-  rsync -a --remove-source-files "$model_id/" "$cold_target/"
+  local rsync_flags="-a --remove-source-files"
+  [[ -t 1 ]] && rsync_flags+=" --info=progress2"
+  rsync $rsync_flags "$model_id/" "$cold_target/"
 
   # Remove empty source directories left by rsync
   find "$model_id" -type d -empty -delete 2>/dev/null || true
@@ -139,7 +141,9 @@ hf_recall_model() {
   rm "$model_id"
 
   # Move files back using rsync
-  rsync -a --remove-source-files "$cold_target/" "$model_id/"
+  local rsync_flags="-a --remove-source-files"
+  [[ -t 1 ]] && rsync_flags+=" --info=progress2"
+  rsync $rsync_flags "$cold_target/" "$model_id/"
 
   # Clean up empty cold directories
   find "$cold_target" -type d -empty -delete 2>/dev/null || true

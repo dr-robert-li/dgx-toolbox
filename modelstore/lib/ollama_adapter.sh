@@ -140,14 +140,16 @@ ollama_migrate_model() {
     local ref_count
     ref_count=$(_ollama_blob_hot_refs "$blob")
 
+    local rsync_flags="-a"
+    [[ -t 1 ]] && rsync_flags+=" --info=progress2"
     if [[ "$ref_count" -le 1 ]]; then
       # Only this model references the blob — move it and create symlink
-      rsync -a "$hot_blob" "$cold_blob"
+      rsync $rsync_flags "$hot_blob" "$cold_blob"
       rm "$hot_blob"
       ln -s "$cold_blob" "$hot_blob"
     else
       # Shared blob — copy to cold but leave hot copy intact
-      rsync -a "$hot_blob" "$cold_blob"
+      rsync $rsync_flags "$hot_blob" "$cold_blob"
     fi
   done < <(_ollama_manifest_blobs "$manifest_path")
 
@@ -226,7 +228,9 @@ ollama_recall_model() {
     if [[ -L "$hot_blob" ]]; then
       # Was moved — remove symlink, restore from cold
       rm "$hot_blob"
-      rsync -a "$cold_blob" "$hot_blob"
+      local rsync_flags="-a"
+      [[ -t 1 ]] && rsync_flags+=" --info=progress2"
+      rsync $rsync_flags "$cold_blob" "$hot_blob"
     fi
     # If regular file: shared blob that was only copied — already on hot, skip
   done < <(_ollama_manifest_blobs "$cold_manifest_path")
