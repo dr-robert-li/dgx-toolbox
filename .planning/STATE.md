@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 3 context gathered
-last_updated: "2026-03-21T12:36:42.667Z"
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-03-21T13:05:55.351Z"
 last_activity: 2026-03-21 — Completed plan 02-01 (HF adapter + Ollama adapter + tests)
 progress:
   total_phases: 4
   completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
+  total_plans: 6
+  completed_plans: 5
   percent: 25
 ---
 
@@ -52,6 +52,7 @@ Progress: [██░░░░░░░░] 25%
 
 *Updated after each plan completion*
 | Phase 02-adapters-and-usage-tracking P02 | 3 | 2 tasks | 3 files |
+| Phase 03-migration-recall-and-safety P01 | 6min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -76,6 +77,9 @@ Recent decisions affecting current work:
 - [Phase 02-adapters-and-usage-tracking]: Function definitions copied inline in test file rather than sourcing watcher.sh — avoids BASH_SOURCE path resolution issues with process substitution
 - [Phase 02-adapters-and-usage-tracking]: ms_track_usage debounce reads last timestamp before acquiring flock to avoid contention on frequent access events
 - [Phase 02-adapters-and-usage-tracking]: Daemon uses wait -n with fallback to wait so either watcher subprocess exiting terminates the parent daemon
+- [Phase 03-migration-recall-and-safety]: Ollama recall derives cold_base by following hot blob symlink via readlink — more robust than requiring cold_base as parameter
+- [Phase 03-migration-recall-and-safety]: cron_output unbound variable with set -uo pipefail fixed by tee to temp file instead of command substitution with background process
+- [Phase 03-migration-recall-and-safety]: find_stale_hf_models checks symlink status in both usage.json and directory walk paths to avoid re-migrating already-migrated models
 
 ### Pending Todos
 
@@ -89,6 +93,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-21T12:36:42.664Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-migration-recall-and-safety/03-CONTEXT.md
+Last session: 2026-03-21T13:05:55.349Z
+Stopped at: Completed 03-01-PLAN.md
+Resume file: None

@@ -60,7 +60,7 @@ Plans:
   3. Running two migration processes at the same time is prevented — the second invocation exits immediately with a clear message
   4. `modelstore migrate --dry-run` shows exactly which models would be moved without moving any data
   5. If either drive exceeds 98% usage, a desktop notification is sent — and if no desktop session is available, the warning is written to the log file instead
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 - [ ] 03-01-PLAN.md — lib/audit.sh, Ollama adapter bodies, cmd/migrate.sh with stale detection + dry-run + flock + state file, cron/migrate_cron.sh, tests
@@ -91,5 +91,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Foundation and Init | 2/2 | Complete    | 2026-03-21 |
 | 2. Adapters and Usage Tracking | 2/2 | Complete    | 2026-03-21 |
-| 3. Migration, Recall, and Safety | 0/2 | Not started | - |
+| 3. Migration, Recall, and Safety | 1/2 | In Progress|  |
 | 4. CLI, Status, Revert, and Docs | 0/2 | Not started | - |

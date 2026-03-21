@@ -20,14 +20,14 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Migration
 
-- [ ] **MIGR-01**: Daily cron job migrates models unused beyond retention period from hot to cold store using rsync
-- [ ] **MIGR-02**: Migrated models are replaced with symlinks so all paths remain valid
-- [ ] **MIGR-03**: Symlink replacement is atomic (ln + mv -T pattern, no broken window)
-- [ ] **MIGR-04**: HuggingFace models are migrated as whole `models--*/` directories to preserve internal relative symlinks
-- [ ] **MIGR-05**: Ollama models are migrated with manifest-aware blob reference counting (shared blobs not moved if still referenced)
-- [ ] **MIGR-06**: Concurrent migrations are prevented via flock
-- [ ] **MIGR-07**: User can run dry-run mode to see what would migrate without moving data
-- [ ] **MIGR-08**: All migration and recall operations are logged to an audit file
+- [x] **MIGR-01**: Daily cron job migrates models unused beyond retention period from hot to cold store using rsync
+- [x] **MIGR-02**: Migrated models are replaced with symlinks so all paths remain valid
+- [x] **MIGR-03**: Symlink replacement is atomic (ln + mv -T pattern, no broken window)
+- [x] **MIGR-04**: HuggingFace models are migrated as whole `models--*/` directories to preserve internal relative symlinks
+- [x] **MIGR-05**: Ollama models are migrated with manifest-aware blob reference counting (shared blobs not moved if still referenced)
+- [x] **MIGR-06**: Concurrent migrations are prevented via flock
+- [x] **MIGR-07**: User can run dry-run mode to see what would migrate without moving data
+- [x] **MIGR-08**: All migration and recall operations are logged to an audit file
 
 ### Recall
 
@@ -46,7 +46,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **SAFE-02**: Migration checks available space on destination drive with 10% safety margin before moving
 - [ ] **SAFE-03**: Cron job sends desktop notification via `notify-send` if either drive exceeds 98% usage
 - [ ] **SAFE-04**: Notifications fall back to log file when desktop session is unavailable
-- [ ] **SAFE-05**: All multi-step operations use a state file for interrupt-safe, idempotent resumption
+- [x] **SAFE-05**: All multi-step operations use a state file for interrupt-safe, idempotent resumption
 - [x] **SAFE-06**: Ollama server state is checked before migrating Ollama models (warn if running)
 
 ### CLI & Operations
@@ -103,20 +103,20 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SAFE-01 | Phase 2 | Complete |
 | SAFE-02 | Phase 2 | Complete |
 | SAFE-06 | Phase 2 | Complete |
-| MIGR-01 | Phase 3 | Pending |
-| MIGR-02 | Phase 3 | Pending |
-| MIGR-03 | Phase 3 | Pending |
-| MIGR-04 | Phase 3 | Pending |
-| MIGR-05 | Phase 3 | Pending |
-| MIGR-06 | Phase 3 | Pending |
-| MIGR-07 | Phase 3 | Pending |
-| MIGR-08 | Phase 3 | Pending |
+| MIGR-01 | Phase 3 | Complete |
+| MIGR-02 | Phase 3 | Complete |
+| MIGR-03 | Phase 3 | Complete |
+| MIGR-04 | Phase 3 | Complete |
+| MIGR-05 | Phase 3 | Complete |
+| MIGR-06 | Phase 3 | Complete |
+| MIGR-07 | Phase 3 | Complete |
+| MIGR-08 | Phase 3 | Complete |
 | RECL-01 | Phase 3 | Pending |
 | RECL-02 | Phase 3 | Pending |
 | RECL-03 | Phase 3 | Pending |
 | SAFE-03 | Phase 3 | Pending |
 | SAFE-04 | Phase 3 | Pending |
-| SAFE-05 | Phase 3 | Pending |
+| SAFE-05 | Phase 3 | Complete |
 | CLI-01 | Phase 4 | Pending |
 | CLI-02 | Phase 4 | Pending |
 | CLI-03 | Phase 4 | Pending |
