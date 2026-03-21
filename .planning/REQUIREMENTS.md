@@ -1,11 +1,9 @@
-# Requirements: Model Store — Tiered Storage for DGX Spark
+# Requirements: DGX Toolbox
 
-**Defined:** 2026-03-21
+**Defined:** 2026-03-21 (v1.0), 2026-03-22 (v1.1)
 **Core Value:** Models are always accessible regardless of which tier they're on while the hot drive never fills up with stale models.
 
-## v1 Requirements
-
-Requirements for initial release. Each maps to roadmap phases.
+## v1.0 Requirements (Complete)
 
 ### Initialization
 
@@ -66,7 +64,83 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **DOCS-03**: .gitignore updated for modelstore runtime artifacts
 - [x] **DOCS-04**: example.bash_aliases updated with modelstore aliases
 
+## v1.1 Requirements — Safety Harness
+
+Requirements for the AI safety harness milestone. Each maps to roadmap phases.
+
+### Gateway & Routing
+
+- [ ] **GATE-01**: User can send POST /v1/chat/completions requests through the safety harness gateway
+- [ ] **GATE-02**: User authenticates via API key with per-tenant identity attached to each request
+- [ ] **GATE-03**: Requests are rate-limited per tenant with configurable limits
+- [ ] **GATE-04**: Gateway proxies to LiteLLM for model-agnostic model invocation
+- [ ] **GATE-05**: User can bypass the harness and route directly to LiteLLM when safety pipeline is not needed
+
+### Input Guardrails
+
+- [ ] **INRL-01**: Input is normalized (Unicode NFC/NFKC + zero-width character stripping) before any classifier runs
+- [ ] **INRL-02**: NeMo Guardrails content filter detects and blocks disallowed input topics
+- [ ] **INRL-03**: PII and secrets are detected in input via presidio and rejected or redacted per policy
+- [ ] **INRL-04**: Prompt injection and jailbreak attempts are detected and blocked
+- [ ] **INRL-05**: User can review, enable/disable, and tune thresholds for each input rail via config
+
+### Output Guardrails
+
+- [ ] **OURL-01**: Model output is scanned for toxicity and bias before delivery
+- [ ] **OURL-02**: Jailbreak-success patterns in output are detected and blocked
+- [ ] **OURL-03**: PII leakage in output is detected and redacted
+- [ ] **OURL-04**: User can review, enable/disable, and tune thresholds for each output rail via config
+
+### Constitutional AI
+
+- [ ] **CSTL-01**: Flagged outputs go through a two-pass critique→revise pipeline against constitutional principles
+- [ ] **CSTL-02**: Constitutional principles are user-editable via YAML config, validated on startup
+- [ ] **CSTL-03**: Judge model is configurable (default same-model, swappable to dedicated judge)
+- [ ] **CSTL-04**: CAI critique is risk-gated — only triggered for outputs classified as high-risk by output rails
+- [ ] **CSTL-05**: Judge model provides AI-guided suggestions for guardrail and constitution tuning based on trace history
+
+### Refusal Calibration
+
+- [ ] **REFU-01**: Hard block mode: policy-violating requests return a principled refusal
+- [ ] **REFU-02**: Soft steer mode: borderline requests are rewritten to an allowed formulation when possible
+- [ ] **REFU-03**: Informative refusal mode: refusal explains why and offers safer adjacent help
+- [ ] **REFU-04**: Refusal thresholds are tunable from eval data (correct refusal rate, false refusal rate)
+
+### Trace Logging
+
+- [ ] **TRAC-01**: Every request/response is logged as a structured JSONL trace with request_id
+- [ ] **TRAC-02**: Traces include guardrail decisions, CAI critique results, and refusal events
+- [ ] **TRAC-03**: PII is redacted from traces before writing (compliance-safe)
+- [ ] **TRAC-04**: Traces are queryable via SQLite for eval and red teaming consumption
+
+### Evals & CI
+
+- [ ] **EVAL-01**: Custom replay harness replays curated safety/refusal datasets through POST /chat and scores results
+- [ ] **EVAL-02**: lm-eval-harness runs capability benchmarks via the gateway (generative) and LiteLLM direct (loglikelihood)
+- [ ] **EVAL-03**: CI/CD gate blocks promotion if safety metrics regress or over-refusal rate spikes
+- [ ] **EVAL-04**: Eval results are stored and dashboarded for trend analysis
+
+### Red Teaming
+
+- [ ] **RDTM-01**: garak runs one-shot vulnerability scans against the gateway endpoint
+- [ ] **RDTM-02**: Adversarial prompts are generated from past critiques, evals, and trace logs via deepteam
+- [ ] **RDTM-03**: Red team jobs run asynchronously via Celery/Redis
+- [ ] **RDTM-04**: Generated adversarial datasets are balanced to prevent category drift
+
+### HITL Dashboard
+
+- [ ] **HITL-01**: Gradio dashboard shows a priority-sorted review queue of flagged requests
+- [ ] **HITL-02**: Reviewers can see diff-view of original vs critique-revised outputs
+- [ ] **HITL-03**: Reviewer corrections feed back into threshold calibration and fine-tuning data
+- [ ] **HITL-04**: Dashboard works headlessly (API-only mode) when no UI is needed
+
 ## v2 Requirements
+
+### Streaming Guardrails
+
+- **STRM-01**: Guardrails evaluate every N tokens during streaming response
+- **STRM-02**: Streaming redaction replaces policy-violating content mid-stream
+- **STRM-03**: End-of-stream full evaluation catches anything missed during chunked checks
 
 ### Advanced Features
 
@@ -81,7 +155,9 @@ Requirements for initial release. Each maps to roadmap phases.
 | Cloud storage tiering (S3, GCS) | Local drives only — cloud adds latency and complexity |
 | Automatic model downloading | Only manages storage of already-downloaded models |
 | RAID or multi-drive pooling | Two-tier only (hot + cold), not a storage pool |
-| Python runtime dependency | Core scripts must be bash-only for host execution |
+| Fine-tuning orchestration | Harness feeds data for fine-tuning but doesn't run training jobs |
+| Model hosting/serving | LiteLLM and vLLM handle that; harness is a safety layer only |
+| Web UI for policy editing | Policies are code/config (YAML), not a CMS |
 | FUSE filesystem | Over-engineered for the use case; symlinks are simpler and proven |
 
 ## Traceability
@@ -128,12 +204,52 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DOCS-02 | Phase 4 | Complete |
 | DOCS-03 | Phase 4 | Complete |
 | DOCS-04 | Phase 4 | Complete |
+| GATE-01 | Phase 5 | Pending |
+| GATE-02 | Phase 5 | Pending |
+| GATE-03 | Phase 5 | Pending |
+| GATE-04 | Phase 5 | Pending |
+| GATE-05 | Phase 5 | Pending |
+| INRL-01 | — | Pending |
+| INRL-02 | — | Pending |
+| INRL-03 | — | Pending |
+| INRL-04 | — | Pending |
+| INRL-05 | — | Pending |
+| OURL-01 | — | Pending |
+| OURL-02 | — | Pending |
+| OURL-03 | — | Pending |
+| OURL-04 | — | Pending |
+| CSTL-01 | — | Pending |
+| CSTL-02 | — | Pending |
+| CSTL-03 | — | Pending |
+| CSTL-04 | — | Pending |
+| CSTL-05 | — | Pending |
+| REFU-01 | — | Pending |
+| REFU-02 | — | Pending |
+| REFU-03 | — | Pending |
+| REFU-04 | — | Pending |
+| TRAC-01 | — | Pending |
+| TRAC-02 | — | Pending |
+| TRAC-03 | — | Pending |
+| TRAC-04 | — | Pending |
+| EVAL-01 | — | Pending |
+| EVAL-02 | — | Pending |
+| EVAL-03 | — | Pending |
+| EVAL-04 | — | Pending |
+| RDTM-01 | — | Pending |
+| RDTM-02 | — | Pending |
+| RDTM-03 | — | Pending |
+| RDTM-04 | — | Pending |
+| HITL-01 | — | Pending |
+| HITL-02 | — | Pending |
+| HITL-03 | — | Pending |
+| HITL-04 | — | Pending |
 
 **Coverage:**
-- v1 requirements: 38 total
-- Mapped to phases: 38
-- Unmapped: 0
+- v1.0 requirements: 38 total (38 complete)
+- v1.1 requirements: 36 total
+- Mapped to phases: 5 (gateway only — rest pending roadmap)
+- Unmapped: 31 ⚠️
 
 ---
-*Requirements defined: 2026-03-21*
-*Last updated: 2026-03-21 after roadmap creation*
+*Requirements defined: 2026-03-21 (v1.0), 2026-03-22 (v1.1)*
+*Last updated: 2026-03-22 after v1.1 requirements definition*
