@@ -1,448 +1,620 @@
 # Architecture Research
 
-**Domain:** Tiered local storage system for ML model caches (HuggingFace + Ollama)
-**Researched:** 2026-03-21
-**Confidence:** HIGH
+**Domain:** AI Safety Harness — FastAPI gateway with NeMo Guardrails, Constitutional AI critique, eval harness, and red-teaming pipeline
+**Researched:** 2026-03-22
+**Confidence:** MEDIUM (core FastAPI + NeMo Guardrails patterns HIGH; ARM64 NeMo compatibility needs on-host verification; streaming guardrail internals MEDIUM)
 
-## Standard Architecture
+---
 
-### System Overview
+## Context: What Exists vs What Is New
+
+### Existing Infrastructure (unchanged)
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Entry Layer                               │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌───────────────┐  ┌──────────────────────┐   │
-│  │  modelstore │  │  Cron jobs    │  │  Launcher hooks      │   │
-│  │  CLI        │  │  (migrate,    │  │  (vLLM, eval-toolbox,│   │
-│  │  dispatcher │  │   disk-check) │  │   Unsloth, Ollama)   │   │
-│  └──────┬──────┘  └───────┬───────┘  └──────────┬───────────┘   │
-│         │                 │                     │               │
-├─────────┴─────────────────┴─────────────────────┴───────────────┤
-│                        Core Logic Layer                          │
-├──────────────┬─────────────────────┬────────────────────────────┤
-│  ┌───────────┴──────┐  ┌───────────┴──────┐  ┌─────────────┐   │
-│  │  config.sh       │  │  tracker.sh      │  │  notify.sh  │   │
-│  │  (read/write     │  │  (touch manifest │  │  (wrap      │   │
-│  │   ~/.modelstore/ │  │   on model use)  │  │  notify-send│   │
-│  │   config)        │  │                  │  │  for cron)  │   │
-│  └───────────┬──────┘  └───────────┬──────┘  └──────┬──────┘   │
-│              │                     │                │           │
-│  ┌───────────┴──────┐  ┌───────────┴──────┐         │           │
-│  │  migrate.sh      │  │  recall.sh       │         │           │
-│  │  (hot→cold,      │  │  (cold→hot,      │         │           │
-│  │   place symlink) │  │   remove symlink)│         │           │
-│  └───────────┬──────┘  └───────────┬──────┘         │           │
-│              │                     │                │           │
-├──────────────┴─────────────────────┴────────────────┴───────────┤
-│                       Storage Abstraction Layer                  │
-├────────────────────────────┬────────────────────────────────────┤
-│  ┌─────────────────────┐   │   ┌──────────────────────────┐     │
-│  │  hf_adapter.sh      │   │   │  ollama_adapter.sh       │     │
-│  │  (knows HF cache    │   │   │  (knows Ollama blob/      │     │
-│  │   blob/snapshot     │   │   │   manifest structure;    │     │
-│  │   layout; lists,    │   │   │   lists, moves, symlinks)│     │
-│  │   moves, symlinks)  │   │   │                          │     │
-│  └─────────────────────┘   │   └──────────────────────────┘     │
-├────────────────────────────┴────────────────────────────────────┤
-│                        Physical Storage Layer                    │
-├────────────────────────────┬────────────────────────────────────┤
-│  HOT STORE (internal NVMe) │  COLD STORE (external NVMe)        │
-│  ~/.cache/huggingface/hub/ │  /media/robert_li/modelstore-1tb/  │
-│  ~/.ollama/models/         │    huggingface/hub/                 │
-│                            │    ollama/models/                   │
-└────────────────────────────┴────────────────────────────────────┘
+Host (aarch64)
+├── Ollama             :11434   systemd service
+├── vLLM               :8020    Docker container
+├── LiteLLM proxy      :4000    Docker container  ← current model router
+└── Open-WebUI         :12000   Docker container
 ```
 
-### Component Responsibilities
+Clients today talk directly to LiteLLM at `:4000`. The harness sits optionally in front of LiteLLM — clients can be pointed at either endpoint. Nothing in the existing stack is modified; the harness is additive.
 
-| Component | Responsibility | Communicates With |
-|-----------|---------------|-------------------|
-| `modelstore` CLI dispatcher | Parse argv, route to subcommand scripts, return exit codes | All subcommand scripts |
-| `config.sh` | Read/write `~/.modelstore/config` (hot/cold paths, retention days, cron time); validate drive mounts | All other scripts (sourced) |
-| `hf_adapter.sh` | Enumerate HF model directories (`models--*`), identify blob vs snapshot vs refs layout, perform moves and symlink operations for HF models | `migrate.sh`, `recall.sh`, `tracker.sh` |
-| `ollama_adapter.sh` | Enumerate Ollama manifests under `manifests/`, locate referenced blobs under `blobs/`, perform moves and symlink operations for Ollama models | `migrate.sh`, `recall.sh`, `tracker.sh` |
-| `tracker.sh` | Touch a per-model timestamp file in `~/.modelstore/usage/` when a model is loaded; called by launcher hooks | Called from launcher scripts |
-| `migrate.sh` | Find models not accessed in N days; check destination space; move data to cold store; place relative symlinks; update usage manifest | Called by cron and `modelstore migrate` |
-| `recall.sh` | Detect symlink at hot path; move cold data back; replace symlink with real directory; reset usage timestamp | Called by `modelstore recall` and optionally by launcher hooks |
-| `notify.sh` | Wrapper for `notify-send` that sets required env vars (`DBUS_SESSION_BUS_ADDRESS`, `DISPLAY`, `XDG_RUNTIME_DIR`) so notifications work from cron context | Called from `migrate.sh` disk-check cron |
-| Cron entries | Two crontab lines: daily migration at configurable hour; daily disk-usage check. Both call individual scripts (not the CLI dispatcher) | `migrate.sh`, disk_check.sh |
-| Launcher hooks | One-liner additions to existing vLLM/eval-toolbox/Unsloth/Ollama launcher scripts that call `tracker.sh` with the model path before invoking the tool | `tracker.sh` |
+### New Components Added by v1.1
+
+```
+safety-harness/            ← NEW: first Python code in this repo
+├── gateway/               ← FastAPI service (runs on :8080)
+├── guardrails/            ← NeMo Guardrails configs (Colang + YAML)
+├── critique/              ← Constitutional AI pipeline
+├── eval/                  ← Dual eval harness (custom replay + lm-eval)
+├── red_team/              ← Adversarial prompt generator
+├── dashboard/             ← Optional human-in-the-loop review UI
+└── docker-compose.safety.yml
+```
+
+---
+
+## System Overview
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                          CLIENT LAYER                                │
+│  Open-WebUI  │  n8n  │  eval-toolbox  │  direct API callers          │
+└──────────────────────────┬───────────────────────────────────────────┘
+                           │  POST /v1/chat/completions  (OpenAI-compat)
+                           ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                   SAFETY GATEWAY  :8080  (NEW)                       │
+│                   FastAPI  •  Python 3.11+  •  Docker                │
+│                                                                      │
+│  ┌────────────┐  ┌─────────────────────────────────────────────────┐ │
+│  │  Auth &    │  │              REQUEST PIPELINE                   │ │
+│  │  Rate      │  │                                                 │ │
+│  │  Limit     │  │  1. Input guardrails (NeMo Guardrails)          │ │
+│  │  (per-     │  │     • prompt injection, PII, jailbreak, topics  │ │
+│  │  tenant)   │  │     • configurable per-tenant policy            │ │
+│  └────────────┘  │                                                 │ │
+│                  │  2. Model call → LiteLLM :4000                  │ │
+│                  │     • streaming or batch                        │ │
+│                  │                                                 │ │
+│                  │  3. Output guardrails (NeMo Guardrails)         │ │
+│                  │     • toxicity, bias, PII leakage, jailbreak    │ │
+│                  │     • streaming: chunk-level + final pass       │ │
+│                  │                                                 │ │
+│                  │  4. Constitutional AI critique (optional)        │ │
+│                  │     • judge model critiques output              │ │
+│                  │     • revise if critique flags issues           │ │
+│                  │                                                 │ │
+│                  │  5. Trace write to trace store                  │ │
+│                  └─────────────────────────────────────────────────┘ │
+└──────────────────────────┬───────────────────────────────────────────┘
+                           │  OpenAI-compat proxy
+                           ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                  LiteLLM PROXY  :4000  (EXISTING)                    │
+│  routes to: Ollama :11434  │  vLLM :8020  │  cloud APIs              │
+└──────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────┐
+│                  EVAL & RED-TEAM LAYER  (NEW)                        │
+│                                                                      │
+│  ┌─────────────────────┐    ┌────────────────────────────────────┐   │
+│  │  Custom Replay      │    │  lm-eval-harness                   │   │
+│  │  eval/replay.py     │    │  (--model local-chat-completions   │   │
+│  │  POST /v1/chat/...  │    │   --base_url http://localhost:8080) │   │
+│  │  safety metrics     │    │  capability benchmarks             │   │
+│  └─────────────────────┘    └────────────────────────────────────┘   │
+│                                                                      │
+│  ┌─────────────────────────────────────────────────────────────────┐ │
+│  │  Red Team Generator  red_team/generator.py                      │ │
+│  │  reads: trace store, eval results, past critiques               │ │
+│  │  writes: adversarial prompt queue → replay eval                 │ │
+│  └─────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────┐
+│              HUMAN-IN-THE-LOOP DASHBOARD  :8501  (OPTIONAL)          │
+│              Gradio or Streamlit  •  reads trace store               │
+│              review queue, annotation corrections, threshold tuning  │
+└──────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────┐
+│                  PERSISTENT STORES  (NEW)                            │
+│                                                                      │
+│  ~/safety-harness/traces/      JSONL trace log                       │
+│  ~/safety-harness/config/      guardrail rules, constitution YAML    │
+│  ~/safety-harness/eval-runs/   eval output JSON, metrics             │
+│  ~/safety-harness/red-team/    adversarial prompt history            │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Component Responsibilities
+
+| Component | Responsibility | New vs Existing |
+|-----------|---------------|-----------------|
+| FastAPI gateway | Orchestrate full safety pipeline; expose OpenAI-compatible `/v1/chat/completions`; auth, rate limit | NEW |
+| NeMo Guardrails engine | Input/output rail evaluation via Colang flows; actions for custom checks | NEW |
+| CAI critique module | Two-pass Constitutional AI: generate → critique → revise; judge model call | NEW |
+| Judge model config | Which model acts as judge (default: same model via LiteLLM; swappable to stronger model) | NEW |
+| Trace store | Append-only JSONL per-request log: prompt, rails result, model output, critique, final response | NEW |
+| Custom replay harness | Load saved prompt dataset, POST to `/v1/chat/completions`, score safety/refusal metrics, compare to baseline | NEW |
+| lm-eval-harness integration | Point existing eval-toolbox lm-eval at gateway URL for capability benchmarks | EXISTING tool, new config |
+| Red team generator | Mine traces + eval results for failure patterns; generate adversarial variants; feed replay eval | NEW |
+| HITL dashboard | Present flagged traces for human review; accept corrections; trigger threshold updates | NEW (optional) |
+| LiteLLM proxy | Model routing, existing backends | EXISTING — unchanged |
+| vLLM / Ollama | Inference backends | EXISTING — unchanged |
+
+---
 
 ## Recommended Project Structure
 
 ```
-modelstore/
-├── bin/
-│   └── modelstore              # CLI dispatcher: sources lib, routes $1 to subcommand
-├── lib/
-│   ├── config.sh               # Config read/write helpers (sourced by all scripts)
-│   ├── hf_adapter.sh           # HuggingFace cache layout logic (sourced)
-│   ├── ollama_adapter.sh       # Ollama blob/manifest layout logic (sourced)
-│   ├── notify.sh               # notify-send wrapper with cron-safe env setup
-│   └── common.sh               # Shared: logging, mount check, space check helpers
-├── cmd/
-│   ├── init.sh                 # Interactive setup: select paths, create dirs, write config
-│   ├── migrate.sh              # Migration worker: hot→cold with symlinks
-│   ├── recall.sh               # Recall worker: cold→hot, remove symlink
-│   ├── status.sh               # Report: both tiers, sizes, timestamps, space
-│   └── revert.sh               # Full revert: move everything hot, remove all symlinks
-├── cron/
-│   ├── migrate_cron.sh         # Thin cron wrapper: sources config, calls migrate.sh
-│   └── disk_check_cron.sh      # Disk usage check: calls notify.sh if >98%
-├── hooks/
-│   └── tracker.sh              # Usage tracker: touch ~/.modelstore/usage/<model-id>
-└── install.sh                  # Installs crontab entries, creates ~/.modelstore/ state dir
+safety-harness/
+├── gateway/
+│   ├── main.py               # FastAPI app; mounts all routers
+│   ├── routes/
+│   │   ├── chat.py           # POST /v1/chat/completions (streaming + batch)
+│   │   └── health.py         # GET /health
+│   ├── pipeline/
+│   │   ├── orchestrator.py   # Request → guardrail_in → model → guardrail_out → critique → trace
+│   │   ├── auth.py           # API key / per-tenant policy lookup
+│   │   └── rate_limit.py     # In-memory or Redis-backed rate limiter
+│   └── models.py             # Pydantic request/response schemas
+│
+├── guardrails/
+│   ├── config.yml            # NeMo Guardrails: LLM engine, rail types
+│   ├── rails/
+│   │   ├── input.co          # Colang flows: prompt injection, jailbreak, PII, topics
+│   │   └── output.co         # Colang flows: toxicity, bias, PII leakage
+│   ├── actions.py            # Custom Python actions registered with NeMo
+│   └── policies/
+│       └── default.yaml      # User-editable thresholds and enabled/disabled checks
+│
+├── critique/
+│   ├── constitution.yaml     # User-editable constitutional principles (one per rule)
+│   ├── pipeline.py           # Two-pass: generate → critique → revise
+│   └── judge.py              # Judge model caller (configurable via env/config)
+│
+├── eval/
+│   ├── replay.py             # Load dataset JSONL → POST → score → write results
+│   ├── datasets/             # Saved prompt datasets for safety/refusal regression
+│   ├── metrics.py            # Refusal rate, harmful-content rate, pass rate scoring
+│   └── lm_eval_config/
+│       └── gateway_model.yaml  # lm-eval task config pointing at :8080
+│
+├── red_team/
+│   ├── generator.py          # Mine traces → produce adversarial variants
+│   └── queue/                # Adversarial prompt JSONL queue for replay
+│
+├── tracing/
+│   └── store.py              # Append JSONL to ~/safety-harness/traces/; structured fields
+│
+├── dashboard/
+│   ├── app.py                # Gradio app: review queue, annotation, threshold sliders
+│   └── requirements.txt      # Gradio dependencies (optional, separate install)
+│
+├── Dockerfile                # Multi-stage: builder + runtime; aarch64-compatible base
+├── docker-compose.safety.yml # Safety harness service + volume mounts
+├── pyproject.toml            # Dependencies (FastAPI, uvicorn, nemoguardrails, httpx)
+└── tests/
+    ├── test_pipeline.py      # Unit tests for orchestrator pipeline stages
+    └── test_guardrails.py    # Rail evaluation tests against fixture prompts
 ```
 
 ### Structure Rationale
 
-- **bin/**: Single entry point for interactive use; not used by cron or hooks (avoids TTY dependency)
-- **lib/**: Sourced libraries only — no executable logic, no side effects on source
-- **cmd/**: One file per subcommand; each is independently executable so cron and Sync can invoke them directly without going through the CLI dispatcher
-- **cron/**: Thin wrappers that only set up environment and delegate; keeps cron lines simple and testable
-- **hooks/**: Launcher integration is a single script with a clear contract (receive model path, touch timestamp)
+- **gateway/**: HTTP surface is thin; delegates immediately to pipeline/orchestrator.py — no business logic in routes
+- **guardrails/**: All NeMo config files are user-visible and user-editable; no Python knowledge required to tune rules
+- **critique/constitution.yaml**: Separate from guardrails config because constitutional principles are conceptually distinct from rule-based checks; both are user-editable
+- **eval/**: Replay harness and lm-eval configs co-located because they share datasets and produce comparable metrics
+- **tracing/**: One module, one responsibility — all trace I/O flows through this; gateway never writes to disk directly
+- **dashboard/**: Optional module with its own requirements.txt so it does not inflate the base Docker image
+
+---
 
 ## Architectural Patterns
 
-### Pattern 1: Adapter Per Cache Ecosystem
+### Pattern 1: Pipeline Orchestrator (Sequential Safety Stages)
 
-**What:** Each cache format (HuggingFace, Ollama) gets its own adapter script that encapsulates all knowledge of that format's internal directory structure. The migration and recall scripts call only adapter functions — never hardcoded paths.
+**What:** The gateway orchestrator runs each safety stage as a function in sequence. Stages are: (1) auth/rate-limit, (2) input guardrails, (3) model call, (4) output guardrails, (5) critique, (6) trace write. Each stage receives a `RequestContext` object and can halt the pipeline by raising `GuardrailViolation`.
 
-**When to use:** Always. HF and Ollama have fundamentally different layouts; mixing this knowledge into migrate.sh creates a maintenance trap.
+**When to use:** Always. This is the core pattern for the request path.
 
-**Trade-offs:** Small overhead of an extra source call; payoff is that adding a third ecosystem (e.g., `~/.cache/torch/`) means writing one new adapter rather than modifying core logic.
+**Trade-offs:** Sequential stages add latency. Mitigation: stages that can run in parallel (e.g., multiple independent input checks) are gathered inside the NeMo Guardrails runtime, not repeated externally.
 
-**HF adapter key knowledge:**
-```
-~/.cache/huggingface/hub/
-  models--{org}--{name}/
-    blobs/          ← actual content, addressed by SHA256
-    refs/           ← maps branch names to commit hashes (tiny text files)
-    snapshots/
-      {commit-hash}/
-        {filename}  ← symlinks pointing to ../../blobs/{hash}
-```
-The unit of migration is the entire `models--{org}--{name}/` directory. The adapter moves this directory to cold store and creates a symlink at the original hot path. Because snapshots already use relative symlinks to blobs (both within the same model dir), internal symlinks remain valid after the directory moves as long as the internal relative structure is preserved.
-
-**Ollama adapter key knowledge:**
-```
-~/.ollama/models/
-  manifests/
-    registry.ollama.ai/library/{model}/{tag}  ← JSON manifest
-  blobs/
-    sha256-{hex}                              ← blob files
-```
-The unit is more complex: a manifest JSON references multiple blobs by digest. The adapter must parse the manifest to find all referenced blobs, move both manifest and blobs, and create symlinks for both paths. Ollama resolves blobs by reading manifests, so both must redirect.
-
-### Pattern 2: Manifest-Based Usage Tracking (Not atime)
-
-**What:** Maintain a separate usage manifest directory at `~/.modelstore/usage/` where each model's last-access timestamp is stored as a plain file: touching `~/.modelstore/usage/{model-id}` is the record of use.
-
-**When to use:** Always. Do not rely on filesystem `atime` for usage tracking.
-
-**Why not atime:**
-- ext4 mounts default to `relatime`, which only updates atime once per 24-hour window — insufficient granularity for detecting same-day use
-- The cold store (external NVMe) may have different mount options; atime behavior is filesystem-instance-specific
-- HuggingFace snapshot paths are symlinks; `atime` on a symlink tracks when the symlink itself was accessed, not the blob it targets — this is unreliable for tracking "model was loaded"
-- Manifest files are controllable: the hook can write them regardless of mount options
-
-**Implementation:**
-```bash
-# tracker.sh contract: called from launcher hooks
-# $1 = model identifier (canonical string, e.g. "hf:meta-llama/Llama-3.2-8B")
-touch "${MODELSTORE_USAGE_DIR}/${1//\//__}"
+**Example sketch:**
+```python
+async def run_pipeline(ctx: RequestContext) -> ChatResponse:
+    ctx = await auth_check(ctx)               # raises 401 on failure
+    ctx = await input_rails(ctx)              # raises GuardrailViolation on hit
+    ctx = await call_model(ctx)               # calls LiteLLM :4000
+    ctx = await output_rails(ctx)             # raises GuardrailViolation on hit
+    ctx = await critique_if_enabled(ctx)      # optionally revises response
+    await trace_store.append(ctx)             # always write trace
+    return ctx.response
 ```
 
-**Trade-offs:** Requires launcher hooks to call tracker. Benefit: reliable, filesystem-agnostic, auditable.
+### Pattern 2: NeMo Guardrails as a Library, Not a Separate Service
 
-### Pattern 3: Relative Symlinks for Cross-Filesystem Portability
+**What:** Import `nemoguardrails` as a Python package inside the FastAPI process. Instantiate `RailsConfig` and `LLMRails` once at startup, reuse per request. Do NOT deploy NeMo Guardrails as a separate microservice — that adds network round-trips and complicates startup.
 
-**What:** After moving a model directory to cold store, create a symlink at the original hot path pointing to the absolute cold store path.
+**When to use:** Always for this deployment scale (single DGX, local traffic).
 
-**When to use:** For the hot→cold symlink (the "pointer" left in hot store). Use absolute paths here, not relative.
+**Trade-offs:** NeMo Guardrails' internal model calls (for rail evaluation) go out to LiteLLM same as user requests. The judge model and guardrail model share the same backend. Acceptable because DGX has sufficient GPU memory for concurrent requests.
 
-**Why absolute for the hot→cold link:**
-- The symlink source is on internal NVMe; the target is on a different physical device at `/media/robert_li/modelstore-1tb/...`
-- There is no meaningful relative path between the two mount points
-- Relative symlinks only make sense within the same directory tree (as HF uses internally within a model dir)
+**Configuration:** `guardrails/config.yml` sets the LLM engine to `http://host.docker.internal:4000/v1` — the existing LiteLLM proxy. NeMo Guardrails uses this for its own model calls (e.g., jailbreak classification).
 
-**Atomic symlink replacement pattern:**
-```bash
-# Never ln -sf directly (brief window where symlink is absent)
-ln -s "$COLD_TARGET" "${HOT_PATH}.new"
-mv -T "${HOT_PATH}.new" "$HOT_PATH"
-```
-`mv -T` on Linux calls `rename(2)`, which is atomic — there is no window where the path is absent.
-
-### Pattern 4: CLI Dispatcher with Pass-Through to Individual Scripts
-
-**What:** `modelstore` is a thin dispatcher that sources config.sh, validates args, then `exec`s the appropriate cmd/ script. Cron and launcher hooks call cmd/ scripts directly, bypassing the dispatcher.
-
-**When to use:** Always. The dispatcher is only for interactive UX; automation paths skip it.
-
-**Dispatcher skeleton:**
-```bash
-#!/usr/bin/env bash
-MODELSTORE_LIB="$(dirname "$(readlink -f "$0")")/../lib"
-source "${MODELSTORE_LIB}/config.sh"
-
-SUBCOMMAND="${1:-help}"
-shift 2>/dev/null
-
-case "$SUBCOMMAND" in
-  init)     exec "${MODELSTORE_CMD}/init.sh" "$@" ;;
-  status)   exec "${MODELSTORE_CMD}/status.sh" "$@" ;;
-  migrate)  exec "${MODELSTORE_CMD}/migrate.sh" "$@" ;;
-  recall)   exec "${MODELSTORE_CMD}/recall.sh" "$@" ;;
-  revert)   exec "${MODELSTORE_CMD}/revert.sh" "$@" ;;
-  *)        echo "Unknown subcommand: $SUBCOMMAND"; exit 1 ;;
-esac
+```yaml
+# guardrails/config.yml
+models:
+  - type: main
+    engine: openai
+    model: current-model-name
+    parameters:
+      api_base: "http://host.docker.internal:4000/v1"
+      api_key: "not-needed-for-local"
 ```
 
-**Trade-offs:** `exec` replaces the shell process (no forking overhead); each cmd/ script is independently testable.
+### Pattern 3: Constitutional AI Two-Pass Critique
 
-### Pattern 5: notify-send from Cron via Environment Injection
+**What:** After the model generates a response, a second call asks the judge model to critique the response against each active constitutional principle. If the critique identifies a violation, a third call asks the model to revise. The revised response replaces the original.
 
-**What:** Cron jobs run without a desktop session environment. `notify-send` requires `DBUS_SESSION_BUS_ADDRESS`, `DISPLAY`, and `XDG_RUNTIME_DIR`. These must be read from the running user session before notifying.
+**When to use:** Enabled per-request based on config flag `CRITIQUE_ENABLED`. Can be disabled for latency-sensitive use cases.
 
-**Implementation in notify.sh:**
-```bash
-notify_user() {
-  local summary="$1" body="$2"
-  local uid
-  uid=$(id -u)
-  # Locate session bus address from running dbus-daemon process
-  local dbus_addr
-  dbus_addr=$(grep -z DBUS_SESSION_BUS_ADDRESS \
-    /proc/$(pgrep -u "$uid" gnome-session | head -1)/environ \
-    2>/dev/null | tr -d '\0' | sed 's/DBUS_SESSION_BUS_ADDRESS=//')
-  DISPLAY=":0" \
-  XDG_RUNTIME_DIR="/run/user/${uid}" \
-  DBUS_SESSION_BUS_ADDRESS="$dbus_addr" \
-  notify-send --app-name="modelstore" "$summary" "$body"
+**Judge model configuration:**
+- Default: same model as the request model (via LiteLLM, routed to same backend)
+- Override: set `JUDGE_MODEL` env var to any LiteLLM-routable model name (e.g., `openai/gpt-4o` for a stronger judge)
+
+**Data flow:**
+```
+user_message → model_call → initial_response
+                                 |
+                          critique_prompt = format(initial_response, constitution_principles)
+                                 |
+                          judge_model_call(critique_prompt) → critique_text
+                                 |
+                    critique_flags_violation?
+                         YES → revise_prompt = format(initial_response, critique_text)
+                               model_call(revise_prompt) → revised_response
+                               return revised_response
+                         NO  → return initial_response
+```
+
+**Constitution YAML format** (user-editable):
+```yaml
+# critique/constitution.yaml
+principles:
+  - id: no_harmful_content
+    enabled: true
+    critique_template: "Does the following response contain harmful, dangerous, or illegal content? Explain why or why not."
+    revision_template: "Rewrite the following response to remove any harmful content while remaining helpful."
+  - id: no_pii_disclosure
+    enabled: true
+    critique_template: "Does the response reveal personally identifiable information that was not explicitly provided by the user?"
+    revision_template: "Rewrite the response to avoid disclosing any personally identifiable information."
+```
+
+### Pattern 4: Streaming Guardrails with Chunk-Level Evaluation
+
+**What:** For streaming responses, the gateway buffers tokens in configurable chunks (default 200 tokens), evaluates each chunk against output rails, and either forwards the chunk to the client or redacts/replaces it. A final whole-response pass runs at stream end.
+
+**When to use:** When the client requests `stream: true`. Non-streaming requests get a single full-response evaluation.
+
+**Trade-offs:** NeMo Guardrails' streaming architecture (as documented) evaluates per-chunk then delivers. If a chunk-level violation is detected after it has already been forwarded (stream-first mode), the client receives a JSON error object indicating redaction. This is a known NeMo limitation — client-side error handling is required.
+
+**Configuration knobs** (exposed in `guardrails/policies/default.yaml`):
+```yaml
+streaming:
+  chunk_size: 200        # tokens per evaluation batch
+  context_size: 50       # sliding window for context continuity
+  stream_first: false    # if true: forward immediately, error on violation after the fact
+                         # if false: buffer full chunk, evaluate, then forward (adds latency)
+```
+
+`stream_first: false` is the safe default for this harness.
+
+### Pattern 5: Trace-Driven Eval Loop
+
+**What:** Every request writes a structured trace entry (prompt, guardrail decisions, model output, critique, final response, latency) to a JSONL file. The replay eval harness reads these traces to construct regression datasets. The red team generator mines failure traces to generate adversarial variants.
+
+**When to use:** Always — tracing is unconditional. Eval and red-teaming consume the trace store.
+
+**Trace schema** (one JSON object per line):
+```json
+{
+  "trace_id": "uuid",
+  "timestamp": "ISO8601",
+  "model": "model-name",
+  "input_guardrail": {"triggered": false, "checks": {}},
+  "prompt": "user message",
+  "model_output": "initial response",
+  "output_guardrail": {"triggered": false, "checks": {}},
+  "critique": {"enabled": true, "violated": false, "critique_text": ""},
+  "final_response": "response sent to client",
+  "latency_ms": {"total": 820, "guardrail_in": 45, "model": 710, "guardrail_out": 65},
+  "flagged_for_review": false
 }
 ```
 
-**Trade-offs:** Brittle if user has no active GNOME session (silent failure is acceptable — disk warning is best-effort). Log the event regardless.
+### Pattern 6: lm-eval-harness Pointed at the Gateway
+
+**What:** lm-eval-harness already supports `--model local-chat-completions` with `--base_url` pointing at any OpenAI-compatible endpoint. Point it at the gateway (`:8080`) rather than LiteLLM (`:4000`) directly so that capability benchmarks measure the model-plus-harness combination.
+
+**When to use:** For general capability benchmarks (HellaSwag, MMLU, etc.) where you want to confirm the harness does not degrade capability.
+
+**Command (run from eval-toolbox container):**
+```bash
+lm_eval \
+  --model local-chat-completions \
+  --tasks hellaswag,mmlu \
+  --model_args model=current-model,base_url=http://host.docker.internal:8080/v1/chat/completions \
+  --output_path ~/eval/runs/harness-$(date +%Y%m%d) \
+  --log_samples
+```
+
+---
 
 ## Data Flow
 
-### Migration Flow (cron trigger)
+### Normal Request Flow (non-streaming)
 
 ```
-cron (2 AM)
-    |
-    v
-migrate_cron.sh
-    | sources config.sh (loads HOT_PATH, COLD_PATH, RETENTION_DAYS)
-    | checks: cold drive mounted? (mountpoint -q COLD_PATH) → abort if not
-    | checks: cold drive has space? (df --output=avail) → abort if insufficient
-    v
-hf_adapter.sh::list_stale_models(RETENTION_DAYS)
-    | for each models--* dir in HOT_PATH:
-    |   read ~/.modelstore/usage/{model-id} mtime
-    |   if age > RETENTION_DAYS → yield model-id
-    v
-for each stale model:
-    hf_adapter.sh::migrate(model-id)
-        | rsync or mv model dir to COLD_PATH/huggingface/hub/
-        | ln -s COLD_PATH/... HOT_PATH/models--{org}--{name}.new
-        | mv -T ...new ...  (atomic swap)
-    ollama_adapter.sh::migrate(model-id)  [if applicable]
-        | parse manifest JSON for blob digests
-        | mv manifest file to cold manifests tree
-        | mv each referenced blob to cold blobs/
-        | ln -s (atomic) for manifest and each blob path
-    tracker.sh::reset_timestamp(model-id)  [NOT called — stale, so leave alone]
-    |
-    v
-disk_check (also in migrate_cron.sh after migration):
-    | check HOT and COLD drive usage (df)
-    | if either >98%: notify.sh "modelstore: disk warning" "Drive X at N% capacity"
+Client
+  │  POST /v1/chat/completions  {messages, model, stream: false}
+  ▼
+FastAPI gateway (:8080)
+  │  auth_check(api_key, tenant_policy)
+  │
+  │  nemo_rails.generate(messages)  [input rail evaluation]
+  │    └─→ LiteLLM :4000  (NeMo's internal classifier calls)
+  │  → on violation: return 400 GuardrailTriggered
+  │
+  │  httpx.post(LiteLLM :4000, messages)  [actual model call]
+  │
+  │  nemo_rails.check_output(response)  [output rail evaluation]
+  │  → on violation: return 200 with refusal message + trace
+  │
+  │  if CRITIQUE_ENABLED:
+  │    judge_call(response, constitution)  → critique
+  │    if critique.violated:
+  │      revise_call(response, critique)  → revised_response
+  │
+  │  trace_store.append(full_trace_record)
+  │
+  └─→ return final response to client
 ```
 
-### Recall Flow (launcher trigger or manual)
+### Streaming Request Flow
 
 ```
-Launcher script (vLLM, etc.)
-    | hooks/tracker.sh "hf:{model-id}"   ← updates usage timestamp
-    |
-    v
-does model path exist as real dir? YES → continue to launch
-                                   NO (symlink) →
-                                        recall.sh {model-id}
-                                            | check cold drive mounted
-                                            | mv cold dir → hot path (overwrite symlink)
-                                            | mv -T atomic if symlink exists at dest
-                                            | reset tracker timestamp
-                                        → continue to launch
+Client
+  │  POST /v1/chat/completions  {messages, stream: true}
+  ▼
+FastAPI gateway
+  │  input rail check (same as above, on full prompt)
+  │
+  │  httpx.stream(LiteLLM :4000)
+  │    for each token chunk (200 tokens):
+  │      output rail check on chunk
+  │      → violation: yield error SSE event, close stream
+  │      → clean: yield chunk as SSE to client
+  │
+  │  final whole-response output rail check
+  │  critique pass (on full assembled response, before trace write)
+  │  trace_store.append(...)
 ```
 
-### Status Flow (interactive)
+### Eval Replay Flow
 
 ```
-modelstore status
-    |
-    v
-status.sh
-    | sources config.sh
-    | hf_adapter.sh::list_all()  → for each model: hot/cold tier, size, last-used timestamp
-    | ollama_adapter.sh::list_all()
-    | df -h HOT_PATH, COLD_PATH
-    v
-tabular output to stdout
+eval/datasets/safety_regression_v1.jsonl
+  │  {prompt, expected_behavior: "refuse" | "answer", category: "jailbreak" | ...}
+  ▼
+eval/replay.py
+  │  for each item: POST to gateway :8080
+  │  record: response, final_response, guardrail_triggered, critique_revised
+  │  score: refusal_rate, false_positive_rate, latency_p95
+  ▼
+eval/results/run_YYYYMMDD.json
+  │  compare to baseline metrics
+  ▼
+CI/CD gate: fail if refusal_rate drops >5% from baseline
 ```
 
-### Init Flow (once, interactive)
+### Red Team Generation Flow
 
 ```
-modelstore init
-    |
-    v
-init.sh
-    | prompt: select hot drive (default: ~/.cache/huggingface/hub parent)
-    | prompt: select cold drive (filesystem tree preview)
-    | prompt: retention days (default: 14)
-    | prompt: cron time (default: 2:00 AM)
-    | create ~/.modelstore/{config,usage/}
-    | create cold drive directory structure
-    | install.sh: add crontab entries
-    v
-config written, cron installed, ready
+~/safety-harness/traces/*.jsonl
+  │  filter: flagged_for_review=true OR output_guardrail.triggered=true
+  ▼
+red_team/generator.py
+  │  POST to LiteLLM :4000 with prompt:
+  │    "Given this conversation that triggered a safety check, generate 5 adversarial variants
+  │     that attempt the same goal with different phrasing..."
+  ▼
+red_team/queue/new_adversarial_YYYYMMDD.jsonl
+  │  (queued for manual review and promotion to eval/datasets/)
+  ▼
+human reviews via HITL dashboard (optional)
+  │  promotes to eval/datasets/ or discards
 ```
 
-## Scaling Considerations
+### HITL Dashboard Flow
 
-This is a single-machine, two-tier local system. Traditional user-scaling doesn't apply. Relevant "scaling" dimensions are model count and drive size:
+```
+~/safety-harness/traces/*.jsonl
+  │  filter: flagged_for_review=true
+  ▼
+dashboard/app.py  (:8501)
+  │  Display: prompt | model_output | critique | final_response | guardrail decisions
+  │  Operator actions:
+  │    - "Correct" → write correction to ~/safety-harness/corrections/
+  │    - "Adjust threshold" → update guardrails/policies/default.yaml
+  │    - "Add to eval dataset" → promote trace to eval/datasets/
+  │    - "Flag as false positive" → reduce sensitivity for this check
+  ▼
+Gateway reads updated policies/ on reload (SIGHUP or restart)
+```
 
-| Scale | Architecture Adjustments |
-|-------|--------------------------|
-| <50 models | Shell loops over directory listings are fine; no indexing needed |
-| 50-200 models | Usage manifest scan is O(n) file stats; acceptable. Status command may be slow — add simple count/size cache in config |
-| 200+ models | Shell loops become noticeable. If ever reached: replace usage manifest with a single SQLite file (one row per model). Not needed for initial implementation. |
-| Multi-user | Out of scope — design is single-user (paths are user-home-relative) |
-
-### Scaling Priorities
-
-1. **First bottleneck:** `status.sh` iterates all model directories and reads timestamps — will be slow at 100+ models because each requires a `stat` call. Mitigation: cache last-scan results in `~/.modelstore/status_cache` with 5-minute TTL.
-2. **Second bottleneck:** Ollama blob migration requires parsing JSON and correlating multiple files. With many overlapping models sharing blobs, reference counting becomes necessary before deletion. Mitigation: always migrate blobs by manifest reference — never delete a blob unless no manifest on either tier references it.
-
-## Anti-Patterns
-
-### Anti-Pattern 1: Tiering the Entire `~/.ollama/` Directory
-
-**What people do:** Symlink the whole `~/.ollama` directory to the cold store (common advice in guides).
-
-**Why it's wrong:** This moves ALL Ollama state including non-model data (config, logs). It also makes per-model tiering impossible — everything moves together. If the cold drive is unmounted, Ollama fails entirely rather than falling back to whatever is on hot.
-
-**Do this instead:** Leave `~/.ollama/models/` on hot store. Mirror the internal sub-structure on cold store (`cold/ollama/models/manifests/` and `cold/ollama/models/blobs/`). Create individual symlinks per manifest file and per referenced blob.
-
-### Anti-Pattern 2: Using `atime` for Last-Used Tracking
-
-**What people do:** Check file access times with `stat` or `find -atime` to determine which models are stale.
-
-**Why it's wrong:** `relatime` (the default ext4 mount option) only updates atime once per 24 hours. Symlinks report their own atime, not the blob's. The cold drive may be mounted with `noatime`. Result: migration triggers on recently-used models.
-
-**Do this instead:** Maintain an explicit usage manifest in `~/.modelstore/usage/`. Launcher hooks write the timestamp explicitly and reliably.
-
-### Anti-Pattern 3: Non-Atomic Symlink Replacement
-
-**What people do:** `rm $LINK && ln -s $TARGET $LINK`
-
-**Why it's wrong:** There is a window between `rm` and `ln` where the path does not exist. A concurrent model load during this window will fail with "file not found". On a DGX running multiple concurrent workloads, this is not theoretical.
-
-**Do this instead:** `ln -s "$TARGET" "${LINK}.new" && mv -T "${LINK}.new" "$LINK"`. The `rename(2)` syscall behind `mv -T` is atomic.
-
-### Anti-Pattern 4: CLI Dispatcher in the Cron Line
-
-**What people do:** `0 2 * * * /usr/local/bin/modelstore migrate`
-
-**Why it's wrong:** The CLI dispatcher sources interactive-UX code, may check for TTY, and adds an unnecessary process layer. Cron has no TTY; some interactive guards fail in unexpected ways.
-
-**Do this instead:** `0 2 * * * /path/to/modelstore/cron/migrate_cron.sh`. Cron calls the thin cron wrapper directly.
-
-### Anti-Pattern 5: Moving Blobs Without Checking Manifest References (Ollama)
-
-**What people do:** Treat Ollama blobs like HF blobs — move the whole blob store for a model.
-
-**Why it's wrong:** Ollama blobs are shared across models (same GGUF layer in llama3.1:8b and llama3.1:8b-q4). Moving a blob because one model is stale will break other models that reference the same blob.
-
-**Do this instead:** Before migrating a blob, check all manifests (on both tiers) for references to that blob digest. Only migrate a blob when no hot-tier manifest references it.
+---
 
 ## Integration Points
 
-### External Services
+### New vs Existing Integration Boundaries
 
-| Service | Integration Pattern | Notes |
-|---------|---------------------|-------|
-| HuggingFace cache | Direct filesystem manipulation — no HF Python APIs needed | All operations are `mv`, `ln`, `stat` on known directory structure |
-| Ollama | Direct filesystem manipulation — no Ollama API needed | Parse manifest JSON with `jq` or `python3 -c json` (python3 is always available on DGX even without HF installed) |
-| GNOME notifications | `notify-send` with injected DBus session env vars | Silent failure acceptable; always log to file as backup |
-| cron | Crontab entries installed by `install.sh` using `crontab -l | ... | crontab -` pattern | No root required; user crontab only |
-| NVIDIA Sync | Individual cmd/ scripts work without TTY; no interactive prompts in non-init paths | Sync invokes scripts remotely; `init.sh` is the only interactive command |
+| Boundary | Direction | Integration Pattern | Notes |
+|----------|-----------|---------------------|-------|
+| Client → Gateway | Inbound | OpenAI-compat REST at :8080 | Clients swap :4000 for :8080; API surface identical |
+| Gateway → LiteLLM | Outbound | HTTP POST to `host.docker.internal:4000/v1` | Gateway is LiteLLM client; uses `httpx` async client |
+| NeMo Guardrails → LiteLLM | Outbound | NeMo config sets LiteLLM as its LLM engine | NeMo makes model calls for rail evaluation via LiteLLM |
+| Gateway → Trace Store | Write | Append JSONL to host-mounted `~/safety-harness/traces/` | Async write; does not block response path |
+| lm-eval → Gateway | Inbound | `--model local-chat-completions --base_url :8080` | No gateway changes needed; already OpenAI-compat |
+| Replay eval → Gateway | Inbound | Python `httpx` POST from eval/replay.py | Same endpoint as user traffic |
+| Red team generator → LiteLLM | Outbound | HTTP POST to :4000 for adversarial generation | Bypasses gateway intentionally (generating attack prompts) |
+| Dashboard → Trace Store | Read | JSONL file reads from host-mounted path | Gradio app reads same mounted volume |
+| Dashboard → Policies | Write | Writes `guardrails/policies/default.yaml` on operator action | Gateway must reload policies; SIGHUP or config watcher |
 
-### Internal Boundaries
+### Port Assignments (new)
 
-| Boundary | Communication | Notes |
-|----------|---------------|-------|
-| `modelstore` CLI → cmd/ scripts | `exec` with argv passthrough | Dispatcher exits; cmd/ script takes over process |
-| cmd/ scripts → lib/ | `source` (bash dot-operator) | lib/ scripts must be side-effect-free on source |
-| Launcher scripts → `tracker.sh` | Direct call: `tracker.sh "hf:{model-id}"` | One-liner addition to each launcher; must not block launch on failure |
-| `migrate.sh` → adapters | Sourced functions: `hf_list_stale`, `hf_migrate`, `ollama_list_stale`, `ollama_migrate` | Adapter functions receive model-id and config vars |
-| cron wrapper → core scripts | Direct call with absolute paths | Cron has minimal PATH; use full paths throughout |
+| Port | Service | Notes |
+|------|---------|-------|
+| 8080 | Safety Gateway (FastAPI) | NEW — replaces :4000 as primary client endpoint |
+| 8501 | HITL Dashboard (Gradio) | NEW — optional; only start when reviewing |
+
+(Port 8080 is currently used by code-server in the existing port registry but code-server is "not launched by default" — acceptable to assign to the gateway.)
+
+### Docker Networking
+
+The gateway container needs `--add-host=host.docker.internal:host-gateway` (same pattern as all other containers) to reach LiteLLM at `host.docker.internal:4000`.
+
+Host-mounted volumes:
+```
+~/safety-harness/traces/   → /app/traces        (trace store, rw)
+~/safety-harness/config/   → /app/config         (policies + constitution, rw for dashboard)
+~/safety-harness/eval-runs → /app/eval-runs      (eval results, rw)
+~/safety-harness/red-team/ → /app/red-team       (adversarial queue, rw)
+```
+
+---
+
+## ARM64 Compatibility Notes
+
+**FastAPI + uvicorn**: Pure Python; fully ARM64-compatible. (HIGH confidence)
+
+**NeMo Guardrails (`nemoguardrails` pip package)**: The documentation lists Linux/macOS/Windows as supported but does not explicitly confirm aarch64. The package's C++ dependency (Annoy, for embedding similarity) requires a C++ compiler at install time. On aarch64 Ubuntu, `sudo apt install g++` satisfies this. The base NeMo Guardrails library itself does not use CUDA — rail evaluation uses CPU for embedding lookup and makes LLM API calls for classification. This should work on aarch64, but **verify the pip install on the DGX host before committing to this path** — Annoy may have wheel availability gaps for aarch64. (MEDIUM confidence — unverified on this hardware)
+
+**Fallback if NeMo Guardrails is not aarch64-compatible**: Build from source in the Docker container using an aarch64 Python base image. The Dockerfile in the NeMo Guardrails repo builds from source and should work on any architecture.
+
+**httpx, pydantic, openai SDK**: All pure Python or with available aarch64 wheels. (HIGH confidence)
+
+**Gradio (dashboard)**: Pure Python; ARM64-compatible. (HIGH confidence)
+
+---
 
 ## Suggested Build Order
 
-Dependencies flow from bottom to top. Build in this order:
+Dependencies flow from infrastructure outward. Build in this order:
 
-1. **Config layer** (`lib/config.sh`, `~/.modelstore/` state dir structure)
-   Required by everything else. Define config schema before writing any logic.
+1. **Docker skeleton** (`Dockerfile`, `docker-compose.safety.yml`, `pyproject.toml`)
+   Validate aarch64 pip install of `nemoguardrails` before writing any application code. This is the highest-risk dependency.
 
-2. **Common helpers** (`lib/common.sh`)
-   Mount check, space check, logging — used by both adapters and all cmd/ scripts.
+2. **Trace store** (`tracing/store.py`)
+   Tiny module; no dependencies; needed by everything. Define the trace schema here first — all other components reference it.
 
-3. **HF adapter** (`lib/hf_adapter.sh`)
-   Simpler of the two formats. Validates the overall adapter pattern before tackling Ollama.
+3. **Minimal FastAPI gateway** (`gateway/main.py`, `gateway/routes/chat.py`, `gateway/models.py`)
+   Implement a passthrough-only gateway: receive request, forward to LiteLLM :4000, return response. Validate end-to-end connectivity before adding any safety stages.
 
-4. **Ollama adapter** (`lib/ollama_adapter.sh`)
-   More complex (blob reference counting). Build after HF adapter pattern is proven.
+4. **NeMo Guardrails integration** (`guardrails/config.yml`, `guardrails/rails/`, `guardrails/actions.py`)
+   Add input and output rails to the gateway pipeline. Start with one check (e.g., topic filter) to validate the NeMo API in the aarch64 container.
 
-5. **Tracker** (`hooks/tracker.sh`)
-   Tiny; needed before testing migration logic.
+5. **User-editable policy layer** (`guardrails/policies/default.yaml`)
+   Expose thresholds and enable/disable flags as a config file. Gateway reads this at startup; hot-reload on SIGHUP.
 
-6. **Migration script** (`cmd/migrate.sh`)
-   Core value. Depends on both adapters, common helpers, config.
+6. **Constitutional AI critique** (`critique/constitution.yaml`, `critique/pipeline.py`, `critique/judge.py`)
+   Add the two-pass critique stage. Judge model defaults to same model via LiteLLM; verify with a simple harmful-response test case.
 
-7. **Recall script** (`cmd/recall.sh`)
-   Inverse of migration. Depends on adapters.
+7. **Auth and rate limiting** (`gateway/pipeline/auth.py`, `gateway/pipeline/rate_limit.py`)
+   Add after the core pipeline is proven correct. Simple in-memory rate limiter is sufficient for single-user DGX use.
 
-8. **Status script** (`cmd/status.sh`)
-   Depends on adapters and tracker state. Useful for validating migration/recall.
+8. **Streaming guardrails** (`gateway/routes/chat.py` streaming path)
+   Streaming is more complex than batch; build after the batch path is fully tested. Use `stream_first: false` initially.
 
-9. **Notify helper** (`lib/notify.sh`)
-   Needed for cron disk warnings. Low complexity; can be built alongside migrate.
+9. **Custom replay eval harness** (`eval/replay.py`, `eval/metrics.py`, `eval/datasets/`)
+   Build against the working gateway. Seed `eval/datasets/` with known-good test cases from manual testing of the pipeline.
 
-10. **Cron wrappers** (`cron/migrate_cron.sh`, `cron/disk_check_cron.sh`)
-    Thin wrappers; build after core scripts are tested.
+10. **CI/CD eval gate**
+    Write a script that runs `eval/replay.py`, reads metrics from the result JSON, and exits non-zero if safety metrics regress. Wire into a bash-level CI check.
 
-11. **CLI dispatcher** (`bin/modelstore`)
-    Build last. It's just a router; all logic is already in cmd/. Add `init.sh` and `revert.sh` here too.
+11. **lm-eval-harness integration** (`eval/lm_eval_config/gateway_model.yaml`)
+    Two-line config file pointing existing eval-toolbox lm-eval at the gateway. Run from the eval-toolbox container. No new Python needed.
 
-12. **Launcher hooks**
-    Add one-liners to existing DGX Toolbox launcher scripts after tracker.sh is proven.
+12. **Red team generator** (`red_team/generator.py`)
+    Mines the trace store for failures and generates adversarial variants. Build after the trace store has real data from eval runs.
+
+13. **HITL dashboard** (`dashboard/app.py`) — optional
+    Build last; useful once there are enough traces to review. Gradio is the simplest option: it handles file reads, form controls, and feedback loops without a separate frontend build step.
+
+---
+
+## Anti-Patterns
+
+### Anti-Pattern 1: Gateway Modifying the Existing LiteLLM Config
+
+**What people do:** Add guardrail hooks to LiteLLM's callback system (`success_callback`, `failure_callback`) instead of building a separate gateway.
+
+**Why it's wrong:** LiteLLM callbacks are designed for logging/monitoring, not request interception. Constitutional AI critique requires multiple round-trip model calls that LiteLLM callbacks cannot orchestrate. Streaming interception from LiteLLM callbacks is not supported for mid-stream redaction.
+
+**Do this instead:** Keep LiteLLM untouched. The gateway is a separate Python service that proxies through LiteLLM. This also means LiteLLM can still be used directly (bypassing the harness) when desired.
+
+### Anti-Pattern 2: Deploying NeMo Guardrails as a Sidecar Service
+
+**What people do:** Run NeMo Guardrails as its own server (`nemoguardrails server`) and call it over HTTP from the FastAPI gateway.
+
+**Why it's wrong:** Adds a network round-trip inside the critical path for every request. NeMo Guardrails is designed to be used as a Python library — `LLMRails` is instantiated in-process. The sidecar pattern is for multi-language deployments where Python is not available in the calling service. Here, the gateway is Python.
+
+**Do this instead:** `import nemoguardrails` in the gateway process. Instantiate once at startup, use per request.
+
+### Anti-Pattern 3: Blocking the Response on Trace Writes
+
+**What people do:** `await trace_store.append(trace)` on the critical response path before returning to the client.
+
+**Why it's wrong:** Disk I/O, even for a small JSONL append, adds measurable latency to every response. On a system where model generation already takes hundreds of milliseconds, adding filesystem I/O on the critical path is unnecessary.
+
+**Do this instead:** Fire-and-forget the trace write using `asyncio.create_task(trace_store.append(trace))`. The response returns immediately; the trace write completes in the background.
+
+### Anti-Pattern 4: One Constitution for All Use Cases
+
+**What people do:** Write a single monolithic constitution with all principles enabled for all requests.
+
+**Why it's wrong:** Constitutional AI critique doubles or triples the number of model calls per request. Enabling every principle on every request is expensive in latency and GPU time. Some principles are only relevant for certain request types.
+
+**Do this instead:** Expose per-principle `enabled: true/false` flags in `constitution.yaml`. Default to a minimal set (harmful content, PII). Let the judge model provide suggestions for which principles to enable based on the deployment context.
+
+### Anti-Pattern 5: Running Red Team Prompts Through the Gateway
+
+**What people do:** Route the adversarial prompt generator's LLM calls through the safety gateway to "test the tester."
+
+**Why it's wrong:** The red team generator is creating attack prompts. Running those through guardrails means the guardrails will block the generator's own outputs, preventing useful adversarial prompt generation.
+
+**Do this instead:** Red team generator calls LiteLLM `:4000` directly (bypassing the gateway). The generated prompts are then replayed through the gateway as part of the eval step.
+
+---
+
+## Scaling Considerations
+
+This is a single-machine, single-user DGX deployment. Scaling dimensions are concurrent requests and model call volume:
+
+| Scale | Architecture Adjustments |
+|-------|--------------------------|
+| 1-5 concurrent requests | In-process NeMo Guardrails + single FastAPI worker; no changes needed |
+| 5-20 concurrent | Multiple uvicorn workers (`--workers 4`); NeMo `LLMRails` instance shared via lifespan context |
+| 20+ concurrent | GPU becomes the bottleneck (LiteLLM queues requests to vLLM); gateway itself is not the bottleneck |
+| Multi-user (future) | Add Redis for rate limiting state; add per-tenant policy lookup from a config directory rather than a single `default.yaml` |
+
+### First Bottleneck
+
+Constitutional AI critique doubles or triples model calls per request. At high request volume, this means 3x GPU load relative to a direct LiteLLM call. Mitigation: keep critique disabled for most requests; enable only for high-risk classifications from the output rail check.
+
+---
 
 ## Sources
 
-- [HuggingFace Hub Cache Documentation](https://huggingface.co/docs/huggingface_hub/en/guides/manage-cache) — official; HIGH confidence
-- [Ollama Model Storage Internals (DeepWiki)](https://deepwiki.com/ollama/ollama/4-model-management) — derived from source; HIGH confidence
-- [Ollama Blob/Manifest article (Medium, Feb 2026)](https://medium.com/@enisbaskapan/how-ollama-stores-models-11fc47f48955) — MEDIUM confidence
-- [Atomic symlink replacement via mv -T](https://rcrowley.org/2010/01/06/things-unix-can-do-atomically.html) — well-established POSIX pattern; HIGH confidence
-- [notify-send from cron: env injection approach](https://selivan.github.io/2016/07/08/notify-send-from-cron-in-ubuntu.html) — MEDIUM confidence; verified against multiple community sources
-- [Linux filesystem timestamps (atime/relatime)](https://www.howtogeek.com/517098/linux-file-timestamps-explained-atime-mtime-and-ctime/) — HIGH confidence
-- [Symlinks across filesystems](https://opensource.com/article/17/6/linking-linux-filesystem) — HIGH confidence
-- [Bash subcommand dispatcher pattern](https://gist.github.com/waylan/4080362) — MEDIUM confidence; common idiom
+- [NeMo Guardrails Developer Guide — NVIDIA](https://docs.nvidia.com/nemo/guardrails/latest/index.html) — architecture, rail types, configuration (MEDIUM confidence — ARM64 not confirmed)
+- [NeMo Guardrails Installation Guide](https://docs.nvidia.com/nemo/guardrails/latest/getting-started/installation-guide.html) — Python 3.10-3.13, C++ compiler for Annoy (HIGH confidence)
+- [Stream Smarter and Safer — NVIDIA Technical Blog](https://developer.nvidia.com/blog/stream-smarter-and-safer-learn-how-nvidia-nemo-guardrails-enhance-llm-output-streaming/) — streaming architecture: chunk_size, context_size, stream_first (MEDIUM confidence — describes internal behavior)
+- [NeMo Guardrails Intro — Pinecone](https://www.pinecone.io/learn/nemo-guardrails-intro/) — Colang flows, actions, config structure (MEDIUM confidence — third-party)
+- [Constitutional AI: Harmlessness from AI Feedback — NVIDIA NeMo Framework](https://docs.nvidia.com/nemo-framework/user-guide/24.09/modelalignment/cai.html) — CAI two-pass generate→critique→revise pipeline (HIGH confidence)
+- [Constitutional AI with Open LLMs — HuggingFace Blog](https://huggingface.co/blog/constitutional_ai) — CAI implementation patterns (HIGH confidence)
+- [lm-evaluation-harness OpenAI-compat endpoint usage — LiteLLM docs](https://docs.litellm.ai/docs/tutorials/lm_evaluation_harness) — `--model local-chat-completions --base_url` pattern (HIGH confidence)
+- [lm-evaluation-harness openai_completions.py — GitHub](https://github.com/EleutherAI/lm-evaluation-harness/blob/main/lm_eval/models/openai_completions.py) — `local-completions` and `local-chat-completions` model types (HIGH confidence)
+- [Building Safer AI: Input Guardrails for LLMs with FastAPI — Medium](https://dheerajnbhat.medium.com/building-safer-ai-input-guardrails-for-llms-with-fastapi-7109edf07bb2) — FastAPI + guardrail gateway pattern (MEDIUM confidence)
+- [LLM Red Teaming Guide — Promptfoo](https://www.promptfoo.dev/docs/red-team/) — adversarial prompt generation patterns (MEDIUM confidence)
+- [Existing codebase ARCHITECTURE.md](/.planning/codebase/ARCHITECTURE.md) — existing service ports, host networking, Docker patterns (HIGH confidence — first-party)
 
 ---
-*Architecture research for: tiered ML model storage (HuggingFace + Ollama, DGX Spark)*
-*Researched: 2026-03-21*
+
+*Architecture research for: AI Safety Harness (v1.1) — FastAPI gateway integrating with existing DGX Toolbox inference stack*
+*Researched: 2026-03-22*

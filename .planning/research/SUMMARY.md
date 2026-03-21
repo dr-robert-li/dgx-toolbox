@@ -1,186 +1,242 @@
 # Project Research Summary
 
-**Project:** modelstore — Tiered ML Model Storage for DGX Spark
-**Domain:** Symlink-based two-tier local storage management for ML model caches (HuggingFace + Ollama)
-**Researched:** 2026-03-21
-**Confidence:** HIGH
+**Project:** DGX Toolbox v1.1 — AI Safety Harness
+**Domain:** FastAPI gateway with NeMo Guardrails, Constitutional AI critique, eval harness, and red-teaming pipeline on DGX Spark (aarch64)
+**Researched:** 2026-03-22
+**Confidence:** MEDIUM (stack HIGH; streaming/CAI latency MEDIUM; aarch64 NeMo compatibility needs on-host verification)
 
 ## Executive Summary
 
-`modelstore` is a pure-bash CLI tool that implements LRU-based hot/cold tiering for ML model caches on a DGX Spark workstation. The hot tier is internal NVMe (`~/.cache/huggingface/hub/`, `~/.ollama/models/`); the cold tier is an external NVMe drive. Migration is fully automated via cron, transparent to all model consumers via symlinks, and requires no Python or network access — it manipulates the filesystem directly using `rsync`, `ln`, `flock`, and `coreutils`. The key design insight from research is that each cache ecosystem (HuggingFace, Ollama) requires its own adapter because their internal directory structures are fundamentally different: HF uses relative symlinks inside model directories (requiring whole-directory-as-unit migration), while Ollama uses a content-addressed blob store where blobs can be shared across models (requiring manifest-aware blob reference counting before any move).
+This is a safety-harness service that sits in front of an existing LiteLLM proxy, adding layered defense: input guardrails (content filtering, PII redaction, prompt injection detection), post-model output rails (toxicity, jailbreak), a Constitutional AI two-pass self-critique loop, and an eval/red-team feedback stack. The canonical approach is a single FastAPI service that imports NeMo Guardrails as a library (not a sidecar), calls LiteLLM over HTTP for all model inference, and writes structured JSONL traces that feed the eval harness and red-team generator. This architecture is additive — no existing bash scripts, LiteLLM config, or model serving components are modified.
 
-The recommended architecture is a layered bash project: a thin CLI dispatcher routes to independent `cmd/` scripts that source shared `lib/` adapters. Cron invokes `cmd/` scripts directly — never the CLI dispatcher. This design means every script is independently testable and cron-safe without any TTY dependency. The config file produced by `init.sh` is the backbone dependency for every other component; without it, nothing else runs. Usage tracking must be done via explicit `touch` manifests in `~/.modelstore/usage/` rather than filesystem `atime`, because `relatime` mount options and symlink `atime` semantics make `atime` unreliable as a "model was loaded" signal.
+The recommended stack is well-validated for x86_64 but carries one firm hardware risk: NeMo Guardrails' `annoy` C++ dependency may not have pre-built aarch64 wheels, requiring on-host verification before any code is written. Everything else (FastAPI, httpx, presidio, lm-eval, garak, deepteam, Celery, SQLModel) is either pure Python or has confirmed aarch64 wheels. The Constitutional AI critique loop and streaming guardrails are architecturally sound but introduce latency complexity: CAI doubles or triples model calls per request, and streaming guardrails require thread-pool offloading to avoid event-loop starvation. Both must be designed for async-first operation from the start, not retrofitted.
 
-The dominant risks are: (1) migrating while a model is open produces a ENOENT window between `mv` and `ln -s` — prevented by `lsof`/`fuser` checks and cron scheduling during off-hours; (2) cold drive unmount leaves dangling symlinks — prevented by `mountpoint -q` guard in every script that touches cold paths; (3) Ollama's manifest cache requires a server restart after any blob move — prevented by `systemctl is-active ollama` checks in the migration script. All three risks have deterministic prevention strategies documented in research.
+The key risks are: (1) NeMo's `LLMRails` must be instantiated before the uvicorn event loop starts — initializing it inside an async handler causes a race condition that only manifests on the first request; (2) uvloop must be excluded because `nest_asyncio` (NeMo's async patch) cannot wrap uvloop's C extension; (3) trace logs containing raw PII are a compliance failure if written without a redaction pass; (4) Unicode normalization must precede every classifier or guardrail evasion via zero-width characters achieves 100% success. All four of these must be addressed in Phase 1 before the safety logic is layered on top.
 
 ## Key Findings
 
 ### Recommended Stack
 
-The entire tool runs on system-installed utilities: bash 5.2.21, rsync 3.2.7, flock, coreutils (`stat`, `df`, `ln`, `touch`, `find`), and `notify-send` — all already present on the DGX Spark host. The only additions to install are `pv` and `inotify-tools` via `apt`. `gum` (Charm) is optional for the interactive init wizard and must degrade gracefully to `read -p` when absent or when running non-interactively.
+The service runs Python 3.12 on aarch64 under FastAPI 0.135.1 with uvicorn (default asyncio loop — no uvloop). NeMo Guardrails 0.21.0 is imported as an in-process library, not a sidecar. The CAI critique loop is implemented as a plain async function calling LiteLLM via httpx 0.28.1. Structured traces go to SQLite via SQLModel 0.0.37. Red-team jobs run asynchronously via Celery 5.6.2 + Redis. The eval layer uses lm-eval 0.4.11 (pointed at the gateway for generative tasks, at LiteLLM directly for loglikelihood tasks) and a custom pytest-based replay harness.
+
+See [STACK.md](./STACK.md) for full version table, installation commands, and the "What NOT to Use" list (avoid: python-jose, LangChain ConstitutionalChain, synchronous requests library, transformers inside the gateway).
 
 **Core technologies:**
-- **Bash 5.2**: Script runtime — on-host constraint, Bash 5.x provides associative arrays and `mapfile` needed for tracking logic
-- **rsync `--remove-source-files`**: Cross-filesystem atomic migration — `mv` fails across filesystems; rsync deletes source only after successful transfer
-- **flock**: Cron job serialization — file-descriptor locking auto-releases on crash, strictly safer than PID files
-- **ln + mv -T (atomic swap)**: Symlink replacement — `mv -T` calls `rename(2)` which is atomic; there is no gap where the path is absent
-- **mountpoint -q**: Cold drive guard — `test -d` passes even on unmounted mountpoints; only `mountpoint -q` correctly detects mount state
-- **gum v0.17.0**: Interactive init UI (optional) — arm64 apt package available via Charm repo; must fall back to `read -p` when absent
+- Python 3.12 + FastAPI 0.135.1: async gateway with native SSE streaming and Pydantic v2 validation
+- NeMo Guardrails 0.21.0: in-process Colang 2.0 input/output rails (requires `build-essential` for Annoy on aarch64)
+- presidio-analyzer 2.2.362: PII detection and redaction (pure Python, aarch64-safe)
+- httpx 0.28.1: async client for all outbound calls to LiteLLM (CAI judge calls, model calls)
+- structlog 25.5.0 + SQLModel 0.0.37: structured JSON traces to SQLite
+- lm-eval 0.4.11: capability benchmarks via OpenAI-compatible endpoint
+- garak 0.14.0 + deepteam 1.0.6: one-shot scanning and feedback-loop red teaming
+- Celery 5.6.2 + Redis 7.x: async dispatch of red-team jobs
+- PyJWT 2.12.1 + slowapi: per-tenant auth and in-memory rate limiting (upgrade to fastapi-limiter + Redis for multi-worker)
+- uv + ruff + mypy + pre-commit: dev toolchain
 
 ### Expected Features
 
-**Must have (table stakes — all P1):**
-- Interactive init wizard — selects hot/cold paths, validates mounts, writes config, installs cron; everything else depends on the config it produces
-- Symlink-based transparent access — model consumers (vLLM, transformers, Ollama) must see uninterrupted paths; symlinks must be atomic and whole-directory
-- Drive mount validation (shared `lib/common.sh` function) — gates every migration, recall, and revert operation
-- Usage timestamp tracking — explicit `touch ~/.modelstore/usage/{model-id}` from launcher hooks; `atime` is unreliable
-- Launcher hook integration — one-liner `modelstore track <model>` added to vLLM, eval-toolbox, Unsloth, Ollama launchers
-- Migration cron — daily, reads config, finds stale models, `rsync` to cold, creates atomic symlinks
-- Recall script — inverse of migration; moves cold back to hot, replaces symlink with real directory
-- Status command — unified table across HF + Ollama: tier, size, last-used, days until migration, drive totals
-- Space-available check with 10% buffer (shared function)
-- Disk usage warning cron — `notify-send` when either drive exceeds configurable threshold (default 98%)
-- Full revert — idempotent; moves all cold models back to hot, removes symlinks; never deletes data
+See [FEATURES.md](./FEATURES.md) for full prioritization matrix and feature dependency graph.
 
-**Should have (P2 — add after core is validated):**
-- Progress bars (`pv` / rsync `--info=progress2` fallback)
-- Dry-run mode for migrate and revert
-- Recall-on-access from launcher hooks (detects symlink to cold tier, recalls before exec)
-- Per-model migration audit log
-- NVIDIA Sync / headless compatibility hardening
+**Must have (P1 — v1.1 core):**
+- POST /v1/chat/completions — OpenAI-compatible pipeline endpoint
+- Auth at ingress (API key + per-tenant policy profile) and rate limiting
+- NeMo Guardrails input rails: content filter, PII detection, prompt injection detection
+- NeMo Guardrails output rails: toxicity filter, jailbreak detection
+- Constitutional AI two-pass self-critique with configurable judge model
+- User-editable constitution (YAML, validated on startup)
+- Configurable per-rail thresholds and enable/disable flags
+- Refusal calibration: hard block / soft steer / informative refusal modes
+- Full structured trace logging (JSONL, append-only, request_id indexed)
 
-**Defer (v2+):**
-- Reinit/reconfigure with live migration (high complexity — diff between old and new config, partial-migration rollback)
-- Interactive deletion TUI (like `huggingface-cli delete-cache`)
-- Two-ecosystem blob-level deduplication analysis
+**Should have (P2 — add after core validated):**
+- Custom replay eval harness against POST /chat (safety regression)
+- lm-eval-harness integration for capability regression
+- CI/CD eval gate (fail on safety F1 drop or over-refusal spike)
+- Judge-guided guardrail threshold suggestions from trace history
+
+**Defer (P3 — v1.1 advanced):**
+- Streaming guardrails with per-N-token evaluation (NeMo streaming on aarch64 unverified; adds architectural complexity)
+- Distributed live red teaming (requires stable trace logs, eval harness, and judge model first)
+- Human-in-the-loop review dashboard (optional per PROJECT.md; high UI cost)
+- Feedback loop into threshold calibration and fine-tuning data export
+
+**Anti-features (never build):**
+- Auto-apply guardrail threshold updates without human review
+- Automated fine-tuning on harness-generated refusals without curation
+- Synchronous blocking guardrail check on every streaming token
+- Web UI for constitution/policy editing (config files + git is the right model)
 
 ### Architecture Approach
 
-The system is organized into five layers: an entry layer (CLI dispatcher, cron wrappers, launcher hooks), a core logic layer (`config.sh`, `tracker.sh`, `migrate.sh`, `recall.sh`), a storage abstraction layer (per-ecosystem adapters: `hf_adapter.sh`, `ollama_adapter.sh`), a notification layer (`notify.sh` with DBus env injection for cron), and a physical storage layer (two NVMe drives). The adapters are the critical isolation boundary — all HF cache layout knowledge lives in `hf_adapter.sh`; all Ollama blob/manifest knowledge lives in `ollama_adapter.sh`. Neither migrate.sh nor recall.sh contains hardcoded paths or format knowledge.
+The gateway is a FastAPI service on port 8080 that orchestrates a sequential five-stage pipeline: auth/rate-limit → NeMo input rails → LiteLLM model call → NeMo output rails → CAI critique (optional) → async trace write. NeMo Guardrails is imported in-process (not a sidecar). Every request writes a structured JSONL trace to a host-mounted volume. The eval harness and red-team generator consume that trace store. The HITL dashboard (optional, port 8501) reads the same store. Nothing in the existing LiteLLM/vLLM/Ollama stack is modified.
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for full diagrams, component boundary table, data flow for streaming/eval/red-team paths, and a 13-step suggested build order.
 
 **Major components:**
-1. `lib/config.sh` — reads/writes `~/.modelstore/config`; sourced by every other script; defines all path and policy variables
-2. `lib/common.sh` — mount check, space check, logging; shared by both adapters and all cmd/ scripts
-3. `lib/hf_adapter.sh` — enumerates `models--*/` dirs, measures sizes, performs migrate/recall with whole-directory guarantee
-4. `lib/ollama_adapter.sh` — parses manifests for blob digests, ref-counts blobs before migration, handles stop/restart of Ollama service
-5. `cmd/migrate.sh` — core migration worker; calls adapters; checks Ollama server state; uses flock to prevent concurrent execution
-6. `cmd/recall.sh` — cold-to-hot; removes symlink atomically; called by CLI and optionally by launcher hooks
-7. `hooks/tracker.sh` — one-liner usage tracker; called from each launcher; touches `~/.modelstore/usage/{model-id}`
-8. `bin/modelstore` — thin dispatcher; `exec`s cmd/ scripts; only used interactively; never called by cron
+1. FastAPI gateway (`gateway/`) — HTTP surface, pipeline orchestrator, auth, rate-limit
+2. NeMo Guardrails engine (`guardrails/`) — Colang 2.0 input/output rail evaluation, user-editable policies
+3. CAI critique module (`critique/`) — two-pass generate → critique → revise, user-editable constitution
+4. Trace store (`tracing/`) — append-only JSONL, async fire-and-forget write
+5. Custom replay eval harness (`eval/`) — safety regression, lm-eval integration, CI gate
+6. Red team generator (`red_team/`) — mines trace failures, generates adversarial variants
+7. HITL dashboard (`dashboard/`) — optional Gradio review UI
 
 ### Critical Pitfalls
 
-1. **Race condition: migrating while model is in use** — check `fuser "$model_path"` before migration; schedule cron at 2 AM; keep the `mv + ln` window minimal by using atomic symlink swap (`ln -snf` or `mv -T`); verify with `lsof` checks
-2. **Broken symlinks on cold drive unmount** — use `mountpoint -q` (not `test -d`) as the first check in every script touching cold paths; `status` command must flag dangling symlinks explicitly
-3. **HF internal symlink breakage from splitting blobs/snapshots** — always migrate the entire `models--org--name/` directory as one atomic unit; never operate on subdirectories individually; verify post-migration with `find snapshots -xtype l`
-4. **Ollama server caches manifest paths at startup** — check `systemctl is-active ollama` before any Ollama model migration; stop server, move, restart; or skip Ollama models if server is active
-5. **Revert/partial-migration data loss via interrupt** — maintain a JSON state file recording intent-before-action and completion-after; make revert idempotent (re-runnable after interruption); never `rm -rf` without first confirming the path is not a symlink to a data directory
+See [PITFALLS.md](./PITFALLS.md) for full details, recovery strategies, and a "looks done but isn't" verification checklist.
+
+1. **LLMRails initialized inside async context** — instantiate `LLMRails` at module top level before `uvicorn.run()`, never inside a FastAPI startup hook or route handler. First-request-only symptom makes it easy to miss in testing.
+
+2. **uvloop breaks NeMo Guardrails** — `nest_asyncio` cannot patch uvloop's C extension; service crashes on startup. Never install uvloop in the harness process. Pin `asyncio` event loop explicitly in the uvicorn launch command.
+
+3. **Annoy aarch64 build failure** — NeMo Guardrails' C++ dependency may have no pre-built arm64 wheel. Validate `pip install nemoguardrails` on the DGX Spark in a fresh venv before writing any application code. Install `build-essential` first.
+
+4. **Unicode injection bypasses all classifiers** — zero-width characters and homoglyphs achieve 100% evasion (arxiv 2504.11168). Add NFC/NFKC normalization + zero-width character stripping as the first preprocessing step before any guardrail classifier runs.
+
+5. **Trace logs storing raw PII** — log the trace record only after the PII redaction pass, not before. Raw traces with user-submitted PII are a compliance failure. This is a Phase 1 design decision, not a Phase 3 retrofit.
+
+6. **Synchronous CAI critique blocks responses** — constitutional AI adds 2–3 full inference round trips. For interactive use, run critique as an async background task after returning the response; enforce a hard timeout (10s) for any synchronous critique path.
+
+7. **Colang version conflict** — Colang 2.0 is a complete language rewrite from 1.0; mixing syntax silently produces rails that do nothing. Pin `colang_version: "2.x"` in `config.yaml` on day one.
 
 ## Implications for Roadmap
 
-Based on research, the dependency graph from FEATURES.md dictates a clear phase order: config must precede everything; adapters must precede core scripts; core scripts must precede cron; cron must precede polish features.
+Based on the combined research, the phase structure is driven by three dependency constraints: (1) the aarch64 environment must be validated before any code is written, (2) the core pipeline must be working before any feedback feature is built on top, and (3) trace logging must be producing real data before eval, red-teaming, or calibration can work.
 
-### Phase 1: Foundation — Config, Common Lib, and Project Structure
+### Phase 1: Environment and Gateway Foundation
 
-**Rationale:** Every other component sources config.sh and common.sh. Building them first means every subsequent phase starts from a working foundation. The mount-check and space-check utilities in common.sh gate migration and recall — they must exist before any data-moving code is written.
-**Delivers:** `lib/config.sh`, `lib/common.sh`, `~/.modelstore/` state dir, `install.sh` skeleton, shellcheck CI setup
-**Addresses:** Configurable retention period, drive mount validation, space-available check (all P1 table stakes)
-**Avoids:** Hardcoded paths technical debt; `test -d` vs `mountpoint -q` mistake from PITFALLS.md
+**Rationale:** The highest-risk dependency (NeMo Guardrails on aarch64) must be validated before any other work. The asyncio/uvloop patterns and venv invocation conventions established here are load-bearing for all subsequent phases. Three critical pitfalls (LLMRails init, uvloop, Annoy build) must be resolved here, not discovered in Phase 2.
 
-### Phase 2: Interactive Init and HuggingFace Adapter
+**Delivers:** Working Docker container with NeMo Guardrails installed on aarch64; passthrough FastAPI gateway on :8080 forwarding to LiteLLM :4000; structlog middleware; async JSONL trace writer with PII redaction pipeline; API key auth; in-memory rate limiting; verified latency baseline vs. direct LiteLLM.
 
-**Rationale:** Init produces the config that all subsequent phases require. The HF adapter is simpler than Ollama (no blob reference counting) and validates the adapter pattern before tackling the more complex ecosystem. After this phase, manual HF model migration is possible even without automation.
-**Delivers:** `cmd/init.sh` (with gum or read -p fallback), `lib/hf_adapter.sh`, `lib/notify.sh`, whole-directory-as-unit migration logic
-**Addresses:** Interactive init wizard, HF symlink-based transparent access, filesystem tree preview
-**Avoids:** HF internal symlink breakage (Pitfall 3), exFAT cold drive rejection, symlink loop on re-init
+**Addresses:** POST /chat endpoint, auth at ingress, rate limiting, full trace logging
 
-### Phase 3: Ollama Adapter and Usage Tracking
+**Avoids:** LLMRails async init conflict, uvloop incompatibility, Annoy build failure, double-proxy latency, venv activation in systemd, PII in raw traces (design the redaction pipeline here before guardrails are wired)
 
-**Rationale:** Ollama is the more complex adapter (manifest parsing, blob reference counting, server state awareness). Usage tracking via tracker.sh must be built alongside adapters since the retention policy is inert without timestamps. Launcher hook integration completes the tracking signal.
-**Delivers:** `lib/ollama_adapter.sh`, `hooks/tracker.sh`, `~/.modelstore/usage/` manifest directory, launcher hook one-liners
-**Addresses:** Ollama two-ecosystem awareness, usage timestamp tracking, launcher hook integration
-**Avoids:** Ollama blob sharing corruption (Anti-Pattern 5 from ARCHITECTURE.md), `atime` unreliability (Pattern 2), Ollama server restart pitfall (Pitfall 4)
+### Phase 2: Input and Output Guardrails
 
-### Phase 4: Core Migration and Recall
+**Rationale:** Guardrails are the core product value. Build after the gateway foundation is proven. Unicode normalization must be added at the start of this phase, not as a follow-up. Pin Colang version immediately. Build input rails first (lower complexity), then output rails.
 
-**Rationale:** With adapters and usage tracking in place, the migration and recall scripts can be built on solid ground. This is the core value delivery. flock-based concurrency control and atomic symlink swap belong here. The migration cron wrapper is built alongside migrate.sh.
-**Delivers:** `cmd/migrate.sh`, `cmd/recall.sh`, `cron/migrate_cron.sh`, `cron/disk_check_cron.sh`, flock integration, atomic symlink replacement
-**Addresses:** Migration cron, recall script, disk usage warning, drive mount validation (applied in practice)
-**Avoids:** Race condition during migration (Pitfall 1), disk space estimation errors (Pitfall 6), silent cron failure (UX pitfall), notify-send from cron DBUS injection
+**Delivers:** NeMo Guardrails input rails (content filter, PII detection + redaction via presidio, prompt injection detection); NeMo output rails (toxicity, jailbreak); user-editable per-rail policy YAML with thresholds and enable/disable flags; refusal calibration modes (hard block / soft steer / informative); Unicode normalization preprocessing.
 
-### Phase 5: Status, Revert, and CLI Dispatcher
+**Addresses:** Input content filtering, PII detection, prompt injection detection, output toxicity, jailbreak detection, configurable thresholds, refusal calibration
 
-**Rationale:** Status and revert require both adapters and the usage tracking system to be functional. The CLI dispatcher is deliberately last — it's a thin router and adds no new logic. Revert's idempotency and state-file requirements make it the most careful piece of code in the project.
-**Delivers:** `cmd/status.sh`, `cmd/revert.sh`, `bin/modelstore` dispatcher, JSON state file for interrupt-safe operations, `[HOT]`/`[COLD]`/`[BROKEN SYMLINK]` status labels
-**Addresses:** Status command, full revert, single CLI entry point
-**Avoids:** Revert data loss via interrupt (Pitfall 5), `rm -rf` through symlink, silent failure during revert
+**Avoids:** Colang version conflict, Unicode injection evasion, streaming event loop blocking (defer streaming path to Phase 3+)
 
-### Phase 6: Polish — Progress, Dry-run, Logging, Headless
+### Phase 3: Constitutional AI Critique
 
-**Rationale:** These features improve trust and debuggability but do not affect correctness. Adding them after the core is validated means they enhance a working system rather than complicating an unproven one.
-**Delivers:** pv/rsync progress bars, `--dry-run` flag for migrate and revert, per-model migration audit log, NVIDIA Sync / headless `$DISPLAY` detection, recall-on-access launcher hook enhancement
-**Addresses:** P2 features from FEATURES.md — progress bars, dry-run, audit trail, headless compatibility
-**Avoids:** User trust issues (UX pitfalls: silent migration, no progress during revert)
+**Rationale:** Depends on a working output pipeline (Phase 2) and a functioning trace store (Phase 1). Must be designed async-first: critique runs as a background task for interactive requests, with a hard timeout for any synchronous path. Per-principle enable/disable flags must be in place from the start to avoid 3x GPU load on every request.
+
+**Delivers:** Two-pass critique pipeline (generate → judge critique → revise); user-editable constitution YAML; configurable judge model (default: same model via LiteLLM); async/sync split with hard timeout; per-principle enable/disable; critique results written to trace records.
+
+**Addresses:** Constitutional AI self-critique, user-editable constitution, judge-model configurability
+
+**Avoids:** Synchronous critique unbounded latency, monolithic constitution (all principles on all requests)
+
+### Phase 4: Eval Harness and CI Gate
+
+**Rationale:** Eval depends on real trace data from Phase 1–3. This is the inflection point where the project shifts from "does it work" to "does it stay working." Build replay eval first (uses existing traces), then lm-eval integration (two-line config), then CI gate.
+
+**Delivers:** Custom replay eval harness (JSONL prompt dataset → POST /chat → safety metrics); lm-eval-harness config pointing at gateway for generative tasks and LiteLLM for loglikelihood tasks (routed separately to avoid wrong scores); CI/CD promotion gate (fail on safety F1 regression or over-refusal spike).
+
+**Addresses:** Custom replay eval harness, lm-eval-harness integration, CI/CD eval gate
+
+**Avoids:** lm-eval chat endpoint wrong loglikelihood scores (explicit routing split), over-refusal invisible in metrics (track as first-class CI metric)
+
+### Phase 5: Red Teaming
+
+**Rationale:** Requires stable traces (Phase 1), eval harness (Phase 4), and judge model (Phase 3). The red-team generator mines trace failures for adversarial variants — without real failure data, it has no signal. Dataset balance policy must be enforced in code before the first feedback loop is enabled.
+
+**Delivers:** Red-team generator that mines traces for failure patterns; adversarial prompt queue (JSONL) for human review before promotion to eval datasets; Celery + Redis async dispatch for long-running garak scans and deepteam sessions; dataset balance enforcement (adversarial ratio cap in code, not documentation).
+
+**Addresses:** Distributed live red teaming from past critiques/evals/logs
+
+**Avoids:** Red-team feedback loop creating skewed training data (balanced dataset policy, over-refusal CI gate), red-team prompts routed through gateway (generator calls LiteLLM directly)
+
+### Phase 6: HITL Dashboard (Optional)
+
+**Rationale:** Optional per PROJECT.md. Only worth building after trace volume justifies human review. Depends on all previous phases. Gradio is the right technology choice (no frontend build step, handles file reads and form controls natively).
+
+**Delivers:** Gradio review UI on :8501; operator review queue (prioritized by borderline scores, not insertion order); annotation corrections written to corrections store; one-click policy threshold adjustment with diff view + confirmation; adversarial prompt promotion to eval datasets.
+
+**Addresses:** Human-in-the-loop review dashboard, feedback loop into threshold calibration
+
+**Avoids:** HITL review queue overload (priority sort), AI suggestions accepted without review (diff + confirmation required)
 
 ### Phase Ordering Rationale
 
-- Config and common lib precede all other code because they are sourced by every script — no script can be tested without them
-- HF adapter precedes Ollama adapter because HF is structurally simpler and validates the pattern; tackling Ollama first risks discovering adapter design flaws only in the harder case
-- Usage tracking must be built before migration cron is useful — without `~/.modelstore/usage/` timestamps, the stale-model detection query returns everything or nothing
-- Revert is built after migration is proven correct — revert's correctness depends on understanding the exact state migration leaves behind
-- CLI dispatcher is deliberately last; building it first creates an illusion of completeness while core scripts remain unwritten
+- Phase 1 before all others because aarch64 compatibility is a binary gate and the asyncio/uvloop conventions are load-bearing.
+- Phase 2 before Phase 3 because the constitutional critique evaluates model output that has already passed output guardrails — wiring them in reverse produces a worse safety posture during development.
+- Phase 4 before Phase 5 because red-teaming requires an eval harness to measure attack success rate.
+- Phase 6 last because it consumes all other phases' outputs and is explicitly optional.
+
+The architecture's own build order recommendation (ARCHITECTURE.md, Steps 1–13) is consistent with this phase structure and should be followed within each phase.
 
 ### Research Flags
 
 Phases likely needing deeper research during planning:
-- **Phase 3 (Ollama adapter):** Blob reference counting logic requires precise understanding of Ollama's manifest schema; consider a `/gsd:research-phase` to verify manifest JSON structure and confirm whether `OLLAMA_MODELS` env var approach is viable as an alternative to per-blob symlinking
-- **Phase 4 (Migration cron):** DBUS session address injection for `notify-send` from cron has multiple known-broken variants; the specific `gnome-session` `/proc/environ` approach should be verified on the actual DGX Spark before committing to it
-- **Phase 5 (Revert state file):** JSON state file format and interrupt-safety semantics are not fully specified in research; needs design work during planning
 
-Phases with standard patterns (research-phase likely unnecessary):
-- **Phase 1 (Foundation):** Key=value config file, bash sourcing patterns, shellcheck setup are completely standard; skip research-phase
-- **Phase 2 (Init + HF adapter):** HF cache structure is fully documented in official HF docs; adapter logic follows known directory structure; skip research-phase
-- **Phase 6 (Polish):** pv, rsync progress, dry-run flags, log appending are all well-documented standard patterns; skip research-phase
+- **Phase 2 (Streaming guardrails path):** NeMo Guardrails streaming behavior on aarch64 is unverified. Streaming is deferred to P3 in FEATURES.md, but the non-streaming path's thread-pool offloading pattern for synchronous classifiers needs validation against actual NeMo action definitions on this hardware. Recommend a `/gsd:research-phase` for streaming guardrails when the P3 feature is planned.
+- **Phase 3 (CAI latency budget):** The judge model's P95 latency on DGX Spark aarch64 with a local 7B model is unknown. Benchmark before designing the async/sync split — the right timeout value depends on actual hardware numbers. Verify before committing the Phase 3 plan.
+- **Phase 5 (deepteam feedback loop):** deepteam 1.0.6 was released March 2026 and is relatively new. The feedback-loop red-teaming pattern (generating adversarial prompts from historical failure logs) is research-frontier territory. Plan this phase with a research step.
+
+Phases with standard patterns (skip research-phase):
+
+- **Phase 1 (Gateway foundation):** FastAPI + uvicorn + structlog + SQLModel are well-documented. The pitfalls are known and preventable with explicit checklist items. No novel integration patterns.
+- **Phase 4 (Eval harness):** lm-eval-harness OpenAI-compatible endpoint integration is documented by EleutherAI and LiteLLM. The loglikelihood vs. generative endpoint routing split is a known gotcha with a clear fix. Standard pytest patterns for replay harness.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | All core tools verified on DGX Spark host; versions confirmed; HF and Ollama structures from official docs |
-| Features | HIGH | HF/Ollama official docs confirm what internal structure exists; feature set derived from verified filesystem behavior |
-| Architecture | HIGH | Adapter pattern, atomic symlink swap, and dispatcher pattern are established idioms; cron integration patterns verified across multiple sources |
-| Pitfalls | HIGH | Most pitfalls verified against official documentation and known filesystem behavior; a few notify-send/DBUS sources are MEDIUM confidence community-sourced |
+| Stack | HIGH | All packages verified on PyPI with aarch64 compatibility notes. One confirmed risk: Annoy wheels on aarch64 — must verify on DGX Spark before committing to this path. |
+| Features | MEDIUM | Table-stakes features (P1) are well-documented in NeMo and FastAPI ecosystems. Differentiators (CAI, streaming guardrails, red-teaming feedback loop) have academic backing but limited production case studies on local hardware. |
+| Architecture | MEDIUM | Core FastAPI + NeMo library pattern is HIGH confidence. ARM64 NeMo compatibility and streaming guardrail internals are MEDIUM — require on-host validation. |
+| Pitfalls | HIGH | NeMo-specific pitfalls (asyncio, uvloop, Colang versions) verified against official GitHub issues. Unicode evasion backed by arxiv 2504.11168. Integration gotchas verified against official docs. |
 
-**Overall confidence:** HIGH
+**Overall confidence:** MEDIUM
 
 ### Gaps to Address
 
-- **Ollama manifest JSON schema:** Research confirms blobs are referenced from manifests by digest but does not show the exact JSON field paths needed for parsing in `ollama_adapter.sh`. Verify with `cat ~/.ollama/models/manifests/registry.ollama.ai/library/<model>/latest` on the DGX before writing the adapter.
-- **DBUS session address on DGX Spark (aarch64):** The `/proc/$(pgrep -u "$uid" gnome-session)/environ` approach for `notify-send` from cron is sourced from Ubuntu x86 community guides; the GNOME session on aarch64 DGX may use a different process name or DBus socket path. Test this on the actual machine during Phase 4.
-- **Ollama `OLLAMA_MODELS` env var vs symlink approach:** Research mentions `OLLAMA_MODELS` as an alternative to per-blob symlinks but does not fully evaluate it. During Phase 3 planning, decide whether this is simpler than individual blob symlinks for the Ollama adapter.
-- **Revert state file format:** Research recommends a state file for interrupt-safe revert but does not specify its schema. Design this during Phase 5 planning before writing `revert.sh`.
-- **pv 1.10 vs 1.8.5 (apt):** The apt version (1.8.5) lacks `--query` and `--size @PATH`; upstream 1.10.4 has these. Research recommends upstream for best experience but does not specify a minimum required version for the Phase 6 progress feature. Determine during Phase 6 whether 1.8.5 is sufficient.
+- **NeMo Guardrails aarch64 install:** Run `pip install nemoguardrails` in a fresh venv on the DGX Spark before Phase 1 planning is finalized. If Annoy build fails, evaluate building from source in the Docker container using the upstream aarch64 Dockerfile.
+- **Judge model latency on local hardware:** Benchmark a 7B model on DGX Spark aarch64 before committing to the CAI critique architecture in Phase 3. The async/sync split and timeout values depend on this number.
+- **NeMo streaming on aarch64:** Defer streaming guardrails to Phase 3+ and validate NeMo's `chunk_size` streaming API on the actual hardware before planning that phase.
+- **Port 8080 conflict:** ARCHITECTURE.md notes port 8080 is used by code-server (not launched by default). Confirm code-server is not running in the target deployment before assigning 8080 to the gateway.
+- **lm-eval loglikelihood routing:** Verify that the completion endpoint (`:4000`) returns log-probabilities for the target model — vLLM supports this; Ollama's completion endpoint behavior for log-probs needs confirmation on this deployment.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- [HuggingFace Hub Cache Documentation](https://huggingface.co/docs/huggingface_hub/en/guides/manage-cache) — HF blob/snapshot/refs structure, symlink layout, migration unit
-- [Ollama Model Storage Internals (DeepWiki)](https://deepwiki.com/ollama/ollama/4-model-management) — Ollama manifests and blob content-addressing
-- [charmbracelet/gum releases](https://github.com/charmbracelet/gum/releases/tag/v0.17.0) — gum v0.17.0 arm64 apt install procedure
-- [rsync man page (man7.org)](https://man7.org/linux/man-pages/man1/rsync.1.html) — `--remove-source-files`, `--info=progress2` flags
-- [Atomic symlinks — rcrowley](https://rcrowley.org/2010/01/06/things-unix-can-do-atomically.html) — `mv -T` / `rename(2)` atomicity
-- [Linux filesystem timestamps](https://www.howtogeek.com/517098/linux-file-timestamps-explained-atime-mtime-and-ctime/) — `relatime` behavior
-- System tool versions verified directly on DGX Spark host: bash 5.2.21 (aarch64), rsync 3.2.7, pv 1.8.5, inotify-tools 3.22.6.0, shellcheck 0.9.0
-- [ShellCheck official](https://www.shellcheck.net/) — linting capabilities and `-x` flag
+
+- [NeMo Guardrails PyPI](https://pypi.org/project/nemoguardrails/) — version 0.21.0, Python 3.10–3.13, C++ build requirements
+- [NeMo Guardrails Installation Guide](https://docs.nvidia.com/nemo/guardrails/latest/getting-started/installation-guide.html) — aarch64 compiler requirements
+- [NeMo Guardrails Streaming docs](https://docs.nvidia.com/nemo/guardrails/latest/user-guides/advanced/streaming.html) — chunk_size, context_size, stream_first
+- [FastAPI PyPI](https://pypi.org/project/fastapi/) — v0.135.1, Pydantic v2 requirement
+- [lm-evaluation-harness releases](https://github.com/EleutherAI/lm-evaluation-harness/releases) — v0.4.11
+- [LiteLLM + lm-eval tutorial](https://docs.litellm.ai/docs/tutorials/lm_evaluation_harness) — OpenAI-compat endpoint integration
+- [garak PyPI](https://pypi.org/project/garak/) — 0.14.0, Python 3.10–3.12
+- [deepteam PyPI](https://pypi.org/project/deepteam/) — 1.0.6
+- [SQLModel PyPI](https://pypi.org/project/sqlmodel/) — 0.0.37
+- [NeMo Guardrails GitHub Issue #137](https://github.com/NVIDIA/NeMo-Guardrails/issues/137) — LLMRails async init conflict (verified)
+- [NeMo Guardrails GitHub Issue #112](https://github.com/NVIDIA-NeMo/Guardrails/issues/112) — uvloop incompatibility (verified)
+- [Constitutional AI NVIDIA docs](https://docs.nvidia.com/nemo-framework/user-guide/24.09/modelalignment/cai.html) — two-pass pipeline
+- [lm-evaluation-harness API guide](https://github.com/EleutherAI/lm-evaluation-harness/blob/main/docs/API_guide.md) — loglikelihood vs. generative eval modes
 
 ### Secondary (MEDIUM confidence)
-- [Ollama Model Storage article (Medium, Feb 2026)](https://medium.com/@enisbaskapan/how-ollama-stores-models-11fc47f48955) — Ollama blob/manifest structure (consistent with DeepWiki)
-- [notify-send from cron (selivan.github.io)](https://selivan.github.io/2016/07/08/notify-send-from-cron-in-ubuntu.html) — DBUS env injection pattern
-- [flock in cron (DEV Community)](https://dev.to/mochafreddo/understanding-the-use-of-flock-in-linux-cron-jobs-preventing-concurrent-script-execution-3c5h) — cron concurrency prevention pattern
-- [pv + rsync progress (nixCraft)](https://www.cyberciti.biz/faq/show-progress-during-file-transfer/) — pv pipeline pattern
-- [Ollama FAQ](https://docs.ollama.com/faq) — OLLAMA_MODELS env var for custom models directory
-- [HF issue #2038](https://github.com/huggingface/huggingface_hub/issues/2038) — known file lock behavior during downloads (confirms `.lock` file check before migration)
+
+- [NVIDIA Blog: Stream Smarter and Safer](https://developer.nvidia.com/blog/stream-smarter-and-safer-learn-how-nvidia-nemo-guardrails-enhance-llm-output-streaming/) — streaming architecture internals
+- [arxiv 2504.11168](https://arxiv.org/abs/2504.11168) — Unicode character injection achieves 100% guardrail evasion
+- [arxiv 2212.08073](https://arxiv.org/abs/2212.08073) — Constitutional AI: Harmlessness from AI Feedback (Anthropic)
+- [OWASP LLM Top 10 2025](https://cycode.com/blog/the-2025-owasp-top-10-addressing-software-supply-chain-and-llm-risks-with-cycode/) — prompt injection as #1 LLM vulnerability
+- [NeMo Guardrails Colang 2.0 What's Changed](https://docs.nvidia.com/nemo/guardrails/latest/colang-2/whats-changed.html) — Colang 2.0 breaking changes
+- [Existing codebase ARCHITECTURE.md](/.planning/codebase/ARCHITECTURE.md) — existing service ports, Docker patterns (first-party)
+
+### Tertiary (LOW confidence)
+
+- [Refusal Steering arXiv 2512.16602](https://arxiv.org/html/2512.16602) — refusal calibration patterns (needs validation against NeMo specifics)
+- [C-SafeGen OpenReview](https://openreview.net/pdf/dfd7ac77a247ef06493d1b66dd3565ffedb70b24.pdf) — streaming guardrail patterns (academic, not production-validated)
+- [Automatic LLM Red Teaming arXiv 2508.04451](https://arxiv.org/abs/2508.04451) — feedback-loop red teaming architecture (research frontier)
 
 ---
-*Research completed: 2026-03-21*
+*Research completed: 2026-03-22*
 *Ready for roadmap: yes*

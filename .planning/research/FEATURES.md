@@ -1,198 +1,251 @@
 # Feature Research
 
-**Domain:** Tiered model storage / model cache management CLI tool
-**Researched:** 2026-03-21
-**Confidence:** HIGH (core storage mechanics from official HF/Ollama docs; CLI patterns from established tooling)
+**Domain:** AI safety harness — FastAPI gateway wrapping open-source LLMs with guardrails, constitutional critique, evals, and human feedback
+**Researched:** 2026-03-22
+**Confidence:** MEDIUM (stack components well-documented; integration patterns emerging; some areas — streaming guardrails on aarch64, refusal calibration UX — have LOW confidence from single/unverified sources)
+
+---
+
+> **Milestone context:** This is v1.1 of the DGX Toolbox. v1.0 (tiered model storage) is already built.
+> The safety harness is a new Python component that sits in front of the existing LiteLLM proxy.
+> The existing FEATURES.md covered v1.0. This file covers v1.1 only.
+
+---
 
 ## Feature Landscape
 
 ### Table Stakes (Users Expect These)
 
-Features users assume exist. Missing these = product feels incomplete.
+Features users assume exist in any production AI safety gateway. Missing these = harness feels like a toy or a security hole.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| Symlink-based transparent access | HF and Ollama both use symlinks internally; all model consumers (vLLM, transformers, Ollama) resolve symlinks transparently — if tiering breaks this contract, models fail silently | MEDIUM | Must preserve HF blob/snapshot/refs hierarchy. Ollama uses flat blobs + manifests. Symlinks must be relative-path-safe or absolute depending on filesystem boundary. |
-| Drive mount validation before any symlink operation | Broken symlinks caused by unmounted cold drive = silent model load failures; this is the #1 data-loss/corruption risk | LOW | `mountpoint -q /path` check before every migration and recall. Refuse with clear error if cold drive is absent. |
-| Usage timestamp tracking per model | Migration decisions require knowing when a model was last used; without this the retention policy has no signal | LOW | Touch a `.last_used` file or update mtime on first load via launcher hooks. Per-model, not per-blob — track at the model/repo level. |
-| Configurable retention period | Default 14 days is a guess; users may want 7 days on a small hot drive or 60 days if they use models infrequently | LOW | Single config value in `~/.config/modelstore/config` or alongside the tool. Validated on init. |
-| Space-available check before migration | If cold drive is nearly full, migrating would corrupt the destination and leave the source in an inconsistent state | LOW | `df -h` / `stat --file-system --format=%a` check against model size before any `mv`. Abort with error if insufficient. |
-| Status command: what's on each tier | Users need to know which models are hot/cold, sizes, last-used times, and available space without reading raw filesystem | MEDIUM | Table output: model name, tier (hot/cold/symlinked), size, last_used, days_until_migration. Aggregated totals per drive. |
-| Full revert (undo all tiering) | Users need a safe exit path: if drives change or the tool is abandoned, all models must be recoverable to their original locations without data loss | MEDIUM | Move all cold-tier models back to hot, remove all symlinks, restore original directory structure. Non-destructive: never delete. |
-| Single CLI entry point with subcommands | Established pattern for sysadmin tools (git, docker, kubectl); users expect `modelstore <subcommand>` not a collection of ad-hoc scripts | LOW | `modelstore init`, `status`, `migrate`, `recall`, `revert`. Each subcommand dispatches to an individual script for cron/hook compatibility. |
-| Disk usage warning at threshold | If either drive exceeds 98% capacity without warning, users discover the problem only when a download or migration fails — too late | LOW | Cron-invoked check using `df`. Threshold configurable (default 98%). Desktop notification via `notify-send` on GNOME. |
-| Hook existing launchers for usage tracking | Without launcher integration, the `.last_used` timestamps are never updated and the retention policy fires on models currently in active use | LOW | Prepend one-liner `modelstore track <model>` call to vLLM, eval-toolbox, data-toolbox, Unsloth, Ollama launcher scripts. |
+| POST /chat HTTP endpoint | Universal interface — every client (curl, LangChain, custom) expects a chat-compatible endpoint | LOW | FastAPI. OpenAI-compatible schema preferred so existing clients work without changes. Pipeline: input guardrails → model → post-guardrails → response. |
+| Input content filtering (harmful/offensive topics) | Baseline safety: no production gateway ships without some input filter | MEDIUM | NeMo Guardrails Colang 2.0 input rails. Covers hate speech, violence, CSAM categories. Classifier-based (not regex). |
+| Prompt injection detection | OWASP LLM Top 10 #1 vulnerability in 2025 — every gateway must address it | MEDIUM | NeMo Guardrails has built-in injection detection. Alternatively: separate classifier (Lakera Guard, or small fine-tuned model). Rule-based regex as fallback. |
+| PII detection and redaction (input) | Legal compliance (GDPR, CCPA), enterprise requirement — PII in prompts reaching external or shared models is a liability | MEDIUM | NeMo Guardrails has PII rails. Pattern: detect → redact → pass sanitized prompt → un-redact in response. Spacy + presidio work well for named entity PII. |
+| Output toxicity filtering | Users expect the gateway to prevent obviously harmful outputs from reaching clients | MEDIUM | NeMo output rails or Llama Guard 3 as a classifier. Flag or block responses above threshold. |
+| Jailbreak detection (post-model) | Detect when a model was successfully manipulated into producing harmful output despite input guardrails | HIGH | Harder than input filtering — requires evaluating the output in context. LLM-as-judge pattern or fine-tuned classifier. |
+| Full request/response trace logging | Observability is table stakes for any production service — operators need to audit what happened | MEDIUM | Structured JSON logs: timestamp, request_id, user, prompt, guardrail decisions, model output, latency, tokens. OpenTelemetry-compatible. Separate from application logs. |
+| Configurable guardrail enable/disable | Operators need to tune the harness for their use case; hardcoded rails are not usable | LOW | Per-rail config flags in YAML/TOML. No UI required — config file. |
+| Auth at ingress | Any shared gateway must authenticate callers to enforce per-tenant policies | LOW | API key auth via FastAPI middleware. Virtual key per user/team maps to a policy profile. LiteLLM already does this — harness can delegate to LiteLLM's key management or replicate a lightweight version. |
+| Rate limiting | Prevents abuse and protects GPU resources — expected by any team sharing the gateway | LOW | FastAPI middleware or slowapi. Per API key rate limits. Configurable burst + sustained rates. |
 
 ### Differentiators (Competitive Advantage)
 
-Features that set the product apart. Not required, but valuable.
+Features that make this harness more useful than NeMo Guardrails or LiteLLM alone. These are the reason to build a custom harness rather than using an off-the-shelf tool.
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| Interactive init wizard with filesystem tree preview | Existing tools (HF CLI, Ollama) offer no storage placement guidance; a guided setup that shows current usage and lets the user pick mount points reduces misconfiguration on first run | MEDIUM | Use `gum` (Charm) or plain `select` + `read` for drive selection. Show `df -h` and `tree -L 2` output inline. Confirm folder creation before writing anything. Avoids needing external TUI dependency if `gum` is absent. |
-| Progress bars during migration and revert | Moving multi-GB model files with no feedback looks like a hang; `pv` or rsync `--info=progress2` makes the operation feel safe and inspectable | LOW | Use `pv` if available, fall back to rsync `--info=progress2`, fall back to silent `mv` with a spinner. Detect capability at runtime. |
-| Reinit with live migration (reconfigure drives) | If the user wants to swap hot/cold drive assignments or replace a drive, they need a path that moves all models to the new layout without a full revert+init cycle | HIGH | Computes a diff between current config and desired config, migrates only what changed. Complexity: must handle partial migration on failure, rollback logic. |
-| Two-ecosystem awareness (HF + Ollama) | Tools like `huggingface-cli` only manage HF cache; Ollama's blob+manifest structure requires different traversal logic. Supporting both in one tool is unique for DGX Spark workflows | MEDIUM | HF: traverse `models--*/blobs/` for actual data, measure via blob sizes, symlink at snapshot level. Ollama: traverse `blobs/sha256-*` and `manifests/`, measure blob sizes, symlink entire blobs dir or manifests dir. Must handle HF's relative symlinks correctly when moving blobs. |
-| Recall-on-access (automatic hot promotion) | Users shouldn't need to run `modelstore recall` manually before launching a model; launcher hooks can detect cold-tier models and recall transparently before the loader runs | MEDIUM | Launcher hook checks if model path is a symlink pointing to cold tier; if so, runs recall before exec. Adds latency to first launch after cold migration — user should be informed via notify-send. |
-| Dry-run mode for migrate and revert | Allows users to preview exactly what would be moved without committing; critical for trust-building with a tool that moves multi-GB files | LOW | `--dry-run` flag: print planned operations with sizes, space deltas, symlink targets. No filesystem writes. |
-| NVIDIA Sync / headless compatibility | Scripts invoked via Sync have no TTY; interactive prompts must be skipped, output must be log-friendly, and `notify-send` must target the correct DBUS session | LOW | Detect `$DISPLAY`/`$DBUS_SESSION_BUS_ADDRESS`; skip TUI prompts and fall back to non-interactive defaults when not set. Log to file when no TTY. |
-| Per-model migration log / audit trail | When troubleshooting why a model is cold, users want a timestamped record of migration and recall events | LOW | Append-only log at `~/.local/share/modelstore/migrations.log`. Fields: timestamp, model, action (migrate/recall/init/revert), source, destination, size. |
+| Constitutional AI two-pass self-critique | Model critiques its own response against user-defined principles before delivery — catches value misalignment that classifiers miss | HIGH | Two-pass: (1) model generates response, (2) judge model critiques against constitution, (3) revise or refuse if critique fails threshold. Configurable judge model (default: same model, swappable to a stronger judge). Adds 1-2 inference round trips per request. |
+| User-editable constitutional principles | Most guardrail products hardcode principles; letting users define their own constitution makes the harness domain-adaptable | MEDIUM | Constitution stored as a YAML/text file. Versioned with git. Each principle is a natural-language statement. UI: text editor + validation script. Judge model can summarize how well current constitution covers observed failures. |
+| User-tunable guardrail rules with judge-guided suggestions | Users can review which guardrails fired, adjust thresholds, and get AI-generated suggestions for improving rules based on observed false positives/negatives | HIGH | Per-rail threshold in config. Judge model analyzes recent trace logs and suggests threshold adjustments or new rules. Suggestions are human-readable, not auto-applied. Closes the loop between observed behavior and policy. |
+| Refusal calibration (helpful refusal + soft steering) | Binary block/allow is too coarse — users want the model to redirect rather than refuse, and to tune how sensitive the refusal trigger is | HIGH | Three modes: hard block (stop), soft steer (redirect to safe paraphrase), informative refusal (explain why + suggest alternative). Threshold slider per guardrail. Over-refusal is a known 2025 research problem — calibration tooling is novel. |
+| Streaming guardrails with per-N-token evaluation | Allows streaming responses while still applying safety checks — without this, guardrails force buffering, destroying streaming UX | HIGH | Evaluate every N tokens (configurable, default 128-256) for lightweight checks (PII, toxicity keywords). Full evaluation at end-of-stream for deeper checks. Redact or truncate retroactively if end-of-stream eval fails. NeMo Guardrails added streaming support in recent versions; verify on aarch64. |
+| Custom replay eval harness against POST /chat | Operators can replay historical conversations against the live gateway to measure safety regressions — most harnesses have no built-in eval tooling | HIGH | Eval dataset (JSON) → replay against /chat → compare guardrail decisions vs expected labels → produce safety/refusal metrics (precision, recall, F1 per category). Run locally or in CI. |
+| lm-eval-harness integration for capability benchmarks | Capability regression after tuning guardrails is real — need to verify model quality didn't degrade | MEDIUM | lm-eval-harness supports local endpoints via its API mode. Configure to hit /chat endpoint. Standard benchmarks: MMLU, HellaSwag, TruthfulQA. CI gate: block if benchmark delta > threshold. |
+| CI/CD eval integration with promotion gate | Prevents shipping a guardrail config update that regresses safety or capability without human review | MEDIUM | GitHub Actions (or local CI): run replay eval + lm-eval on every PR to guardrail config. Fail if safety F1 drops or false positive rate rises above threshold. Configurable gates per metric. |
+| Distributed live red teaming from past critiques/evals/logs | Automatically generates adversarial prompts from observed failure patterns — a feedback-driven attack surface that grows with usage | HIGH | Analyze trace logs + eval failures to extract failure patterns. Use judge model to generate adversarial variations. Run against /chat endpoint. Rank by attack success rate. Surface results for human review. PyRIT or custom orchestrator. This is research-frontier territory — novel for a local toolbox. |
+| Human-in-the-loop review dashboard | Allows operators to review flagged outputs, correct labels, and feed corrections back into threshold calibration and fine-tuning data | HIGH | Web UI (lightweight — FastAPI + HTMX or a simple React page). Shows flagged traces, guardrail decisions, constitutional critique. Operator can approve/reject/relabel. Corrections stored in a labeled dataset. Optional: corrections trigger threshold recalibration. |
+| Feedback loop into threshold calibration and fine-tuning data | Human corrections and eval results automatically inform guardrail threshold adjustments and produce a labeled dataset for future fine-tuning | HIGH | Labeled correction events → compute per-rail precision/recall at current threshold → suggest new threshold (Bayesian update or simple percentile). Export labeled dataset in SFT format (prompt, response, label). Does not auto-apply changes — always human-reviewed. |
 
 ### Anti-Features (Commonly Requested, Often Problematic)
 
-Features that seem good but create problems.
-
 | Feature | Why Requested | Why Problematic | Alternative |
 |---------|---------------|-----------------|-------------|
-| Automatic model downloading / pulling | "While you're managing storage, also download models for me" | Out of scope — HF and Ollama already have download tools; adding download logic duplicates functionality and introduces auth complexity, network error handling, and resume logic that have nothing to do with tiering | Let `huggingface-cli download` and `ollama pull` handle downloads; modelstore only manages what's already on disk |
-| Per-model pin (always keep on hot) | "Some models I always want on the hot drive" | Introduces a per-model config database, UI to manage pins, and exception logic in every migration code path. Complexity multiplies for little gain given the two-tier design | Set a very long retention period (e.g., 3650 days) globally if the user rarely wants migration, or use a longer cold threshold for the entire store |
-| RAID / multi-drive pooling | "Use all my drives as one hot pool" | Requires volume management (LVM, ZFS, mdadm), filesystem expertise, and dramatically changes the architecture from two-tier symlink to block-level storage. Scope explosion | Document that external NVMe is the one cold tier; users who need pooling should set up LVM before running init |
-| Cloud storage tiering (S3, GCS) | "Move models to S3 when cold" | Network latency on recall makes models unusable for inference workflows. Auth credential management adds attack surface. Recall could take minutes or hours for multi-GB models | Cloud tier is architecturally incompatible with inference workloads; document this explicitly and suggest dedicated backup tools (rclone) for archival |
-| Interactive TUI for daily migration decisions | "Show me each model and ask hot/cold before migrating" | Daily cron migration must be headless and non-interactive. A TUI for this inverts the automation value proposition | Provide `modelstore status` for manual review and `modelstore migrate --dry-run` for preview; let the cron run unattended |
-| Model deduplication across HF and Ollama | "If HF and Ollama both have the same base weights, store once" | HF and Ollama use different content-addressing schemes (SHA256 of file content vs. SHA256 of OCI-style layers); cross-ecosystem dedup requires re-hashing all blobs and building a new index. Risk of data corruption outweighs storage savings | Each ecosystem manages its own dedup internally (HF blobs are already deduplicated within a repo; Ollama blobs are deduplicated across models sharing layers) |
+| Auto-apply guardrail threshold updates | "Have the AI tune itself" — seems like closing the loop automatically | Creates runaway feedback: a miscalibrated judge lowers thresholds based on false-negative feedback, making the harness progressively less safe. Race condition between eval signal and real traffic. | Surface suggested thresholds as a PR diff for human review. Automate the suggestion, not the application. |
+| Embedding guardrails into the model via fine-tuning (automated) | "Train the model to refuse by default" | Fine-tuning on harness-generated refusals without careful curation creates over-refusal (model refuses benign requests). This is the core problem the 2025 refusal calibration literature is trying to solve. | Use inference-time guardrails for control; fine-tuning data should be curated from human-reviewed corrections only. |
+| Synchronous blocking guardrails on every token (full streaming block) | "Check every token for safety" | Per-token LLM-based evaluation adds O(N) round trips, making streaming unusable. Latency multiplies with response length. | Batch every N tokens (128-256) for lightweight checks; reserve full evaluation for end-of-stream. Redact retroactively if needed. |
+| Web UI for policy / constitution editing | "WYSIWYG editor for guardrail rules" | Introduces auth, session management, CSRF, XSS surface area for what is essentially a config file editor. A CMS for a config file. | Policies are YAML/text files versioned in git. The judge model generates suggestions as text; operator applies with a text editor. This is explicitly out of scope in PROJECT.md. |
+| Multi-tenant policy database with per-user rules | "Each user gets their own constitution" | Massive config management complexity. Per-user state in a database for what is currently a stateless gateway. Requires migrations, backups, conflict resolution. | Per-API-key policy profiles in config files. Each key maps to a named policy set. Cover 90% of multi-tenant needs without a database. |
+| Real-time guardrail updates without restart | "Hot-reload policies without downtime" | Config hot-reload introduces race conditions between in-flight requests and new policy state. Silent policy drift is harder to audit than versioned deploys. | Versioned config files + fast restart (FastAPI starts in <1s). Canary deploy new policy to a secondary instance first. |
+| Replacing LiteLLM with a custom model router | "The harness should also route models" | LiteLLM already handles routing, load balancing, and multi-provider support. Rebuilding this in the harness duplicates work and loses LiteLLM's ecosystem integrations. | Harness calls LiteLLM as the model backend. Model routing stays in LiteLLM. Harness is safety-only. |
 
 ## Feature Dependencies
 
 ```
-[Usage Timestamp Tracking]
-    └──requires──> [Launcher Hook Integration]
-                       └──enables──> [Recall-on-Access]
+[Auth at Ingress]
+    └──gates──> [POST /chat endpoint] (unauthenticated requests rejected before pipeline)
 
-[Interactive Init Wizard]
-    └──produces──> [Config File (hot/cold paths, retention period)]
-                       └──required by──> [Migration Cron]
-                       └──required by──> [Recall Script]
-                       └──required by──> [Status Command]
-                       └──required by──> [Revert]
-                       └──required by──> [Reinit/Reconfigure]
+[POST /chat endpoint]
+    └──requires──> [Input Content Filtering]
+    └──requires──> [PII Detection (input)]
+    └──requires──> [Prompt Injection Detection]
+    └──produces──> [Model Response]
+    └──requires──> [Output Toxicity Filtering]
+    └──requires──> [Jailbreak Detection (post-model)]
+    └──produces──> [Trace Log Entry]
 
-[Drive Mount Validation]
-    └──gates──> [Migration Cron]
-    └──gates──> [Recall Script]
-    └──gates──> [Revert]
+[Constitutional AI Self-Critique]
+    └──requires──> [POST /chat pipeline] (critique runs post-model, pre-delivery)
+    └──requires──> [User-Editable Constitutional Principles] (critique needs a constitution to evaluate against)
+    └──enhances──> [Output Toxicity Filtering] (constitutional critique catches value misalignment classifiers miss)
 
-[Space-Available Check]
-    └──gates──> [Migration Cron]
-    └──gates──> [Recall Script]
+[User-Tunable Guardrail Rules with Judge Suggestions]
+    └──requires──> [Full Trace Logging] (judge reads trace history to make suggestions)
+    └──requires──> [Configurable Guardrail Enable/Disable] (tuning means changing config)
+    └──enhances──> [Constitutional AI Self-Critique] (same judge model can suggest constitution edits)
 
-[Migration Cron]
-    └──requires──> [Symlink-Based Transparent Access]
-    └──requires──> [Usage Timestamp Tracking]
-    └──requires──> [Drive Mount Validation]
-    └──requires──> [Space-Available Check]
+[Refusal Calibration]
+    └──requires──> [Configurable Guardrail Enable/Disable] (threshold is a per-rail config value)
+    └──requires──> [Full Trace Logging] (calibration evidence comes from observed decisions)
+    └──enhances──> [Output Toxicity Filtering]
+    └──enhances──> [Jailbreak Detection]
 
-[Revert]
-    └──requires──> [Drive Mount Validation] (cold drive must be mounted to read from it)
-    └──conflicts──> [Migration Cron running concurrently] (lock file needed)
+[Streaming Guardrails]
+    └──requires──> [POST /chat endpoint with streaming mode]
+    └──requires──> [Input Content Filtering] (lightweight checks adapted for streaming)
+    └──requires──> [Output Toxicity Filtering] (adapted for partial buffers)
+    └──conflicts──> [Synchronous full-evaluation per token] (latency incompatible)
 
-[Reinit/Reconfigure]
-    └──requires──> [Interactive Init Wizard] (for new config)
-    └──requires──> [Migration Cron logic] (to move models to new layout)
-    └──conflicts──> [Revert running concurrently]
+[Custom Replay Eval Harness]
+    └──requires──> [POST /chat endpoint] (replays hit live gateway)
+    └──requires──> [Full Trace Logging] (eval compares against logged decisions)
+    └──produces──> [Safety/Refusal Metrics]
 
-[Progress Bars]
-    └──enhances──> [Migration Cron]
-    └──enhances──> [Recall Script]
-    └──enhances──> [Revert]
-    └──enhances──> [Reinit/Reconfigure]
+[lm-eval-harness Integration]
+    └──requires──> [POST /chat endpoint with OpenAI-compatible API] (lm-eval uses OpenAI client)
+    └──produces──> [Capability Benchmark Results]
 
-[Disk Usage Warning]
-    └──requires──> [Config File] (to know which drives to monitor)
-    └──independent of──> [Migration Cron] (separate cron job or combined)
+[CI/CD Eval Integration]
+    └──requires──> [Custom Replay Eval Harness] (safety regression gate)
+    └──requires──> [lm-eval-harness Integration] (capability regression gate)
+    └──produces──> [Promotion Gate Pass/Fail]
+
+[Distributed Live Red Teaming]
+    └──requires──> [Full Trace Logging] (attack generation uses past failures as seeds)
+    └──requires──> [Custom Replay Eval Harness] (generated attacks are evaluated via replay)
+    └──requires──> [Constitutional AI Self-Critique] (judge model used to score attack success)
+    └──enhances──> [Human-in-the-Loop Review Dashboard] (red team results surfaced for review)
+
+[Human-in-the-Loop Review Dashboard]
+    └──requires──> [Full Trace Logging] (dashboard reads trace store)
+    └──requires──> [Custom Replay Eval Harness] (eval results surfaced in dashboard)
+    └──produces──> [Labeled Correction Events]
+
+[Feedback Loop into Threshold Calibration]
+    └──requires──> [Human-in-the-Loop Review Dashboard] (corrections are the input signal)
+    └──requires──> [Refusal Calibration] (threshold update is the output)
+    └──requires──> [Full Trace Logging] (historical signal for calibration computation)
+    └──produces──> [Fine-Tuning Dataset] (labeled export)
 ```
 
 ### Dependency Notes
 
-- **Config File is the backbone:** Every operational feature depends on the config produced by init. Init must be Phase 1.
-- **Drive mount validation gates all data movement:** Must be implemented as a shared function in `lib.sh` before any migration, recall, or revert code is written.
-- **Usage tracking requires launcher hooks:** The retention policy is inert without timestamps. Launchers must be hooked before migration cron is useful.
-- **Revert and migration must not run concurrently:** A simple lock file (`/tmp/modelstore.lock`) prevents race conditions when both are triggered.
-- **Recall-on-access is an enhancement of recall, not a replacement:** Manual `modelstore recall <model>` must work standalone; the launcher hook is additive.
+- **POST /chat pipeline is the backbone.** Every other feature is either a pre-condition, a stage within, or an observer of this pipeline. It must be built first.
+- **Full trace logging must be wired before eval, red teaming, or calibration.** Without logs, there is no signal for any feedback feature.
+- **Constitutional AI requires a working judge model.** The judge model call adds latency; it should be configurable to skip in low-latency contexts.
+- **Streaming guardrails conflict with full synchronous evaluation.** These are different operating modes, not the same feature. The harness must decide at request time which mode applies (streaming vs. non-streaming clients).
+- **Human-in-the-loop dashboard is optional but gates the feedback loop.** Without human corrections, threshold calibration has no reliable input signal. Auto-calibration without human review is an anti-feature (see above).
+- **Red teaming is the most dependent feature.** It requires logging, eval harness, and judge model. Do not start it until those are stable.
+- **Existing infrastructure dependencies:** LiteLLM proxy (model backend), existing launcher scripts (not modified by harness), existing NVMe storage (models accessible at same paths).
 
 ## MVP Definition
 
-### Launch With (v1)
+### Launch With (v1.1 core)
 
-Minimum viable product — what's needed to validate the concept.
+Minimum viable harness — validates that the pipeline works end-to-end and safety checks run correctly before building the feedback/eval stack on top.
 
-- [ ] Interactive init wizard — selects hot/cold paths, validates mounts, creates config, creates directories, no data moved
-- [ ] Usage timestamp tracking + launcher hooks — `modelstore track <model>` called from each launcher; touches `.last_used` file
-- [ ] Migration cron script — reads config, checks mount + space, finds stale models (> retention days), `mv` + creates symlinks
-- [ ] Recall script — detects cold-tier model, checks mount + space, `mv` back, replaces symlink, resets timestamp
-- [ ] Status command — table of all models: tier, size, last_used, days_until_migration; drive space summary
-- [ ] Drive mount validation (shared lib function) — prerequisite for migration and recall
-- [ ] Space-available check (shared lib function) — prerequisite for migration and recall
-- [ ] Disk usage warning cron — `notify-send` when either drive > 98%
-- [ ] Full revert — moves all cold models back, removes all symlinks; non-destructive
+- [ ] FastAPI POST /chat endpoint with OpenAI-compatible request/response schema — core pipeline stub
+- [ ] Auth at ingress: API key validation, per-key policy profile config
+- [ ] Rate limiting per API key
+- [ ] NeMo Guardrails integration: input content filter, PII detection, prompt injection detection
+- [ ] Post-model output rails: toxicity filter, jailbreak detection (NeMo output rails or Llama Guard)
+- [ ] Constitutional AI two-pass self-critique with configurable judge model
+- [ ] User-editable constitution (YAML file, validated on startup)
+- [ ] Configurable per-rail thresholds and enable/disable flags (YAML config)
+- [ ] Refusal calibration: hard block / soft steer / informative refusal modes
+- [ ] Full structured trace logging (JSON, append-only, request_id indexed)
 
-### Add After Validation (v1.x)
+### Add After Validation (v1.1 eval and feedback)
 
-Features to add once core is working.
+Add once the core pipeline is proven correct. These features require stable logs as their data source.
 
-- [ ] Progress bars (pv / rsync fallback) — add after migration/recall is confirmed correct; visual polish
-- [ ] Dry-run mode for migrate and revert — add when users start asking "what would happen if..."
-- [ ] Per-model migration log / audit trail — add when debugging needs arise
-- [ ] Recall-on-access via launcher hooks — add after manual recall is stable and tested
-- [ ] NVIDIA Sync / headless compatibility hardening — add when Sync integration is being wired up
+- [ ] Custom replay eval harness against POST /chat — trigger: first time you want to measure whether a config change improved or regressed safety
+- [ ] lm-eval-harness integration — trigger: concern that guardrail tuning is hurting model capability
+- [ ] CI/CD eval integration — trigger: any config change going to a shared deployment
+- [ ] User-tunable guardrail rules with judge-guided suggestions — trigger: operators want AI help with threshold tuning, not just manual adjustment
 
-### Future Consideration (v2+)
+### Future Consideration (v1.1 advanced)
 
-Features to defer until product-market fit is established.
+Defer until core and eval stack are stable. These are high-complexity, high-value features that require the simpler features as a foundation.
 
-- [ ] Reinit/reconfigure with live migration — high complexity; defer until user actually needs to swap drives
-- [ ] Two-ecosystem awareness improvements — deeper HF blob-level analysis (tracking individual blob last_used across shared revisions); defer until simpler model-level tracking proves insufficient
-- [ ] Interactive deletion TUI (like huggingface-cli delete-cache) — useful but not needed for core tiering workflow
+- [ ] Streaming guardrails with per-N-token evaluation — defer: streaming support in NeMo on aarch64 needs validation; adds architectural complexity; streaming clients are a secondary use case for a local DGX workbench
+- [ ] Distributed live red teaming — defer: requires stable trace logs, eval harness, and judge model; research-frontier complexity; ship after eval harness is proven
+- [ ] Human-in-the-loop review dashboard — defer: optional per PROJECT.md; high implementation cost (UI); valuable only after trace volume justifies it
+- [ ] Feedback loop into threshold calibration and fine-tuning data export — defer: requires human-in-the-loop corrections as input; builds on HITL dashboard
 
 ## Feature Prioritization Matrix
 
 | Feature | User Value | Implementation Cost | Priority |
 |---------|------------|---------------------|----------|
-| Interactive init wizard | HIGH | MEDIUM | P1 |
-| Drive mount validation | HIGH | LOW | P1 |
-| Usage timestamp tracking | HIGH | LOW | P1 |
-| Launcher hook integration | HIGH | LOW | P1 |
-| Migration cron | HIGH | MEDIUM | P1 |
-| Recall script | HIGH | MEDIUM | P1 |
-| Status command | HIGH | MEDIUM | P1 |
-| Space-available check | HIGH | LOW | P1 |
-| Disk usage warning | MEDIUM | LOW | P1 |
-| Full revert | HIGH | MEDIUM | P1 |
-| Progress bars | MEDIUM | LOW | P2 |
-| Dry-run mode | MEDIUM | LOW | P2 |
-| Recall-on-access (launcher) | MEDIUM | MEDIUM | P2 |
-| Per-model migration log | LOW | LOW | P2 |
-| Headless/Sync compatibility | MEDIUM | LOW | P2 |
-| Reinit/reconfigure | MEDIUM | HIGH | P3 |
-| Interactive deletion TUI | LOW | MEDIUM | P3 |
+| POST /chat endpoint + pipeline | HIGH | LOW | P1 |
+| Auth + rate limiting | HIGH | LOW | P1 |
+| Input content filter (NeMo) | HIGH | MEDIUM | P1 |
+| PII detection + redaction | HIGH | MEDIUM | P1 |
+| Prompt injection detection | HIGH | MEDIUM | P1 |
+| Output toxicity filter | HIGH | MEDIUM | P1 |
+| Jailbreak detection (post-model) | HIGH | HIGH | P1 |
+| Constitutional AI self-critique | HIGH | HIGH | P1 |
+| User-editable constitution | HIGH | MEDIUM | P1 |
+| Configurable per-rail thresholds | HIGH | LOW | P1 |
+| Refusal calibration modes | HIGH | HIGH | P1 |
+| Full trace logging | HIGH | MEDIUM | P1 |
+| Custom replay eval harness | HIGH | HIGH | P2 |
+| lm-eval-harness integration | MEDIUM | MEDIUM | P2 |
+| CI/CD eval integration | HIGH | MEDIUM | P2 |
+| Judge-guided guardrail suggestions | MEDIUM | HIGH | P2 |
+| Streaming guardrails | MEDIUM | HIGH | P3 |
+| Distributed live red teaming | MEDIUM | HIGH | P3 |
+| Human-in-the-loop dashboard | MEDIUM | HIGH | P3 |
+| Feedback loop + fine-tuning export | MEDIUM | HIGH | P3 |
 
 **Priority key:**
-- P1: Must have for launch
-- P2: Should have, add when possible
-- P3: Nice to have, future consideration
+- P1: Must have for launch (v1.1 core)
+- P2: Should have — add after core is validated
+- P3: Nice to have — future milestone
 
 ## Competitor Feature Analysis
 
-| Feature | huggingface-cli cache | Ollama built-in | modelstore (our approach) |
-|---------|----------------------|-----------------|--------------------------|
-| Cache inspection / status | `hf cache ls` with size, last_accessed, refs | `ollama list` (name, size, modified) | Unified status across both ecosystems: tier, size, last_used, days_until_migration |
-| Cache deletion | `hf cache rm` / `hf cache prune`; interactive TUI | `ollama rm <model>` | Not a deletion tool — tiering only; deletion left to native tools |
-| Automatic tiering / migration | None — manual deletion only | None — single flat directory | Core value: automated hot→cold migration based on LRU retention policy |
-| Symlink management | Internal only (blobs→snapshots within cache) | Not exposed | Cross-filesystem symlinks: hot drive ↔ cold drive |
-| Drive space monitoring | None | None | cron-based `notify-send` warnings at configurable threshold |
-| Recall / hot promotion | None — re-download only | None — re-download only | `modelstore recall <model>` moves from cold back to hot without re-downloading |
-| Interactive setup | None | None | Guided init wizard with drive selection and directory confirmation |
-| Cron / headless operation | Partial (no cron integration) | None | First-class: individual scripts designed for cron and Sync invocation |
+| Feature | NeMo Guardrails (standalone) | LiteLLM (existing) | This harness |
+|---------|------------------------------|---------------------|--------------|
+| Input content filtering | Yes — Colang 2.0 input rails | No — routing only | NeMo integration |
+| PII detection | Yes — built-in rail | No | NeMo + Presidio |
+| Prompt injection detection | Yes | No | NeMo |
+| Output toxicity filtering | Yes — output rails | No | NeMo output rails |
+| Constitutional AI critique | No | No | Custom two-pass pipeline |
+| User-editable constitution | No | No | YAML config + judge model |
+| Guardrail threshold tuning UI | No | No | Config file + judge suggestions |
+| Refusal calibration modes | No — binary block | No | Custom: hard/soft/informative |
+| Streaming guardrails | Partial (recently added) | N/A | NeMo streaming + N-token batching |
+| Full trace logging | Partial (callback hooks) | Yes (request logs) | Structured JSON, OpenTelemetry |
+| Replay eval harness | No | No | Custom |
+| lm-eval-harness integration | No | No | API adapter |
+| CI/CD eval gate | No | No | Custom runner + gates |
+| Distributed red teaming | No | No | Custom (PyRIT/judge-based) |
+| HITL review dashboard | No | No | Optional web UI |
+| Feedback loop calibration | No | No | Custom |
+| aarch64 support | Partial (C++ compile required) | Yes | Verified at setup |
 
 ## Sources
 
-- [HuggingFace Hub Cache Management (official docs)](https://huggingface.co/docs/huggingface_hub/en/guides/manage-cache) — HIGH confidence
-- [Ollama Model Storage: Blobs and Manifests (Medium, 2026)](https://medium.com/@enisbaskapan/how-ollama-stores-models-11fc47f48955) — MEDIUM confidence
-- [Ollama Model Management (DeepWiki)](https://deepwiki.com/ollama/ollama/4-model-management) — MEDIUM confidence
-- [huggingface_hub RFC: Revamp hf cache (GitHub, Oct 2025)](https://github.com/huggingface/huggingface_hub/issues/3432) — HIGH confidence (identifies known UX gaps in existing tools)
-- [pv + rsync progress bar patterns (nixCraft, Baeldung)](https://www.cyberciti.biz/faq/show-progress-during-file-transfer/) — HIGH confidence
-- [gum interactive CLI (Charm)](https://www.x-cmd.com/pkg/gum/) — MEDIUM confidence
-- [Cache replacement policies (Wikipedia)](https://en.wikipedia.org/wiki/Cache_replacement_policies) — HIGH confidence for LRU theory
+- [NeMo Guardrails Developer Guide (NVIDIA, 2025–2026)](https://docs.nvidia.com/nemo/guardrails/latest/index.html) — HIGH confidence
+- [NeMo Guardrails Streaming Blog (NVIDIA Technical Blog)](https://developer.nvidia.com/blog/stream-smarter-and-safer-learn-how-nvidia-nemo-guardrails-enhance-llm-output-streaming/) — MEDIUM confidence (streaming feature exists; aarch64 behavior not confirmed)
+- [NeMo Guardrails GitHub](https://github.com/NVIDIA-NeMo/Guardrails) — HIGH confidence for feature list
+- [NeMo Guardrails aarch64 installation notes](https://docs.nvidia.com/nemo/guardrails/latest/getting-started/installation-guide.html) — MEDIUM confidence (requires C++ toolchain; potential annoy compilation issues on ARM)
+- [OWASP LLM Top 10 2025 — Prompt Injection #1](https://cycode.com/blog/the-2025-owasp-top-10-addressing-software-supply-chain-and-llm-risks-with-cycode/) — HIGH confidence
+- [Constitutional AI: Harmlessness from AI Feedback (Anthropic, arXiv 2212.08073)](https://arxiv.org/abs/2212.08073) — HIGH confidence for the technique; inference-time application is an extension of the training methodology
+- [C3AI: Crafting and Evaluating Constitutions (ACM Web Conf 2025)](https://dl.acm.org/doi/10.1145/3696410.3714705) — MEDIUM confidence for constitution design patterns
+- [Refusal Steering: Fine-grained Control over LLM Refusal Behaviour (arXiv 2512.16602)](https://arxiv.org/html/2512.16602) — MEDIUM confidence for refusal calibration patterns
+- [SafeConstellations: Steering LLM Safety to Reduce Over-Refusals (arXiv 2508.11290)](https://arxiv.org/html/2508.11290v1) — MEDIUM confidence
+- [C-SafeGen: Certified Safe LLM Generation with Claim-Based Streaming Guardrails](https://openreview.net/pdf/dfd7ac77a247ef06493d1b66dd3565ffedb70b24.pdf) — MEDIUM confidence for streaming guardrail patterns
+- [LLM Guardrails Best Practices (Datadog, 2025)](https://www.datadoghq.com/blog/llm-guardrails-best-practices/) — MEDIUM confidence for production patterns
+- [Automatic LLM Red Teaming (arXiv 2508.04451)](https://arxiv.org/abs/2508.04451) — MEDIUM confidence for red teaming architecture
+- [lm-evaluation-harness (EleutherAI)](https://github.com/EleutherAI/lm-evaluation-harness) — HIGH confidence for capability benchmarks
+- [Human-in-the-Loop Review Workflows for LLM Applications (Comet, 2025)](https://www.comet.com/site/blog/human-in-the-loop/) — MEDIUM confidence for HITL patterns
+- [End-to-End LLM Observability in FastAPI with OpenTelemetry (freeCodeCamp)](https://www.freecodecamp.org/news/build-end-to-end-llm-observability-in-fastapi-with-opentelemetry/) — MEDIUM confidence for trace logging patterns
+- [Top LLM Gateways 2025 (Maxim AI)](https://www.getmaxim.ai/articles/top-5-llm-gateways-in-2025-the-definitive-guide-for-production-ai-applications/) — MEDIUM confidence for table stakes baseline
 
 ---
-*Feature research for: Tiered model storage / model cache management CLI (DGX Spark)*
-*Researched: 2026-03-21*
+*Feature research for: AI safety harness / FastAPI gateway (DGX Toolbox v1.1)*
+*Researched: 2026-03-22*
