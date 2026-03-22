@@ -71,8 +71,8 @@ Requirements for the AI safety harness milestone. Each maps to roadmap phases.
 ### Gateway & Routing
 
 - [ ] **GATE-01**: User can send POST /v1/chat/completions requests through the safety harness gateway
-- [ ] **GATE-02**: User authenticates via API key with per-tenant identity attached to each request
-- [ ] **GATE-03**: Requests are rate-limited per tenant with configurable limits
+- [x] **GATE-02**: User authenticates via API key with per-tenant identity attached to each request
+- [x] **GATE-03**: Requests are rate-limited per tenant with configurable limits
 - [ ] **GATE-04**: Gateway proxies to LiteLLM for model-agnostic model invocation
 - [ ] **GATE-05**: User can bypass the harness and route directly to LiteLLM when safety pipeline is not needed
 
@@ -205,8 +205,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DOCS-03 | Phase 4 | Complete |
 | DOCS-04 | Phase 4 | Complete |
 | GATE-01 | Phase 5 | Pending |
-| GATE-02 | Phase 5 | Pending |
-| GATE-03 | Phase 5 | Pending |
+| GATE-02 | Phase 5 | Complete |
+| GATE-03 | Phase 5 | Complete |
 | GATE-04 | Phase 5 | Pending |
 | GATE-05 | Phase 5 | Pending |
 | TRAC-01 | Phase 5 | Pending |
