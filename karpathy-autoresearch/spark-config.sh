@@ -1,27 +1,38 @@
 #!/usr/bin/env bash
-# DGX Spark tuning for 128 Blackwell CUDA cores
-# H100 has 16,896 CUDA cores — Spark has ~0.75% of that compute.
+# DGX Spark tuning for NVIDIA Blackwell GB10 GPU
+#
+# Hardware specs:
+#   CUDA Cores:   6,144
+#   Tensor Cores: 192 (5th Generation)
+#   RT Cores:     48 (4th Generation)
+#   Architecture: NVIDIA Blackwell (GB10)
+#   Memory:       128 GB unified LPDDR5x
+#
+# H100 comparison: 16,896 CUDA cores / 80 GB HBM3 — Spark has ~36% of H100 CUDA
+# cores but 60% more memory (unified). Memory-bound workloads benefit; compute-bound
+# workloads need reduced parallelism.
+#
 # These overrides are applied via sed to train.py/prepare.py after clone/pull.
 
 # --- Model Architecture ---
-SPARK_DEPTH=4              # Reduce from default (likely 12+) — fewer transformer layers
-SPARK_TOTAL_BATCH_SIZE=4   # Reduce from default — fits in limited GPU memory
-SPARK_DEVICE_BATCH_SIZE=1  # Micro-batch size per step
+SPARK_DEPTH=8              # Keep default depth — 128 GB unified memory can hold full model
+SPARK_TOTAL_BATCH_SIZE=16  # Reduced from default — 36% CUDA cores means less parallel throughput
+SPARK_DEVICE_BATCH_SIZE=4  # 128 GB unified memory supports reasonable micro-batches
 
 # --- Sequence Length ---
-SPARK_MAX_SEQ_LEN=256      # Reduce from default (likely 1024+) — less memory per sample
+SPARK_MAX_SEQ_LEN=512      # Moderate reduction — memory is plentiful but compute is the bottleneck
 
 # --- Training Duration ---
-SPARK_TRAIN_MINUTES=10     # Increase from 5min — slower GPU needs more time per experiment
+SPARK_TRAIN_MINUTES=8      # Slight increase from 5min — ~36% of H100 compute
 
 # --- Learning Rate ---
-SPARK_LR_SCALE=0.5         # Scale factor applied to default learning rate (safer on small GPU)
+SPARK_LR_SCALE=0.7         # Moderate scaling — larger batches than before, less aggressive reduction
 
 # --- Gradient Accumulation ---
-SPARK_GRAD_ACCUM=8         # Accumulate gradients to simulate larger effective batch
+SPARK_GRAD_ACCUM=4         # Less accumulation needed with larger device batch size
 
 # --- Eval ---
-SPARK_EVAL_TOKENS=100000   # Reduce eval token count for faster eval cycles
+SPARK_EVAL_TOKENS=250000   # Moderate eval — memory supports it, compute is the constraint
 
 # Apply DGX Spark parameter overrides to train.py and prepare.py
 # Usage: apply_spark_config <train_py_path>

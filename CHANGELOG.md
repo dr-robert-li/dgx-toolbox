@@ -1,8 +1,16 @@
 # Changelog
 
-## 2026-03-22 -- Model Store
+## 2026-03-22 — Autonomous Research + Model Store
 
-### Added
+### Added (Autonomous Research)
+
+- **karpathy-autoresearch/launch-autoresearch.sh** — Interactive launcher: clone/pull latest master, 5-option data source menu (default/local/HuggingFace/GitHub/Kaggle), DGX Spark tuning, optional test run
+- **karpathy-autoresearch/launch-autoresearch-sync.sh** — Headless NVIDIA Sync variant using env vars (AUTORESEARCH_DATA_SOURCE, AUTORESEARCH_DATA_PATH)
+- **karpathy-autoresearch/spark-config.sh** — GPU tuning overrides for Blackwell GB10 (6,144 CUDA cores, 192 Tensor Cores, 128 GB unified LPDDR5x)
+- **karpathy-autoresearch/README.md** — Tuning rationale, data source examples, interactive/headless usage guide
+- Added `autoresearch` and `autoresearch-stop` aliases to example.bash_aliases
+
+### Added (Model Store)
 
 - **modelstore.sh** -- Tiered model storage CLI (init, status, migrate, recall, revert)
 - **modelstore/cmd/status.sh** -- Dashboard showing all models by tier with sizes, last-used timestamps, drive totals, watcher/cron status

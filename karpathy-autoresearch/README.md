@@ -2,23 +2,23 @@
 
 Andrej Karpathy's [autoresearch](https://github.com/karpathy/autoresearch) is an autonomous AI research agent that runs a tight loop: read `program.md` instructions → modify `train.py` → train a GPT for 5–10 minutes → evaluate validation bits-per-byte → commit improvements or reset → repeat. It is designed to run continuously as a research assistant, proposing and testing modifications to the training recipe without human intervention.
 
-This launcher wraps autoresearch for the DGX Spark — an ARM64 workstation with 128 Blackwell CUDA cores (not a data center H100). It handles cloning, dependency setup, data source selection, and automatic parameter scaling.
+This launcher wraps autoresearch for the DGX Spark — an ARM64 workstation with the NVIDIA Blackwell GB10 GPU (6,144 CUDA cores, 192 Tensor Cores, 128 GB unified LPDDR5x). It handles cloning, dependency setup, data source selection, and automatic parameter scaling.
 
 ---
 
 ## DGX Spark Tuning
 
-The default autoresearch parameters target H100 GPUs with 16,896 CUDA cores. The table below shows what gets adjusted for the Spark.
+The default autoresearch parameters target H100 GPUs (16,896 CUDA cores, 80 GB HBM3). The DGX Spark's Blackwell GB10 has ~36% of H100 CUDA cores but 60% more memory (128 GB unified LPDDR5x). This means memory-bound workloads run well, but compute-bound workloads need reduced parallelism.
 
 | Parameter | Default (H100) | Spark Override | Reason |
 |-----------|---------------|----------------|--------|
-| `DEPTH` | ~12 | 4 | Fewer transformer layers fit in 128-core GPU memory |
-| `TOTAL_BATCH_SIZE` | ~32+ | 4 | Avoid OOM on limited GPU memory |
-| `DEVICE_BATCH_SIZE` | ~4+ | 1 | Micro-batch size per gradient step |
-| `MAX_SEQ_LEN` | ~1024 | 256 | Less memory per sample |
-| `GRAD_ACCUM` | varies | 8 | Simulate larger effective batch via accumulation |
-| `TRAIN_MINUTES` | 5 | 10 | Slower GPU needs more wall-clock time per experiment |
-| `EVAL_TOKENS` | large | 100,000 | Faster eval cycles on limited compute |
+| `DEPTH` | ~12 | 8 | 128 GB unified memory holds full model — keep depth reasonable |
+| `TOTAL_BATCH_SIZE` | ~32+ | 16 | Reduced parallelism for 6,144 CUDA cores (36% of H100) |
+| `DEVICE_BATCH_SIZE` | ~4+ | 4 | 128 GB unified memory supports full micro-batches |
+| `MAX_SEQ_LEN` | ~1024 | 512 | Moderate reduction — memory is plentiful, compute is the bottleneck |
+| `GRAD_ACCUM` | varies | 4 | Less accumulation needed with larger device batch size |
+| `TRAIN_MINUTES` | 5 | 8 | Slightly more time per experiment for ~36% compute |
+| `EVAL_TOKENS` | large | 250,000 | Moderate eval — memory supports it, compute is the constraint |
 
 Overrides are applied via `sed` to `train.py` and `prepare.py` after each clone/pull. The operation is idempotent — safe to run multiple times.
 

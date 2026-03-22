@@ -481,6 +481,30 @@ docker logs -f unsloth-studio
 
 Data is persisted in `~/.n8n`.
 
+### Autonomous Research (Karpathy autoresearch)
+
+| Script | Purpose |
+|--------|---------|
+| `karpathy-autoresearch/launch-autoresearch.sh` | Interactive launcher — clone/pull, data source menu, DGX Spark tuning, setup |
+| `karpathy-autoresearch/launch-autoresearch-sync.sh` | NVIDIA Sync variant — headless, configured via env vars |
+| `karpathy-autoresearch/spark-config.sh` | DGX Spark GPU tuning overrides (6,144 CUDA cores, 128 GB unified memory) |
+
+Wraps [karpathy/autoresearch](https://github.com/karpathy/autoresearch) — an autonomous AI agent that runs a tight loop: modify `train.py` → train for 8 minutes → evaluate → commit improvements or revert → repeat (~7 experiments/hour).
+
+```bash
+# Interactive — clone repo, select data source, apply Spark tuning
+autoresearch
+
+# Headless with HuggingFace dataset
+AUTORESEARCH_DATA_SOURCE=huggingface \
+AUTORESEARCH_DATA_PATH=karpathy/climbmix-400b-shuffle \
+  ~/dgx-toolbox/karpathy-autoresearch/launch-autoresearch-sync.sh
+```
+
+**Data sources:** built-in default, local directory, HuggingFace Hub, GitHub repo, or Kaggle dataset. See `karpathy-autoresearch/README.md` for full details.
+
+**DGX Spark tuning:** Parameters are automatically scaled for the Blackwell GB10 (6,144 CUDA cores, 192 Tensor Cores, 128 GB LPDDR5x). Skip with `AUTORESEARCH_SKIP_TUNE=1`. Edit `spark-config.sh` to customize.
+
 ## Model Store
 
 Tiered model storage management for DGX Spark. Automatically migrates stale models from the hot NVMe drive to a cold drive (external SSD, NAS, or cloud mount) and recalls them on demand. Hot storage stays free for active models while all models remain accessible via symlinks.
@@ -641,6 +665,7 @@ Register these tools as custom apps in NVIDIA Sync so they appear in the Sync UI
 | NGC Jupyter | `bash ~/dgx-toolbox/containers/ngc-jupyter.sh` | 8888 | Yes |
 | Triton TRT-LLM | `bash ~/dgx-toolbox/eval/triton-trtllm-sync.sh` | 8010 | No |
 | vLLM | `bash ~/dgx-toolbox/inference/start-vllm-sync.sh` | 8020 | No |
+| Autoresearch | `bash ~/dgx-toolbox/karpathy-autoresearch/launch-autoresearch-sync.sh` | -- | No |
 | Model Store | `bash ~/dgx-toolbox/modelstore.sh status` | -- | No |
 
 Refer to the [NVIDIA Sync custom apps documentation](https://docs.nvidia.com/dgx/dgx-spark/nvidia-sync.html#spark-nvidia-sync) for the exact configuration format.

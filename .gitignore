@@ -4,15 +4,78 @@
 *~
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
 
 # Secrets / credentials
 .env
+.env.*
 *.pem
 *.key
+*.p12
+*.pfx
+credentials.json
+token.json
+~/.kaggle/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+.eggs/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python tools
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# uv (autoresearch)
+uv.lock
 
 # Runtime artifacts
 *.log
+*.pid
 
 # Modelstore test artifacts
 modelstore/test/tmp*
 modelstore/test/fixtures/tmp*
+
+# Modelstore runtime (generated on host, not in repo)
+modelstore/usage.json
+modelstore/op_state.json
+modelstore/audit.log
+
+# Safety harness runtime
+safety-harness/traces/
+safety-harness/*.db
+safety-harness/*.sqlite
+
+# Autoresearch runtime (cloned repo lives outside dgx-toolbox)
+karpathy-autoresearch/autoresearch/
+
+# Docker
+*.tar
+docker-compose.override.yml
