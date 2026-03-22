@@ -105,7 +105,12 @@ Plans:
   3. A request with a missing or invalid API key receives 401; a tenant that exceeds its rate limit receives 429 — both without the model being called
   4. Every request writes a JSONL trace record to SQLite with request_id, tenant, timestamp, model, prompt, response, and all PII replaced by redaction tokens — raw PII is never written to the trace store
   5. Traces are queryable by request_id and by time range via the SQLite trace store
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 05-01-PLAN.md — Harness scaffold, config loader, auth (argon2), and sliding window rate limiter
+- [ ] 05-02-PLAN.md — PII redactor (Presidio + regex), trace store (SQLite + WAL), proxy route, bypass logic, launcher script
+- [ ] 05-03-PLAN.md — NeMo Guardrails and Presidio aarch64 compatibility validation (go/no-go gate)
 
 ### Phase 6: Input/Output Guardrails and Refusal
 **Goal**: All requests are screened before the model and all outputs are screened before delivery — with user-configurable per-rail thresholds and three distinct refusal modes — using Unicode-normalized input so guardrail evasion via encoding tricks is impossible
@@ -175,7 +180,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 2. Adapters and Usage Tracking | 2/2 | Complete | 2026-03-21 |
 | 3. Migration, Recall, and Safety | 2/2 | Complete | 2026-03-21 |
 | 4. CLI, Status, Revert, and Docs | 2/2 | Complete    | 2026-03-21 |
-| 5. Gateway and Trace Foundation | 0/? | Not started | - |
+| 5. Gateway and Trace Foundation | 0/3 | Planned | - |
 | 6. Input/Output Guardrails and Refusal | 0/? | Not started | - |
 | 7. Constitutional AI Critique | 0/? | Not started | - |
 | 8. Eval Harness and CI Gate | 0/? | Not started | - |
