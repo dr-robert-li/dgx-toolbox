@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Safety Harness
 status: Roadmap defined
-stopped_at: Completed 05-03-PLAN.md Task 1; paused at Task 2 checkpoint (human-verify on DGX Spark aarch64)
-last_updated: "2026-03-22T02:38:10.858Z"
+stopped_at: Completed 05-03-PLAN.md (both tasks complete — aarch64 hardware verification confirmed PASS)
+last_updated: "2026-03-22T06:00:56.535Z"
 last_activity: 2026-03-22 — v1.1 roadmap created
 progress:
   total_phases: 10
@@ -82,6 +82,7 @@ Recent decisions affecting current work:
 - [Phase 05-gateway-and-trace-foundation]: TPM limiting has one-request lag by design: record_tpm post-response with actual count; check_tpm gates next request
 - [Phase 05-gateway-and-trace-foundation]: SlidingWindowLimiter uses asyncio.Lock() — harness runs under uvicorn single asyncio event loop
 - [Phase 05-gateway-and-trace-foundation]: NeMo/Presidio tests use pytest.skip() not pytest.fail() when library unavailable — enables safe CI runs without aarch64 hardware
+- [Phase 05-gateway-and-trace-foundation]: aarch64 GO: NeMo Guardrails + Annoy C++ build + Presidio spaCy NER all PASS on DGX Spark — Phase 6 guardrail implementation unblocked
 
 ### v1.1 Architecture Decisions (Pre-Phase 5)
 
@@ -98,7 +99,7 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-- Verify NeMo Guardrails aarch64 pip install on DGX Spark in fresh venv before Phase 5 planning (Annoy C++ build risk)
+- ~~Verify NeMo Guardrails aarch64 pip install on DGX Spark in fresh venv before Phase 5 planning (Annoy C++ build risk)~~ RESOLVED 2026-03-22 — PASS on DGX Spark hardware
 - Confirm port 8080 is not in use by code-server in target deployment
 - Benchmark 7B judge model P95 latency on aarch64 before committing CAI async/sync split in Phase 7
 
@@ -107,13 +108,13 @@ Recent decisions affecting current work:
 - Phase 2: Ollama manifest JSON schema field paths not fully specified in research — verify with `cat ~/.ollama/models/manifests/...` on actual DGX before writing ollama_adapter.sh
 - Phase 3: DBUS session address injection for notify-send from cron is MEDIUM confidence on aarch64 — test on actual machine before committing approach
 - Phase 4: Revert state file JSON schema not yet specified — design during Phase 4 planning before writing revert.sh
-- Phase 5: NeMo Guardrails aarch64 Annoy build is the highest-risk dependency — must validate before writing any application code
+- ~~Phase 5: NeMo Guardrails aarch64 Annoy build is the highest-risk dependency — must validate before writing any application code~~ RESOLVED 2026-03-22 — PASS confirmed on DGX Spark
 - Phase 7: CAI judge model latency on DGX Spark aarch64 is unknown — async timeout values depend on actual hardware numbers
 - Phase 9: deepteam 1.0.6 (March 2026) is newly released — feedback-loop red-teaming pattern is research-frontier; plan Phase 9 with a research step
 
 ## Session Continuity
 
-Last session: 2026-03-22T02:38:10.854Z
-Stopped at: Completed 05-03-PLAN.md Task 1; paused at Task 2 checkpoint (human-verify on DGX Spark aarch64)
+Last session: 2026-03-22T06:00:56.532Z
+Stopped at: Completed 05-03-PLAN.md (both tasks complete — aarch64 hardware verification confirmed PASS)
 Resume file: None
 Next action: `/gsd:plan-phase 5`

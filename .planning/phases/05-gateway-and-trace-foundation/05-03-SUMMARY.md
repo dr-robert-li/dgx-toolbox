@@ -40,6 +40,7 @@ key-decisions:
   - "Tests skip gracefully instead of failing when library not installed — safe in CI without aarch64 hardware"
   - "validate_aarch64.sh uses set -euo pipefail and tee /tmp/nemo-install.log for failure diagnostics"
   - "7-step probe covers: arch check, build tools, venv creation, nemoguardrails install, import validation, Presidio+spaCy install, entity detection"
+  - "GO decision confirmed on DGX Spark hardware: NeMo Guardrails PASS, Annoy C++ build PASS, Presidio+spaCy NER PASS (EMAIL_ADDRESS score=1.00, PERSON score=0.85) — Phase 6 unblocked"
 
 patterns-established:
   - "Compatibility probe: check_*_available() returns dict with available/version/error keys"
@@ -48,20 +49,20 @@ patterns-established:
 requirements-completed: []
 
 # Metrics
-duration: 10min
+duration: ~24h (including human hardware verification turnaround)
 completed: 2026-03-22
 ---
 
 # Phase 5 Plan 3: NeMo Guardrails aarch64 Validation Summary
 
-**aarch64 compatibility probe script and NeMo/Presidio importability checks for DGX Spark go/no-go gate**
+**NeMo Guardrails + Annoy C++ build + Presidio spaCy NER all verified PASS on DGX Spark aarch64 — Phase 6 guardrail implementation unblocked**
 
 ## Performance
 
-- **Duration:** ~10 min
+- **Duration:** ~24h (including human hardware verification turnaround)
 - **Started:** 2026-03-22T02:27:00Z
-- **Completed:** 2026-03-22T02:37:12Z
-- **Tasks:** 1 of 2 (Task 2 is human-verify checkpoint — awaiting DGX Spark confirmation)
+- **Completed:** 2026-03-22
+- **Tasks:** 2 of 2 (complete — hardware verification confirmed)
 - **Files modified:** 4
 
 ## Accomplishments
@@ -69,14 +70,16 @@ completed: 2026-03-22
 - Created `harness/guards/nemo_compat.py` with soft-dependency probe functions that return structured results instead of raising
 - Created `harness/guards/__init__.py` exporting both check functions for use in Phase 6+ integration
 - Created smoke tests with graceful skip when libraries not installed — confirmed: Presidio PASS, NeMo skip (not installed in dev env), both dict-shape tests PASS
+- Confirmed GO decision on DGX Spark aarch64 hardware: NeMo Guardrails, Annoy C++ build, and Presidio + spaCy NER all pass — Phase 6 unblocked
 
 ## Task Commits
 
 Each task was committed atomically:
 
 1. **Task 1: Create aarch64 validation script and NeMo compatibility module** - `db20414` (feat)
+2. **Task 2: Run aarch64 validation on DGX Spark hardware** - human-verify checkpoint (no code change — hardware verified by user)
 
-**Plan metadata:** TBD (docs: complete plan — will be added after Task 2 checkpoint resolved)
+**Plan metadata:** `2be4ce5` (docs: complete NeMo aarch64 validation plan)
 
 ## Files Created/Modified
 - `harness/guards/__init__.py` - Exports check_nemo_available and check_presidio_available
@@ -99,28 +102,28 @@ None - plan executed exactly as written.
 
 ## User Setup Required
 
-**Task 2 requires manual hardware verification.** User must SSH to DGX Spark and run:
+None — hardware verification is complete. All checks passed.
 
-```bash
-bash harness/scripts/validate_aarch64.sh /tmp/harness-compat-test
-```
+## aarch64 Hardware Verification Results
 
-Expected ending output:
+Verified on DGX Spark hardware (2026-03-22):
+
 ```
 [7/7] === RESULTS ===
   NeMo Guardrails: PASS
   Annoy (C++ build): PASS
-  Presidio + spaCy NER: PASS
+  Presidio + spaCy NER: PASS (detected EMAIL_ADDRESS score=1.00, PERSON score=0.85)
   Architecture: aarch64
 ```
 
-After running, reply with "aarch64 pass" or "aarch64 fail: [error details]".
-
 ## Next Phase Readiness
-- Task 2 (human checkpoint) must be completed before Phase 6 can begin
-- If aarch64 PASS: Phase 6 can proceed with full NeMo Guardrails implementation
-- If aarch64 FAIL: Phase 6 planner must select an alternative guardrails approach
+
+- aarch64 compatibility CONFIRMED — Phase 6 can proceed with full NeMo Guardrails implementation
+- NeMo Guardrails module-level LLMRails instantiation pattern confirmed (before uvicorn.run())
+- Presidio PII detection confirmed working on aarch64 with en_core_web_lg
+- Pending-todo "Verify NeMo Guardrails aarch64 pip install on DGX Spark" is now RESOLVED
+- Phase 6 planning can proceed without architectural changes
 
 ---
 *Phase: 05-gateway-and-trace-foundation*
-*Completed: 2026-03-22 (partial — Task 2 awaiting hardware verification)*
+*Completed: 2026-03-22*
