@@ -1,0 +1,29 @@
+rails:
+  - name: self_check_input
+    enabled: true
+    threshold: 0.7
+    refusal_mode: hard_block
+  - name: jailbreak_detection
+    enabled: true
+    threshold: 0.6
+    refusal_mode: hard_block
+  - name: sensitive_data_input
+    enabled: true
+    threshold: 0.2
+    refusal_mode: informative
+  - name: injection_heuristic
+    enabled: true
+    threshold: 0.5
+    refusal_mode: hard_block
+  - name: self_check_output
+    enabled: true
+    threshold: 0.7
+    refusal_mode: hard_block
+  - name: jailbreak_output
+    enabled: true
+    threshold: 0.7
+    refusal_mode: hard_block
+  - name: sensitive_data_output
+    enabled: true
+    threshold: 0.2
+    refusal_mode: informative

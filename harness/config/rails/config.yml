@@ -1,0 +1,31 @@
+models:
+  - type: main
+    engine: openai
+    model: llama3.1
+
+rails:
+  config:
+    sensitive_data_detection:
+      input:
+        entities:
+          - EMAIL_ADDRESS
+          - PHONE_NUMBER
+          - US_SSN
+          - CREDIT_CARD
+        mask_token: "[REDACTED]"
+        score_threshold: 0.2
+      output:
+        entities:
+          - EMAIL_ADDRESS
+          - PHONE_NUMBER
+          - US_SSN
+          - CREDIT_CARD
+  input:
+    flows:
+      - self check input
+      - jailbreak detection heuristics
+      - mask sensitive data on input
+  output:
+    flows:
+      - self check output
+      - mask sensitive data on output
