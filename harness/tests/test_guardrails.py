@@ -162,7 +162,8 @@ def _make_response(content: str) -> dict:
 @pytest.mark.asyncio
 async def test_clean_output_passes(engine_no_nemo, mock_tenant):
     """Clean output returns blocked=False."""
-    response_data = _make_response("The capital of France is Paris.")
+    # Use content without named entities (Presidio NER detects place names in balanced mode)
+    response_data = _make_response("The result of 2 plus 2 is 4.")
     decision = await engine_no_nemo.check_output(response_data, mock_tenant)
     assert isinstance(decision, GuardrailDecision)
     assert decision.blocked is False
