@@ -17,6 +17,10 @@ alias ollama-remote='~/dgx-toolbox/inference/setup-ollama-remote.sh'       # Ena
 alias unsloth-studio='~/dgx-toolbox/containers/unsloth-studio.sh'           # Unsloth fine-tuning UI (:8000)
 alias unsloth-stop='docker stop unsloth-studio'                   # Stop Unsloth Studio
 
+# --- Autonomous Research ---
+alias autoresearch='~/dgx-toolbox/karpathy-autoresearch/launch-autoresearch.sh'   # Karpathy autoresearch agent (:local)
+alias autoresearch-stop='pkill -f "uv run train.py" 2>/dev/null && echo "Stopped" || echo "Not running"'  # Stop running experiment
+
 # --- GPU Containers ---
 alias ngc-pytorch='~/dgx-toolbox/containers/ngc-pytorch.sh'                 # Interactive PyTorch shell (GPU)
 alias ngc-jupyter='~/dgx-toolbox/containers/ngc-jupyter.sh'                 # Jupyter Lab on NGC PyTorch (:8888)
