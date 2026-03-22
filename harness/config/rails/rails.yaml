@@ -19,11 +19,14 @@ rails:
     enabled: true
     threshold: 0.7
     refusal_mode: hard_block
+    critique_threshold: 0.5
   - name: jailbreak_output
     enabled: true
     threshold: 0.7
     refusal_mode: hard_block
+    critique_threshold: 0.5
   - name: sensitive_data_output
     enabled: true
     threshold: 0.2
     refusal_mode: informative
+    critique_threshold: 0.15

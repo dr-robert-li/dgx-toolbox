@@ -5,10 +5,10 @@ Invalid rails.yaml causes a ValueError at load time, never a silent fallback.
 """
 from __future__ import annotations
 
-from typing import List, Literal
+from typing import List, Literal, Optional
 
 import yaml
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, model_validator
 
 
 class RailConfig(BaseModel):
@@ -18,6 +18,18 @@ class RailConfig(BaseModel):
     enabled: bool = True
     threshold: float = 0.7
     refusal_mode: Literal["hard_block", "soft_steer", "informative"] = "hard_block"
+    critique_threshold: Optional[float] = None
+
+    @model_validator(mode='after')
+    def validate_critique_threshold(self) -> 'RailConfig':
+        """Ensure critique_threshold is strictly less than threshold when set."""
+        if self.critique_threshold is not None:
+            if self.critique_threshold >= self.threshold:
+                raise ValueError(
+                    f"Rail '{self.name}': critique_threshold ({self.critique_threshold}) "
+                    f"must be less than threshold ({self.threshold})"
+                )
+        return self
 
 
 class RailsFile(BaseModel):
