@@ -1,0 +1,19 @@
+tenants:
+  - tenant_id: dev-team
+    api_key_hash: "$argon2id$v=19$m=65536,t=3,p=4$sHbnCfLypffzRcmPzVQZcA$Wi+rk5SgT66OvUKXSXjZJWjxUV20TKMKgL4buSC58Sc"
+    rpm_limit: 60
+    tpm_limit: 100000
+    allowed_models:
+      - llama3.1
+      - gemma3
+    bypass: false
+    pii_strictness: balanced
+
+  - tenant_id: ci-runner
+    api_key_hash: "$argon2id$v=19$m=65536,t=3,p=4$N9L7+NHRj17sCBxeM7yLDg$LFbIlLRYVksyTsP4OgBhfoLSDCwqHw6mOqTa8+j3fNM"
+    rpm_limit: 120
+    tpm_limit: 500000
+    allowed_models:
+      - "*"
+    bypass: true
+    pii_strictness: minimal
