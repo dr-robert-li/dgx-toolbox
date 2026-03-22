@@ -78,18 +78,18 @@ Requirements for the AI safety harness milestone. Each maps to roadmap phases.
 
 ### Input Guardrails
 
-- [ ] **INRL-01**: Input is normalized (Unicode NFC/NFKC + zero-width character stripping) before any classifier runs
+- [x] **INRL-01**: Input is normalized (Unicode NFC/NFKC + zero-width character stripping) before any classifier runs
 - [ ] **INRL-02**: NeMo Guardrails content filter detects and blocks disallowed input topics
 - [ ] **INRL-03**: PII and secrets are detected in input via presidio and rejected or redacted per policy
 - [ ] **INRL-04**: Prompt injection and jailbreak attempts are detected and blocked
-- [ ] **INRL-05**: User can review, enable/disable, and tune thresholds for each input rail via config
+- [x] **INRL-05**: User can review, enable/disable, and tune thresholds for each input rail via config
 
 ### Output Guardrails
 
 - [ ] **OURL-01**: Model output is scanned for toxicity and bias before delivery
 - [ ] **OURL-02**: Jailbreak-success patterns in output are detected and blocked
 - [ ] **OURL-03**: PII leakage in output is detected and redacted
-- [ ] **OURL-04**: User can review, enable/disable, and tune thresholds for each output rail via config
+- [x] **OURL-04**: User can review, enable/disable, and tune thresholds for each output rail via config
 
 ### Constitutional AI
 
@@ -104,7 +104,7 @@ Requirements for the AI safety harness milestone. Each maps to roadmap phases.
 - [ ] **REFU-01**: Hard block mode: policy-violating requests return a principled refusal
 - [ ] **REFU-02**: Soft steer mode: borderline requests are rewritten to an allowed formulation when possible
 - [ ] **REFU-03**: Informative refusal mode: refusal explains why and offers safer adjacent help
-- [ ] **REFU-04**: Refusal thresholds are tunable from eval data (correct refusal rate, false refusal rate)
+- [x] **REFU-04**: Refusal thresholds are tunable from eval data (correct refusal rate, false refusal rate)
 
 ### Trace Logging
 
@@ -213,19 +213,19 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TRAC-02 | Phase 5 | Complete |
 | TRAC-03 | Phase 5 | Complete |
 | TRAC-04 | Phase 5 | Complete |
-| INRL-01 | Phase 6 | Pending |
+| INRL-01 | Phase 6 | Complete |
 | INRL-02 | Phase 6 | Pending |
 | INRL-03 | Phase 6 | Pending |
 | INRL-04 | Phase 6 | Pending |
-| INRL-05 | Phase 6 | Pending |
+| INRL-05 | Phase 6 | Complete |
 | OURL-01 | Phase 6 | Pending |
 | OURL-02 | Phase 6 | Pending |
 | OURL-03 | Phase 6 | Pending |
-| OURL-04 | Phase 6 | Pending |
+| OURL-04 | Phase 6 | Complete |
 | REFU-01 | Phase 6 | Pending |
 | REFU-02 | Phase 6 | Pending |
 | REFU-03 | Phase 6 | Pending |
-| REFU-04 | Phase 6 | Pending |
+| REFU-04 | Phase 6 | Complete |
 | CSTL-01 | Phase 7 | Pending |
 | CSTL-02 | Phase 7 | Pending |
 | CSTL-03 | Phase 7 | Pending |

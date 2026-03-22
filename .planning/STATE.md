@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Safety Harness
 status: Roadmap defined
-stopped_at: Phase 6 context gathered
-last_updated: "2026-03-22T06:27:06.218Z"
+stopped_at: Completed 06-01-PLAN.md
+last_updated: "2026-03-22T06:55:05.127Z"
 last_activity: 2026-03-22 — v1.1 roadmap created
 progress:
   total_phases: 10
   completed_phases: 5
-  total_plans: 11
-  completed_plans: 11
+  total_plans: 14
+  completed_plans: 12
   percent: 0
 ---
 
@@ -86,6 +86,9 @@ Recent decisions affecting current work:
 - [Phase 05-gateway-and-trace-foundation]: Regex pre-pass before Presidio NER ensures structured PII (email/phone/SSN/CC) always redacted even without spaCy model
 - [Phase 05-gateway-and-trace-foundation]: BackgroundTask for trace write decouples response latency from SQLite I/O
 - [Phase 05-gateway-and-trace-foundation]: CLI trace query interface deferred — Python TraceStore API satisfies TRAC-04
+- [Phase 06-01]: normalize() strips zero-width chars AFTER NFKC so full-width zero-width chars normalize before stripping
+- [Phase 06-01]: normalize_messages() deduplicates flags across messages — each flag appears once even if multiple messages trigger it
+- [Phase 06-01]: load_rails_config() raises ValueError at startup, never silently falls back — invalid config fails fast
 
 ### v1.1 Architecture Decisions (Pre-Phase 5)
 
@@ -123,7 +126,7 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-22T06:27:06.215Z
-Stopped at: Phase 6 context gathered
-Resume file: .planning/phases/06-input-output-guardrails-and-refusal/06-CONTEXT.md
+Last session: 2026-03-22T06:55:05.124Z
+Stopped at: Completed 06-01-PLAN.md
+Resume file: None
 Next action: `/gsd:plan-phase 5`
