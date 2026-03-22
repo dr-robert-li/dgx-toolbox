@@ -54,6 +54,11 @@ class CritiqueEngine:
         self._constitution = constitution
         self._guardrail_engine = guardrail_engine
 
+    @property
+    def constitution(self) -> ConstitutionConfig:
+        """Public access to the constitution config."""
+        return self._constitution
+
     async def run_critique_loop(
         self,
         response_data: dict,
