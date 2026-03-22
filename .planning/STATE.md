@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Safety Harness
 status: Roadmap defined
-stopped_at: Completed 07-02-PLAN.md
-last_updated: "2026-03-22T11:33:58.403Z"
+stopped_at: Completed 07-03-PLAN.md
+last_updated: "2026-03-22T11:35:28.989Z"
 last_activity: 2026-03-22 — v1.1 roadmap created
 progress:
   total_phases: 10
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 17
-  completed_plans: 16
+  completed_plans: 17
   percent: 0
 ---
 
@@ -98,6 +98,9 @@ Recent decisions affecting current work:
 - [Phase 07-01]: critique_threshold is output-rail-only by YAML convention — input rails have None by omission, no code guard needed
 - [Phase 07-02]: CritiqueEngine re-checks revision against critique_threshold (not threshold) — revision just needs to drop below critique level, not be fully clean
 - [Phase 07-02]: _MinimalTenant with pii_strictness=minimal used for revision re-check to avoid double-redacting
+- [Phase 07-03]: MIN_SAMPLE_SIZE=10 guard before judge call avoids noisy suggestions from small samples
+- [Phase 07-03]: Judge JSON parse failure returns structured error dict (not exception) — admin endpoint and CLI never crash on bad model output
+- [Phase 07-03]: _resolve_since() shared between admin.py and __main__.py — consistent shorthand handling
 
 ### v1.1 Architecture Decisions (Pre-Phase 5)
 
@@ -135,7 +138,7 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-22T11:33:58.402Z
-Stopped at: Completed 07-02-PLAN.md
+Last session: 2026-03-22T11:35:28.987Z
+Stopped at: Completed 07-03-PLAN.md
 Resume file: None
 Next action: `/gsd:plan-phase 5`
