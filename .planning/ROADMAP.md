@@ -142,9 +142,9 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [ ] 06-01-PLAN.md — Config, normalizer, type contracts, NeMo config files, and dependencies
-- [ ] 06-02-PLAN.md — GuardrailEngine class with check_input/check_output and unit tests
-- [ ] 06-03-PLAN.md — Proxy wiring, TenantConfig rail_overrides, integration tests
+- [ ] 07-01-PLAN.md — Constitution config types, RailConfig critique_threshold extension, default constitution.yaml
+- [ ] 07-02-PLAN.md — CritiqueEngine with single-pass critique-revise loop, proxy wiring, lifespan init
+- [ ] 07-03-PLAN.md — Tuning analyzer, POST /admin/suggest-tuning endpoint, CLI entry point
 
 ### Phase 8: Eval Harness and CI Gate
 **Goal**: Safety and capability regressions are caught before any model or config change is promoted — a replay harness scores refusal accuracy, lm-eval measures capability via correct endpoint routing, and CI blocks on any regression
@@ -207,7 +207,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 4. CLI, Status, Revert, and Docs | 2/2 | Complete    | 2026-03-21 |
 | 5. Gateway and Trace Foundation | 3/3 | Complete   | 2026-03-22 |
 | 6. Input/Output Guardrails and Refusal | 3/3 | Complete   | 2026-03-22 |
-| 7. Constitutional AI Critique | 0/? | Not started | - |
+| 7. Constitutional AI Critique | 0/3 | Not started | - |
 | 8. Eval Harness and CI Gate | 0/? | Not started | - |
 | 9. Red Teaming | 0/? | Not started | - |
 | 10. HITL Dashboard | 0/? | Not started | - |
