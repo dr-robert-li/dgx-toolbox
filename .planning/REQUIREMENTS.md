@@ -93,9 +93,9 @@ Requirements for the AI safety harness milestone. Each maps to roadmap phases.
 
 ### Constitutional AI
 
-- [ ] **CSTL-01**: Flagged outputs go through a two-pass critique→revise pipeline against constitutional principles
+- [x] **CSTL-01**: Flagged outputs go through a two-pass critique→revise pipeline against constitutional principles
 - [x] **CSTL-02**: Constitutional principles are user-editable via YAML config, validated on startup
-- [ ] **CSTL-03**: Judge model is configurable (default same-model, swappable to dedicated judge)
+- [x] **CSTL-03**: Judge model is configurable (default same-model, swappable to dedicated judge)
 - [x] **CSTL-04**: CAI critique is risk-gated — only triggered for outputs classified as high-risk by output rails
 - [ ] **CSTL-05**: Judge model provides AI-guided suggestions for guardrail and constitution tuning based on trace history
 
@@ -226,9 +226,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | REFU-02 | Phase 6 | Complete |
 | REFU-03 | Phase 6 | Complete |
 | REFU-04 | Phase 6 | Complete |
-| CSTL-01 | Phase 7 | Pending |
+| CSTL-01 | Phase 7 | Complete |
 | CSTL-02 | Phase 7 | Complete |
-| CSTL-03 | Phase 7 | Pending |
+| CSTL-03 | Phase 7 | Complete |
 | CSTL-04 | Phase 7 | Complete |
 | CSTL-05 | Phase 7 | Pending |
 | EVAL-01 | Phase 8 | Pending |

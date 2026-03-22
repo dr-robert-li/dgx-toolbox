@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Safety Harness
 status: Roadmap defined
-stopped_at: Completed 07-01-PLAN.md
-last_updated: "2026-03-22T11:26:37.705Z"
+stopped_at: Completed 07-02-PLAN.md
+last_updated: "2026-03-22T11:33:58.403Z"
 last_activity: 2026-03-22 — v1.1 roadmap created
 progress:
   total_phases: 10
   completed_phases: 6
   total_plans: 17
-  completed_plans: 15
+  completed_plans: 16
   percent: 0
 ---
 
@@ -96,6 +96,8 @@ Recent decisions affecting current work:
 - [Phase 07-01]: critique_threshold >= threshold rejected at startup via model_validator — misconfiguration caught before any traffic
 - [Phase 07-01]: load_constitution() raises ValueError matching load_rails_config() contract — consistent error interface across all config loaders
 - [Phase 07-01]: critique_threshold is output-rail-only by YAML convention — input rails have None by omission, no code guard needed
+- [Phase 07-02]: CritiqueEngine re-checks revision against critique_threshold (not threshold) — revision just needs to drop below critique level, not be fully clean
+- [Phase 07-02]: _MinimalTenant with pii_strictness=minimal used for revision re-check to avoid double-redacting
 
 ### v1.1 Architecture Decisions (Pre-Phase 5)
 
@@ -133,7 +135,7 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-22T11:26:37.702Z
-Stopped at: Completed 07-01-PLAN.md
+Last session: 2026-03-22T11:33:58.402Z
+Stopped at: Completed 07-02-PLAN.md
 Resume file: None
 Next action: `/gsd:plan-phase 5`
