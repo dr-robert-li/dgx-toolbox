@@ -122,7 +122,7 @@ Plans:
   3. A model response containing toxicity, jailbreak-success indicators, or output PII is intercepted before delivery — the client receives a policy-appropriate response, not the raw model output
   4. A user edits a rail's threshold or enable flag in YAML config, restarts the service, and the changed behavior takes effect on the next request
   5. Hard block mode returns a principled refusal; soft steer mode rewrites the request and returns an allowed response; informative mode returns a refusal that explains why and offers adjacent help
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 
 Plans:
 - [ ] 06-01-PLAN.md — Config, normalizer, type contracts, NeMo config files, and dependencies
@@ -206,7 +206,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 3. Migration, Recall, and Safety | 2/2 | Complete | 2026-03-21 |
 | 4. CLI, Status, Revert, and Docs | 2/2 | Complete    | 2026-03-21 |
 | 5. Gateway and Trace Foundation | 3/3 | Complete   | 2026-03-22 |
-| 6. Input/Output Guardrails and Refusal | 1/3 | In Progress|  |
+| 6. Input/Output Guardrails and Refusal | 2/3 | In Progress|  |
 | 7. Constitutional AI Critique | 0/? | Not started | - |
 | 8. Eval Harness and CI Gate | 0/? | Not started | - |
 | 9. Red Teaming | 0/? | Not started | - |
