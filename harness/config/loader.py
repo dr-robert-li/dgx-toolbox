@@ -1,7 +1,7 @@
 """Tenant configuration loader with Pydantic validation."""
 from __future__ import annotations
 
-from typing import List
+from typing import Dict, List, Optional
 
 import yaml
 from pydantic import BaseModel, ValidationError
@@ -17,6 +17,8 @@ class TenantConfig(BaseModel):
     allowed_models: List[str] = ["*"]
     bypass: bool = False
     pii_strictness: str = "balanced"
+    rail_overrides: Dict[str, Dict[str, object]] = {}
+    # Example: {"self_check_input": {"threshold": 0.9, "enabled": False}}
 
 
 class TenantsFile(BaseModel):

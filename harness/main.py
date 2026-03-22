@@ -45,6 +45,16 @@ async def lifespan(app: FastAPI):
     # Eagerly import PII redactor so AnalyzerEngine loads at startup
     import harness.pii.redactor  # noqa: F401
 
+    # Initialize guardrail engine (NeMo init happens inside create_guardrail_engine)
+    from harness.guards.engine import create_guardrail_engine
+    rails_config_path = os.path.join(_CONFIG_DIR, "rails", "rails.yaml")
+    nemo_config_dir = os.path.join(_CONFIG_DIR, "rails")
+    app.state.guardrail_engine = create_guardrail_engine(
+        rails_config_path=rails_config_path,
+        nemo_config_dir=nemo_config_dir,
+        litellm_base_url=_LITELLM_BASE,
+    )
+
     yield
 
     await app.state.http_client.aclose()

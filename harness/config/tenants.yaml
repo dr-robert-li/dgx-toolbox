@@ -8,6 +8,7 @@ tenants:
       - gemma3
     bypass: false
     pii_strictness: balanced
+    rail_overrides: {}
 
   - tenant_id: ci-runner
     api_key_hash: "$argon2id$v=19$m=65536,t=3,p=4$N9L7+NHRj17sCBxeM7yLDg$LFbIlLRYVksyTsP4OgBhfoLSDCwqHw6mOqTa8+j3fNM"
@@ -17,3 +18,4 @@ tenants:
       - "*"
     bypass: true
     pii_strictness: minimal
+    rail_overrides: {}
