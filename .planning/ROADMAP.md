@@ -122,7 +122,12 @@ Plans:
   3. A model response containing toxicity, jailbreak-success indicators, or output PII is intercepted before delivery — the client receives a policy-appropriate response, not the raw model output
   4. A user edits a rail's threshold or enable flag in YAML config, restarts the service, and the changed behavior takes effect on the next request
   5. Hard block mode returns a principled refusal; soft steer mode rewrites the request and returns an allowed response; informative mode returns a refusal that explains why and offers adjacent help
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — Config, normalizer, type contracts, NeMo config files, and dependencies
+- [ ] 06-02-PLAN.md — GuardrailEngine class with check_input/check_output and unit tests
+- [ ] 06-03-PLAN.md — Proxy wiring, TenantConfig rail_overrides, integration tests
 
 ### Phase 7: Constitutional AI Critique
 **Goal**: Outputs that pass guardrails but score as high-risk trigger a two-pass critique-and-revise loop against a user-editable constitution — low-risk outputs are never touched — and the judge model can analyze trace history to produce actionable tuning suggestions
@@ -134,7 +139,12 @@ Plans:
   3. User edits `constitution.yaml`, restarts the service, and the new principles apply on the next high-risk request; a malformed constitution file causes a startup validation error before the service accepts traffic
   4. Judge model is set to a different model in config; a subsequent high-risk request's trace record shows the judge model identifier confirming the swap
   5. Querying trace history via the judge model produces a ranked list of guardrail and constitution tuning suggestions that the user can review and apply
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — Config, normalizer, type contracts, NeMo config files, and dependencies
+- [ ] 06-02-PLAN.md — GuardrailEngine class with check_input/check_output and unit tests
+- [ ] 06-03-PLAN.md — Proxy wiring, TenantConfig rail_overrides, integration tests
 
 ### Phase 8: Eval Harness and CI Gate
 **Goal**: Safety and capability regressions are caught before any model or config change is promoted — a replay harness scores refusal accuracy, lm-eval measures capability via correct endpoint routing, and CI blocks on any regression
@@ -145,7 +155,12 @@ Plans:
   2. lm-eval generative tasks route through POST /v1/chat/completions and loglikelihood tasks route directly to LiteLLM — both paths complete without errors and produce plausible benchmark scores
   3. Lowering a refusal threshold below a known-bad prompt causes the CI gate to report a safety regression and exit non-zero, blocking promotion
   4. Each eval run's results are stored and a trend chart shows metric history across runs, making regressions and improvements visible over time
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — Config, normalizer, type contracts, NeMo config files, and dependencies
+- [ ] 06-02-PLAN.md — GuardrailEngine class with check_input/check_output and unit tests
+- [ ] 06-03-PLAN.md — Proxy wiring, TenantConfig rail_overrides, integration tests
 
 ### Phase 9: Red Teaming
 **Goal**: The harness mines its own failure history to generate adversarial prompts, runs garak one-shot vulnerability scans, executes deepteam feedback-loop generation, and dispatches all long-running jobs asynchronously — with dataset balance enforced in code
@@ -156,7 +171,12 @@ Plans:
   2. The deepteam generator reads the trace store, identifies failure records, and writes adversarial prompt variants to a pending review queue — generated prompts require explicit promotion before entering eval datasets
   3. Submitting a red-team job via the API returns a job_id; polling job status shows running then complete; completed results are retrievable by job_id
   4. Before any generated dataset is written, a balance check enforces the configured ratio cap per attack category — datasets that would exceed the cap are rejected with a clear error
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — Config, normalizer, type contracts, NeMo config files, and dependencies
+- [ ] 06-02-PLAN.md — GuardrailEngine class with check_input/check_output and unit tests
+- [ ] 06-03-PLAN.md — Proxy wiring, TenantConfig rail_overrides, integration tests
 
 ### Phase 10: HITL Dashboard
 **Goal**: Operators can review flagged requests through a Gradio UI sorted by review priority, apply corrections that feed back into threshold calibration and fine-tuning data, and access the same workflow via API when no UI is available
@@ -167,7 +187,12 @@ Plans:
   2. Clicking any queue item shows a side-by-side diff of the original model output vs the critique-revised output, and the reviewer can approve, reject, or edit the revision
   3. A reviewer correction is written to the corrections store, appears in the fine-tuning data export, and is reflected in threshold calibration on its next scheduled run
   4. The review queue and correction submission are fully accessible via REST API with no Gradio process running — headless mode produces identical corrections store entries
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — Config, normalizer, type contracts, NeMo config files, and dependencies
+- [ ] 06-02-PLAN.md — GuardrailEngine class with check_input/check_output and unit tests
+- [ ] 06-03-PLAN.md — Proxy wiring, TenantConfig rail_overrides, integration tests
 
 ## Progress
 
@@ -181,7 +206,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 3. Migration, Recall, and Safety | 2/2 | Complete | 2026-03-21 |
 | 4. CLI, Status, Revert, and Docs | 2/2 | Complete    | 2026-03-21 |
 | 5. Gateway and Trace Foundation | 3/3 | Complete   | 2026-03-22 |
-| 6. Input/Output Guardrails and Refusal | 0/? | Not started | - |
+| 6. Input/Output Guardrails and Refusal | 0/3 | Not started | - |
 | 7. Constitutional AI Critique | 0/? | Not started | - |
 | 8. Eval Harness and CI Gate | 0/? | Not started | - |
 | 9. Red Teaming | 0/? | Not started | - |
