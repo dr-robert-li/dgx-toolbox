@@ -11,15 +11,17 @@ from fastapi import Depends, FastAPI
 from harness.auth.bearer import verify_api_key
 from harness.config.loader import TenantConfig, load_tenants
 from harness.ratelimit.sliding_window import SlidingWindowLimiter
+from harness.traces.store import TraceStore
 
 # Config path: prefer env var, default to harness/config relative to cwd
 _CONFIG_DIR = os.environ.get("HARNESS_CONFIG_DIR", os.path.join(os.path.dirname(__file__), "config"))
 _LITELLM_BASE = os.environ.get("LITELLM_BASE_URL", "http://localhost:4000")
+_DATA_DIR = os.environ.get("HARNESS_DATA_DIR", os.path.join(os.path.dirname(__file__), "data"))
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """App lifespan: load tenants, create HTTP client pool, initialize rate limiter."""
+    """App lifespan: load tenants, create HTTP client pool, initialize rate limiter and trace store."""
     # Load tenant config
     tenants_path = os.path.join(_CONFIG_DIR, "tenants.yaml")
     app.state.tenants = load_tenants(tenants_path)
@@ -34,6 +36,15 @@ async def lifespan(app: FastAPI):
     # In-memory rate limiter (per-tenant RPM + TPM)
     app.state.rate_limiter = SlidingWindowLimiter()
 
+    # Trace store — initialize SQLite schema (WAL mode, indexes)
+    os.makedirs(_DATA_DIR, exist_ok=True)
+    db_path = os.path.join(_DATA_DIR, "traces.db")
+    app.state.trace_store = TraceStore(db_path=db_path)
+    await app.state.trace_store.init_db()
+
+    # Eagerly import PII redactor so AnalyzerEngine loads at startup
+    import harness.pii.redactor  # noqa: F401
+
     yield
 
     await app.state.http_client.aclose()
@@ -45,6 +56,10 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# Register proxy route
+from harness.proxy.litellm import router  # noqa: E402
+app.include_router(router)
 
 
 @app.post("/probe")
