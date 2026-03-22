@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Safety Harness
 status: Roadmap defined
-stopped_at: Completed 06-02-PLAN.md
-last_updated: "2026-03-22T07:02:02.453Z"
+stopped_at: Completed 06-03-PLAN.md
+last_updated: "2026-03-22T07:08:19.223Z"
 last_activity: 2026-03-22 — v1.1 roadmap created
 progress:
   total_phases: 10
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 14
-  completed_plans: 13
+  completed_plans: 14
   percent: 0
 ---
 
@@ -92,6 +92,7 @@ Recent decisions affecting current work:
 - [Phase 06-input-output-guardrails-and-refusal]: GuardrailEngine uses run-all-rails aggregation (not fail-fast) — all enabled rails run and all results collected before determining block status
 - [Phase 06-input-output-guardrails-and-refusal]: sensitive_data_output block returns Presidio-redacted content (not generic refusal) — preserves response utility while protecting PII
 - [Phase 06-input-output-guardrails-and-refusal]: Presidio balanced mode detects LOCATION entities; tests use numeric content to avoid false PII hits in clean-output assertions
+- [Phase 06-input-output-guardrails-and-refusal]: getattr(app.state, 'guardrail_engine', None) guard ensures backward compatibility — existing tests without guardrail_engine on app.state still pass
 
 ### v1.1 Architecture Decisions (Pre-Phase 5)
 
@@ -129,7 +130,7 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-22T07:02:02.449Z
-Stopped at: Completed 06-02-PLAN.md
+Last session: 2026-03-22T07:08:19.221Z
+Stopped at: Completed 06-03-PLAN.md
 Resume file: None
 Next action: `/gsd:plan-phase 5`

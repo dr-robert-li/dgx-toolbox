@@ -24,7 +24,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 ### v1.1 Safety Harness
 
 - [x] **Phase 5: Gateway and Trace Foundation** - Validated aarch64 environment, passthrough FastAPI gateway, auth, rate limiting, and PII-safe trace store (completed 2026-03-22)
-- [ ] **Phase 6: Input/Output Guardrails and Refusal** - NeMo Guardrails input/output rails, PII redaction, refusal calibration modes, user-tunable thresholds
+- [x] **Phase 6: Input/Output Guardrails and Refusal** - NeMo Guardrails input/output rails, PII redaction, refusal calibration modes, user-tunable thresholds (completed 2026-03-22)
 - [ ] **Phase 7: Constitutional AI Critique** - Risk-gated two-pass critique pipeline, user-editable constitution, configurable judge model, AI-guided suggestions
 - [ ] **Phase 8: Eval Harness and CI Gate** - Custom replay eval harness, lm-eval-harness integration, CI/CD promotion gate, trend dashboarding
 - [ ] **Phase 9: Red Teaming** - Trace-driven adversarial prompt generation, garak scanning, deepteam feedback loop, Celery async dispatch
@@ -122,7 +122,7 @@ Plans:
   3. A model response containing toxicity, jailbreak-success indicators, or output PII is intercepted before delivery — the client receives a policy-appropriate response, not the raw model output
   4. A user edits a rail's threshold or enable flag in YAML config, restarts the service, and the changed behavior takes effect on the next request
   5. Hard block mode returns a principled refusal; soft steer mode rewrites the request and returns an allowed response; informative mode returns a refusal that explains why and offers adjacent help
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 - [ ] 06-01-PLAN.md — Config, normalizer, type contracts, NeMo config files, and dependencies
@@ -206,7 +206,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 3. Migration, Recall, and Safety | 2/2 | Complete | 2026-03-21 |
 | 4. CLI, Status, Revert, and Docs | 2/2 | Complete    | 2026-03-21 |
 | 5. Gateway and Trace Foundation | 3/3 | Complete   | 2026-03-22 |
-| 6. Input/Output Guardrails and Refusal | 2/3 | In Progress|  |
+| 6. Input/Output Guardrails and Refusal | 3/3 | Complete   | 2026-03-22 |
 | 7. Constitutional AI Critique | 0/? | Not started | - |
 | 8. Eval Harness and CI Gate | 0/? | Not started | - |
 | 9. Red Teaming | 0/? | Not started | - |
