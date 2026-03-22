@@ -117,6 +117,7 @@ async def chat_completions(
                         status_code=resp.status_code,
                         guardrail_decisions=guardrail_decisions_json,
                         is_refusal=is_refusal,
+                        cai_critique=None,
                     )
                     return JSONResponse(
                         content=response_data,
@@ -138,6 +139,7 @@ async def chat_completions(
                         status_code=400,
                         guardrail_decisions=guardrail_decisions_json,
                         is_refusal=is_refusal,
+                        cai_critique=None,
                     )
                     return JSONResponse(
                         content=response_data,
@@ -177,6 +179,32 @@ async def chat_completions(
                 is_refusal = True
                 response_data = output_decision.replacement_response
 
+    # 7b. Critique loop (risk-gated — runs only when output rails pass but score is high-risk)
+    cai_critique_data = None
+    if not tenant.bypass and not is_refusal:
+        critique_engine = getattr(request.app.state, "critique_engine", None)
+        if critique_engine is not None and output_decision is not None:
+            critique_result = await critique_engine.run_critique_loop(
+                response_data=response_data,
+                output_results=output_decision.all_results,
+                request_model=body.get("model", "unknown"),
+                http_client=request.app.state.http_client,
+                pii_strictness=tenant.pii_strictness,
+            )
+            if critique_result is not None:
+                cai_critique_data = critique_result
+                if critique_result.get("fallback_hard_block"):
+                    is_refusal = True
+                    guardrail_engine = getattr(request.app.state, "guardrail_engine", None)
+                    if guardrail_engine is not None:
+                        response_data = guardrail_engine._build_hard_block_refusal("cai_critique")
+                else:
+                    # Replace response content with revised text
+                    if response_data.get("choices"):
+                        response_data["choices"][0]["message"]["content"] = (
+                            critique_result["judge_response"]["revision"]
+                        )
+
     # 8. PII redact + trace write in background (after response is sent to client)
     background = BackgroundTask(
         _write_trace,
@@ -189,6 +217,7 @@ async def chat_completions(
         status_code=resp.status_code,
         guardrail_decisions=guardrail_decisions_json,
         is_refusal=is_refusal,
+        cai_critique=cai_critique_data,
     )
     return JSONResponse(
         content=response_data,
@@ -207,6 +236,7 @@ async def _write_trace(
     status_code: int,
     guardrail_decisions=None,
     is_refusal: bool = False,
+    cai_critique=None,
 ) -> None:
     """Extract, PII-redact, and write a trace record to SQLite.
 
@@ -250,7 +280,7 @@ async def _write_trace(
         "latency_ms": latency_ms,
         "status_code": status_code,
         "guardrail_decisions": guardrail_decisions,
-        "cai_critique": None,  # Phase 7
+        "cai_critique": cai_critique,
         "refusal_event": is_refusal,
         "bypass_flag": tenant.bypass,
     }

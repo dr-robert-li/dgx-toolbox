@@ -55,6 +55,19 @@ async def lifespan(app: FastAPI):
         litellm_base_url=_LITELLM_BASE,
     )
 
+    # Initialize Constitutional AI critique engine
+    from harness.critique.constitution import load_constitution
+    from harness.critique.engine import CritiqueEngine
+    constitution_path = os.path.join(_CONFIG_DIR, "constitution.yaml")
+    try:
+        constitution = load_constitution(constitution_path)
+        app.state.critique_engine = CritiqueEngine(
+            constitution=constitution,
+            guardrail_engine=app.state.guardrail_engine,
+        )
+    except (FileNotFoundError, ValueError):
+        app.state.critique_engine = None  # CAI optional — service runs without it
+
     yield
 
     await app.state.http_client.aclose()
@@ -70,6 +83,9 @@ app = FastAPI(
 # Register proxy route
 from harness.proxy.litellm import router  # noqa: E402
 app.include_router(router)
+
+from harness.proxy.admin import admin_router  # noqa: E402
+app.include_router(admin_router)
 
 
 @app.post("/probe")
