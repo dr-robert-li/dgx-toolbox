@@ -105,7 +105,7 @@ Plans:
   3. A request with a missing or invalid API key receives 401; a tenant that exceeds its rate limit receives 429 — both without the model being called
   4. Every request writes a JSONL trace record to SQLite with request_id, tenant, timestamp, model, prompt, response, and all PII replaced by redaction tokens — raw PII is never written to the trace store
   5. Traces are queryable by request_id and by time range via the SQLite trace store
-**Plans:** 3 plans
+**Plans:** 2/3 plans executed
 
 Plans:
 - [ ] 05-01-PLAN.md — Harness scaffold, config loader, auth (argon2), and sliding window rate limiter
@@ -180,7 +180,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 2. Adapters and Usage Tracking | 2/2 | Complete | 2026-03-21 |
 | 3. Migration, Recall, and Safety | 2/2 | Complete | 2026-03-21 |
 | 4. CLI, Status, Revert, and Docs | 2/2 | Complete    | 2026-03-21 |
-| 5. Gateway and Trace Foundation | 0/3 | Planned | - |
+| 5. Gateway and Trace Foundation | 2/3 | In Progress|  |
 | 6. Input/Output Guardrails and Refusal | 0/? | Not started | - |
 | 7. Constitutional AI Critique | 0/? | Not started | - |
 | 8. Eval Harness and CI Gate | 0/? | Not started | - |

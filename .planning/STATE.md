@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Safety Harness
 status: Roadmap defined
-stopped_at: Phase 5 context gathered
-last_updated: "2026-03-21T23:53:34.485Z"
+stopped_at: Completed 05-03-PLAN.md Task 1; paused at Task 2 checkpoint (human-verify on DGX Spark aarch64)
+last_updated: "2026-03-22T02:38:10.858Z"
 last_activity: 2026-03-22 — v1.1 roadmap created
 progress:
   total_phases: 10
   completed_phases: 4
-  total_plans: 8
-  completed_plans: 8
+  total_plans: 11
+  completed_plans: 10
   percent: 0
 ---
 
@@ -77,6 +77,11 @@ Recent decisions affecting current work:
 - [Phase 04-cli-status-revert-and-docs]: rsync_flags variable approach for TTY guard in adapter rsync calls — cleaner than inline substitution
 - [Phase 04-cli-status-revert-and-docs]: Mock rsync in test-hf-adapter.sh must preserve directory structure (cp -r), not just mkdir destination
 - [Phase 04-cli-status-revert-and-docs]: modelstore.sh stays in root alongside status.sh and lib.sh (not moved to subdirectory)
+- [Phase 05-gateway-and-trace-foundation]: importlib.import_module() for NeMo probe avoids top-level ImportError in environments without nemoguardrails installed
+- [Phase 05-gateway-and-trace-foundation]: FastAPI 0.135 HTTPBearer returns 401 not 403 for missing credentials — test accepts both for version tolerance
+- [Phase 05-gateway-and-trace-foundation]: TPM limiting has one-request lag by design: record_tpm post-response with actual count; check_tpm gates next request
+- [Phase 05-gateway-and-trace-foundation]: SlidingWindowLimiter uses asyncio.Lock() — harness runs under uvicorn single asyncio event loop
+- [Phase 05-gateway-and-trace-foundation]: NeMo/Presidio tests use pytest.skip() not pytest.fail() when library unavailable — enables safe CI runs without aarch64 hardware
 
 ### v1.1 Architecture Decisions (Pre-Phase 5)
 
@@ -108,7 +113,7 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-21T23:53:34.482Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-gateway-and-trace-foundation/05-CONTEXT.md
+Last session: 2026-03-22T02:38:10.854Z
+Stopped at: Completed 05-03-PLAN.md Task 1; paused at Task 2 checkpoint (human-verify on DGX Spark aarch64)
+Resume file: None
 Next action: `/gsd:plan-phase 5`
