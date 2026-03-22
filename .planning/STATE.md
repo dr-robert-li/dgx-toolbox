@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Safety Harness
 status: Roadmap defined
-stopped_at: Phase 7 context gathered
-last_updated: "2026-03-22T11:02:17.021Z"
+stopped_at: Completed 07-01-PLAN.md
+last_updated: "2026-03-22T11:26:37.705Z"
 last_activity: 2026-03-22 — v1.1 roadmap created
 progress:
   total_phases: 10
   completed_phases: 6
-  total_plans: 14
-  completed_plans: 14
+  total_plans: 17
+  completed_plans: 15
   percent: 0
 ---
 
@@ -93,6 +93,9 @@ Recent decisions affecting current work:
 - [Phase 06-input-output-guardrails-and-refusal]: sensitive_data_output block returns Presidio-redacted content (not generic refusal) — preserves response utility while protecting PII
 - [Phase 06-input-output-guardrails-and-refusal]: Presidio balanced mode detects LOCATION entities; tests use numeric content to avoid false PII hits in clean-output assertions
 - [Phase 06-input-output-guardrails-and-refusal]: getattr(app.state, 'guardrail_engine', None) guard ensures backward compatibility — existing tests without guardrail_engine on app.state still pass
+- [Phase 07-01]: critique_threshold >= threshold rejected at startup via model_validator — misconfiguration caught before any traffic
+- [Phase 07-01]: load_constitution() raises ValueError matching load_rails_config() contract — consistent error interface across all config loaders
+- [Phase 07-01]: critique_threshold is output-rail-only by YAML convention — input rails have None by omission, no code guard needed
 
 ### v1.1 Architecture Decisions (Pre-Phase 5)
 
@@ -130,7 +133,7 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-22T11:02:17.020Z
-Stopped at: Phase 7 context gathered
-Resume file: .planning/phases/07-constitutional-ai-critique/07-CONTEXT.md
+Last session: 2026-03-22T11:26:37.702Z
+Stopped at: Completed 07-01-PLAN.md
+Resume file: None
 Next action: `/gsd:plan-phase 5`
