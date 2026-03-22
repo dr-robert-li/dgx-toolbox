@@ -70,11 +70,11 @@ Requirements for the AI safety harness milestone. Each maps to roadmap phases.
 
 ### Gateway & Routing
 
-- [ ] **GATE-01**: User can send POST /v1/chat/completions requests through the safety harness gateway
+- [x] **GATE-01**: User can send POST /v1/chat/completions requests through the safety harness gateway
 - [x] **GATE-02**: User authenticates via API key with per-tenant identity attached to each request
 - [x] **GATE-03**: Requests are rate-limited per tenant with configurable limits
-- [ ] **GATE-04**: Gateway proxies to LiteLLM for model-agnostic model invocation
-- [ ] **GATE-05**: User can bypass the harness and route directly to LiteLLM when safety pipeline is not needed
+- [x] **GATE-04**: Gateway proxies to LiteLLM for model-agnostic model invocation
+- [x] **GATE-05**: User can bypass the harness and route directly to LiteLLM when safety pipeline is not needed
 
 ### Input Guardrails
 
@@ -108,10 +108,10 @@ Requirements for the AI safety harness milestone. Each maps to roadmap phases.
 
 ### Trace Logging
 
-- [ ] **TRAC-01**: Every request/response is logged as a structured JSONL trace with request_id
-- [ ] **TRAC-02**: Traces include guardrail decisions, CAI critique results, and refusal events
-- [ ] **TRAC-03**: PII is redacted from traces before writing (compliance-safe)
-- [ ] **TRAC-04**: Traces are queryable via SQLite for eval and red teaming consumption
+- [x] **TRAC-01**: Every request/response is logged as a structured JSONL trace with request_id
+- [x] **TRAC-02**: Traces include guardrail decisions, CAI critique results, and refusal events
+- [x] **TRAC-03**: PII is redacted from traces before writing (compliance-safe)
+- [x] **TRAC-04**: Traces are queryable via SQLite for eval and red teaming consumption
 
 ### Evals & CI
 
@@ -204,15 +204,15 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DOCS-02 | Phase 4 | Complete |
 | DOCS-03 | Phase 4 | Complete |
 | DOCS-04 | Phase 4 | Complete |
-| GATE-01 | Phase 5 | Pending |
+| GATE-01 | Phase 5 | Complete |
 | GATE-02 | Phase 5 | Complete |
 | GATE-03 | Phase 5 | Complete |
-| GATE-04 | Phase 5 | Pending |
-| GATE-05 | Phase 5 | Pending |
-| TRAC-01 | Phase 5 | Pending |
-| TRAC-02 | Phase 5 | Pending |
-| TRAC-03 | Phase 5 | Pending |
-| TRAC-04 | Phase 5 | Pending |
+| GATE-04 | Phase 5 | Complete |
+| GATE-05 | Phase 5 | Complete |
+| TRAC-01 | Phase 5 | Complete |
+| TRAC-02 | Phase 5 | Complete |
+| TRAC-03 | Phase 5 | Complete |
+| TRAC-04 | Phase 5 | Complete |
 | INRL-01 | Phase 6 | Pending |
 | INRL-02 | Phase 6 | Pending |
 | INRL-03 | Phase 6 | Pending |

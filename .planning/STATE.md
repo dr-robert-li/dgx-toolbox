@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Safety Harness
 status: Roadmap defined
-stopped_at: Completed 05-03-PLAN.md (both tasks complete — aarch64 hardware verification confirmed PASS)
-last_updated: "2026-03-22T06:00:56.535Z"
+stopped_at: Completed 05-02-PLAN.md (proxy route, PII redactor, trace store — all 38 tests passing)
+last_updated: "2026-03-22T06:07:39.763Z"
 last_activity: 2026-03-22 — v1.1 roadmap created
 progress:
   total_phases: 10
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 11
-  completed_plans: 10
+  completed_plans: 11
   percent: 0
 ---
 
@@ -83,6 +83,9 @@ Recent decisions affecting current work:
 - [Phase 05-gateway-and-trace-foundation]: SlidingWindowLimiter uses asyncio.Lock() — harness runs under uvicorn single asyncio event loop
 - [Phase 05-gateway-and-trace-foundation]: NeMo/Presidio tests use pytest.skip() not pytest.fail() when library unavailable — enables safe CI runs without aarch64 hardware
 - [Phase 05-gateway-and-trace-foundation]: aarch64 GO: NeMo Guardrails + Annoy C++ build + Presidio spaCy NER all PASS on DGX Spark — Phase 6 guardrail implementation unblocked
+- [Phase 05-gateway-and-trace-foundation]: Regex pre-pass before Presidio NER ensures structured PII (email/phone/SSN/CC) always redacted even without spaCy model
+- [Phase 05-gateway-and-trace-foundation]: BackgroundTask for trace write decouples response latency from SQLite I/O
+- [Phase 05-gateway-and-trace-foundation]: CLI trace query interface deferred — Python TraceStore API satisfies TRAC-04
 
 ### v1.1 Architecture Decisions (Pre-Phase 5)
 
@@ -114,7 +117,7 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-22T06:00:56.532Z
-Stopped at: Completed 05-03-PLAN.md (both tasks complete — aarch64 hardware verification confirmed PASS)
+Last session: 2026-03-22T06:07:39.762Z
+Stopped at: Completed 05-02-PLAN.md (proxy route, PII redactor, trace store — all 38 tests passing)
 Resume file: None
 Next action: `/gsd:plan-phase 5`
