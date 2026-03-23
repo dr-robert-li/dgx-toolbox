@@ -1,0 +1,7 @@
+redteam:
+  max_category_ratio: 0.40
+  near_miss_window_days: 7
+  near_miss_limit: 100
+  near_miss_min_count: 5
+  variants_per_prompt: 3
+  gateway_url: "http://localhost:8080"

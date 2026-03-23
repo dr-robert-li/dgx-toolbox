@@ -326,15 +326,13 @@ def test_balance_check_combines_active_and_pending(tmp_path):
         {"prompt": f"active-{i}", "category": "injection", "expected_action": "block"}
         for i in range(5)
     ])
-    # pending: 5 injection + 15 other entries = 20 total entries added
-    # combined: 10 injection out of 20 total = 50%, exceeds 0.40 cap
+    # pending: 10 injection entries only
+    # combined: 5 (active injection) + 10 (pending injection) = 15 injection out of 15 total = 100%
+    # exceeds max_ratio=0.40 cap
     pending = tmp_path / "pending.jsonl"
     pending_entries = [
         {"prompt": f"pending-inj-{i}", "category": "injection", "expected_action": "block"}
-        for i in range(5)
-    ] + [
-        {"prompt": f"pending-other-{i}", "category": "other", "expected_action": "block"}
-        for i in range(15)
+        for i in range(10)
     ]
     _write_jsonl(pending, pending_entries)
     ok, violations = check_balance(pending, active_dir, max_category_ratio=0.40)

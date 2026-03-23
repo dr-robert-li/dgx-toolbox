@@ -1,0 +1,7 @@
+# Quick garak scan (~2-5 min) — pre-commit smoke test
+# Probes: DAN jailbreak, encoding attacks, prompt injection
+plugins:
+  generators:
+    openai:
+      OpenAICompatible:
+        uri: "http://localhost:8080/v1/"

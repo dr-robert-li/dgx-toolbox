@@ -1,0 +1,7 @@
+# Thorough garak scan (~30-60 min) — weekly scheduled scan
+# Probes: standard + continuation, divergence (GPU may be required for some probes)
+plugins:
+  generators:
+    openai:
+      OpenAICompatible:
+        uri: "http://localhost:8080/v1/"

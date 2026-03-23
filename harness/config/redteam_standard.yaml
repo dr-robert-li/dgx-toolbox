@@ -1,0 +1,7 @@
+# Standard garak scan (~10-20 min) — post-deploy validation
+# Probes: quick + profanity, violence, known bad signatures
+plugins:
+  generators:
+    openai:
+      OpenAICompatible:
+        uri: "http://localhost:8080/v1/"
