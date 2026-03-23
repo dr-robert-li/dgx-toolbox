@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Autoresearch Integration
-status: Defining requirements
-stopped_at: Milestone v1.2 started
-last_updated: "2026-03-23T08:38:50.912Z"
-last_activity: 2026-03-22 — v1.1 roadmap created
+status: Roadmap created — ready for phase planning
+stopped_at: v1.2 roadmap created (Phase 11-12)
+last_updated: "2026-03-24T00:00:00.000Z"
+last_activity: 2026-03-24 — v1.2 roadmap created
 progress:
-  total_phases: 10
+  total_phases: 12
   completed_phases: 10
   total_plans: 24
   completed_plans: 24
@@ -18,17 +18,17 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-22)
+See: .planning/PROJECT.md (updated 2026-03-24)
 
 **Core value:** Models are always accessible regardless of which tier they're on while the hot drive never fills up with stale models.
-**Current focus:** v1.2 Autoresearch Integration — defining requirements
+**Current focus:** v1.2 Autoresearch Integration — Phase 11 ready for planning
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 11 (Pipeline Wiring) — not started
 Plan: —
-Status: Defining requirements
-Last activity: 2026-03-24 — Milestone v1.2 started
+Status: Roadmap created, ready for `/gsd:plan-phase 11`
+Last activity: 2026-03-24 — v1.2 roadmap created
 
 Progress: [░░░░░░░░░░] 0% (v1.2)
 
@@ -123,11 +123,20 @@ Recent decisions affecting current work:
 - Red teaming requires stable trace data — cannot start before Phase 8 (eval harness) is complete
 - HITL dashboard requires eval harness and red team data — must come last (Phase 10)
 
+### v1.2 Architecture Decisions
+
+- LiteLLM config at `~/.litellm/config.yaml` — model registration appends entries to this file
+- Autoresearch launcher scripts already exist at `karpathy-autoresearch/` — Phase 11 adds config and glue, not a new launcher
+- Safety eval hook invokes existing Phase 8 replay eval harness against checkpoints — no new eval infrastructure
+- Training data screening routes through existing Phase 6 guardrail input check API — not a separate screening pipeline
+- Model registration targets vLLM serving path — autoresearch checkpoints assumed HF-format
+
 ### Pending Todos
 
 - ~~Verify NeMo Guardrails aarch64 pip install on DGX Spark in fresh venv before Phase 5 planning (Annoy C++ build risk)~~ RESOLVED 2026-03-22 — PASS on DGX Spark hardware
 - Confirm port 8080 is not in use by code-server in target deployment
 - Benchmark 7B judge model P95 latency on aarch64 before committing CAI async/sync split in Phase 7
+- Confirm autoresearch checkpoint format (HF format assumed) before writing vLLM registration in Phase 11
 
 ### Quick Tasks Completed
 
@@ -143,10 +152,11 @@ Recent decisions affecting current work:
 - ~~Phase 5: NeMo Guardrails aarch64 Annoy build is the highest-risk dependency — must validate before writing any application code~~ RESOLVED 2026-03-22 — PASS confirmed on DGX Spark
 - Phase 7: CAI judge model latency on DGX Spark aarch64 is unknown — async timeout values depend on actual hardware numbers
 - Phase 9: deepteam 1.0.6 (March 2026) is newly released — feedback-loop red-teaming pattern is research-frontier; plan Phase 9 with a research step
+- Phase 11: Confirm autoresearch checkpoint output format matches HF format expected by vLLM before writing registration script
 
 ## Session Continuity
 
-Last session: 2026-03-23T08:33:45.286Z
-Stopped at: Completed 10-03-PLAN.md
+Last session: 2026-03-24T00:00:00.000Z
+Stopped at: v1.2 roadmap created
 Resume file: None
-Next action: `/gsd:plan-phase 5`
+Next action: `/gsd:plan-phase 11`

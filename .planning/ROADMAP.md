@@ -6,6 +6,8 @@ Four phases take the project from a working configuration foundation through ada
 
 v1.1 adds six more phases (5–10) delivering a full AI safety harness: gateway and trace foundation, NeMo guardrails, Constitutional AI critique, eval harness with CI gate, distributed red teaming, and an optional human-in-the-loop review dashboard.
 
+v1.2 adds two more phases (11–12) integrating Karpathy autoresearch into the existing DGX Spark stack: glue scripts connecting autoresearch to local data and models, a post-training safety eval hook, LiteLLM model registration, and a runnable end-to-end demo.
+
 ## Phases
 
 **Phase Numbering:**
@@ -21,7 +23,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: Migration, Recall, and Safety** - Automated tiering cron, recall from cold, full safety envelope (completed 2026-03-21)
 - [x] **Phase 4: CLI, Status, Revert, and Docs** - Unified CLI dispatcher, status/revert commands, documentation (completed 2026-03-21)
 
-### v1.1 Safety Harness
+### v1.1 Safety Harness (Complete)
 
 - [x] **Phase 5: Gateway and Trace Foundation** - Validated aarch64 environment, passthrough FastAPI gateway, auth, rate limiting, and PII-safe trace store (completed 2026-03-22)
 - [x] **Phase 6: Input/Output Guardrails and Refusal** - NeMo Guardrails input/output rails, PII redaction, refusal calibration modes, user-tunable thresholds (completed 2026-03-22)
@@ -29,6 +31,11 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 8: Eval Harness and CI Gate** - Custom replay eval harness, lm-eval-harness integration, CI/CD promotion gate, trend dashboarding (completed 2026-03-23)
 - [x] **Phase 9: Red Teaming** - Trace-driven adversarial prompt generation, garak scanning, deepteam feedback loop, Celery async dispatch (completed 2026-03-23)
 - [x] **Phase 10: HITL Dashboard** - Gradio review UI, priority-sorted review queue, correction feedback loop, API-only headless mode (completed 2026-03-23)
+
+### v1.2 Autoresearch Integration
+
+- [ ] **Phase 11: Pipeline Wiring** - Autoresearch config and glue scripts connecting local datasets, HF cache models, post-training safety eval hook, and LiteLLM model registration
+- [ ] **Phase 12: Demo and Documentation** - Runnable end-to-end demo script with a sample dataset and step-by-step README walkthrough
 
 ## Phase Details
 
@@ -192,20 +199,43 @@ Plans:
 - [ ] 10-02-PLAN.md — Calibration engine, JSONL fine-tuning export, CLI entry point (calibrate/export/ui)
 - [ ] 10-03-PLAN.md — Gradio standalone review UI with two-panel layout, diff view, correction actions
 
+### Phase 11: Pipeline Wiring
+**Goal**: Autoresearch can be launched against local datasets and HF cache models, trained checkpoints are automatically evaluated by the safety harness replay eval, and passing models are registered in LiteLLM for immediate inference behind the gateway
+**Depends on**: Phase 10
+**Requirements**: DATA-01, DATA-02, DATA-03, TRSF-01, TRSF-02, TRSF-03, MREG-01, MREG-02, MREG-03
+**Success Criteria** (what must be TRUE):
+  1. Running the autoresearch launcher presents auto-discovered datasets from `~/data/` subdirectories and HF cache model names from `~/.cache/huggingface/hub/` as selectable options — no manual path entry required
+  2. When training data screening is enabled, input records containing PII or toxic content are flagged by the harness guardrails before autoresearch sees them, and a count of screened records is reported
+  3. After each autoresearch experiment completes, the post-training hook runs the harness replay eval dataset against the checkpoint and writes pass/fail results alongside the experiment log — a failing checkpoint is flagged but the checkpoint files are not deleted
+  4. A checkpoint that passes safety eval is registered in `~/.litellm/config.yaml` as a new model entry pointing to its vLLM serving path, and the model is immediately reachable via POST /v1/chat/completions through the safety harness
+  5. Running `autoresearch-register --remove <model-id>` removes the model entry from LiteLLM config and the model is no longer reachable through the gateway
+**Plans**: TBD
+
+### Phase 12: Demo and Documentation
+**Goal**: A new user can follow the README walkthrough to run the full data-to-inference pipeline end-to-end using a provided sample dataset, and understand every step without needing to read source code
+**Depends on**: Phase 11
+**Requirements**: DEMO-01, DEMO-02
+**Success Criteria** (what must be TRUE):
+  1. Running `scripts/demo-autoresearch.sh` with no arguments completes the full pipeline — data discovery, optional screening, autoresearch training on a sample dataset, safety eval of the resulting checkpoint, and LiteLLM registration — printing a final summary of pass/fail and the registered model endpoint
+  2. The README walkthrough covers each pipeline stage with a command to run, the expected output to observe, and what to do if a stage fails — a user who has never seen the codebase can reach a registered, queryable model from a standing start
+**Plans**: TBD
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation and Init | 2/2 | Complete | 2026-03-21 |
 | 2. Adapters and Usage Tracking | 2/2 | Complete | 2026-03-21 |
 | 3. Migration, Recall, and Safety | 2/2 | Complete | 2026-03-21 |
-| 4. CLI, Status, Revert, and Docs | 2/2 | Complete    | 2026-03-21 |
-| 5. Gateway and Trace Foundation | 3/3 | Complete   | 2026-03-22 |
-| 6. Input/Output Guardrails and Refusal | 3/3 | Complete   | 2026-03-22 |
-| 7. Constitutional AI Critique | 3/3 | Complete   | 2026-03-22 |
-| 8. Eval Harness and CI Gate | 2/2 | Complete   | 2026-03-23 |
-| 9. Red Teaming | 2/2 | Complete   | 2026-03-23 |
-| 10. HITL Dashboard | 3/3 | Complete    | 2026-03-23 |
+| 4. CLI, Status, Revert, and Docs | 2/2 | Complete | 2026-03-21 |
+| 5. Gateway and Trace Foundation | 3/3 | Complete | 2026-03-22 |
+| 6. Input/Output Guardrails and Refusal | 3/3 | Complete | 2026-03-22 |
+| 7. Constitutional AI Critique | 3/3 | Complete | 2026-03-22 |
+| 8. Eval Harness and CI Gate | 2/2 | Complete | 2026-03-23 |
+| 9. Red Teaming | 2/2 | Complete | 2026-03-23 |
+| 10. HITL Dashboard | 3/3 | Complete | 2026-03-23 |
+| 11. Pipeline Wiring | 0/TBD | Not started | - |
+| 12. Demo and Documentation | 0/TBD | Not started | - |

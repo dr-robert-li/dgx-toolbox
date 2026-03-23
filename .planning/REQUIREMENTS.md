@@ -270,13 +270,25 @@ Which phases cover which requirements. Updated during roadmap creation.
 | HITL-02 | Phase 10 | Complete |
 | HITL-03 | Phase 10 | Complete |
 | HITL-04 | Phase 10 | Complete |
+| DATA-01 | Phase 11 | Pending |
+| DATA-02 | Phase 11 | Pending |
+| DATA-03 | Phase 11 | Pending |
+| TRSF-01 | Phase 11 | Pending |
+| TRSF-02 | Phase 11 | Pending |
+| TRSF-03 | Phase 11 | Pending |
+| MREG-01 | Phase 11 | Pending |
+| MREG-02 | Phase 11 | Pending |
+| MREG-03 | Phase 11 | Pending |
+| DEMO-01 | Phase 12 | Pending |
+| DEMO-02 | Phase 12 | Pending |
 
 **Coverage:**
 - v1.0 requirements: 38 total (38 complete)
-- v1.1 requirements: 39 total (note: REQUIREMENTS.md previously stated 36; actual count is 39 — GATE-05, CSTL-04, CSTL-05 were present in the file but not counted)
-- Mapped to phases: 39/39 (100%)
+- v1.1 requirements: 39 total (39 complete)
+- v1.2 requirements: 11 total (0 complete, 11 pending)
+- Mapped to phases: 88/88 (100%)
 - Unmapped: 0
 
 ---
-*Requirements defined: 2026-03-21 (v1.0), 2026-03-22 (v1.1)*
-*Last updated: 2026-03-22 after v1.1 roadmap creation*
+*Requirements defined: 2026-03-21 (v1.0), 2026-03-22 (v1.1), 2026-03-24 (v1.2)*
+*Last updated: 2026-03-24 after v1.2 roadmap creation*
