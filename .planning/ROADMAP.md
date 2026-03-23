@@ -188,9 +188,9 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [ ] 06-01-PLAN.md — Config, normalizer, type contracts, NeMo config files, and dependencies
-- [ ] 06-02-PLAN.md — GuardrailEngine class with check_input/check_output and unit tests
-- [ ] 06-03-PLAN.md — Proxy wiring, TenantConfig rail_overrides, integration tests
+- [ ] 10-01-PLAN.md — corrections schema, TraceStore extensions, FastAPI HITL router, app wiring, tests
+- [ ] 10-02-PLAN.md — Calibration engine, JSONL fine-tuning export, CLI entry point (calibrate/export/ui)
+- [ ] 10-03-PLAN.md — Gradio standalone review UI with two-panel layout, diff view, correction actions
 
 ## Progress
 
@@ -208,4 +208,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Constitutional AI Critique | 3/3 | Complete   | 2026-03-22 |
 | 8. Eval Harness and CI Gate | 2/2 | Complete   | 2026-03-23 |
 | 9. Red Teaming | 2/2 | Complete   | 2026-03-23 |
-| 10. HITL Dashboard | 0/? | Not started | - |
+| 10. HITL Dashboard | 0/3 | Not started | - |
