@@ -4,8 +4,63 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import aiosqlite
+
+
+# ---------------------------------------------------------------------------
+# Module-level helpers for HITL priority computation
+# ---------------------------------------------------------------------------
+
+
+def compute_priority(guardrail_decisions: dict) -> float:
+    """Compute HITL review priority from guardrail decisions.
+
+    Priority is 1.0 - min(threshold - score) for results with score > 0.
+    Closest-to-threshold items get the highest priority.
+    Returns 0.0 when there are no scoreable results.
+
+    Args:
+        guardrail_decisions: Dict with optional 'all_results' list.
+            Each result should have 'score' and 'threshold' fields.
+
+    Returns:
+        Float in [0.0, 1.0], higher = more urgent review needed.
+    """
+    all_results = guardrail_decisions.get("all_results", [])
+    distances = []
+    for result in all_results:
+        score = result.get("score", 0)
+        threshold = result.get("threshold", 1.0)
+        if score > 0:
+            distances.append(threshold - score)
+    if not distances:
+        return 0.0
+    return 1.0 - min(distances)
+
+
+def _extract_triggering_rail(guardrail_decisions: dict) -> str | None:
+    """Return the rail name from the all_results entry closest to threshold.
+
+    Args:
+        guardrail_decisions: Dict with optional 'all_results' list.
+
+    Returns:
+        Rail name string, or None if no results with score > 0.
+    """
+    all_results = guardrail_decisions.get("all_results", [])
+    best = None
+    best_distance = float("inf")
+    for result in all_results:
+        score = result.get("score", 0)
+        threshold = result.get("threshold", 1.0)
+        if score > 0:
+            distance = threshold - score
+            if distance < best_distance:
+                best_distance = distance
+                best = result.get("rail_name") or result.get("rail")
+    return best
 
 
 class TraceStore:
@@ -276,6 +331,154 @@ class TraceStore:
             if any(r.get("score", 0) > 0 for r in all_results):
                 near_misses.append(record)
         return near_misses
+
+    async def write_correction(self, correction: dict) -> None:
+        """Insert a correction record into the corrections table.
+
+        PII in edited_response is redacted before storage.
+        Validates that action is one of 'approve', 'reject', 'edit' — SQLite
+        CHECK constraint enforces this; raises on invalid action.
+
+        Args:
+            correction: Dict with fields: request_id, reviewer, action,
+                        edited_response (optional), trace_ref (optional).
+        """
+        from harness.pii.redactor import redact as redact_text
+
+        edited_response = correction.get("edited_response")
+        if edited_response is not None:
+            edited_response = redact_text(edited_response)
+
+        created_at = correction.get("created_at") or datetime.now(timezone.utc).isoformat()
+
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(
+                """
+                INSERT INTO corrections
+                (request_id, reviewer, action, edited_response, created_at, trace_ref)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    correction["request_id"],
+                    correction["reviewer"],
+                    correction["action"],
+                    edited_response,
+                    created_at,
+                    correction.get("trace_ref"),
+                ),
+            )
+            await db.commit()
+
+    async def query_corrections(self, request_id: str | None = None) -> list[dict]:
+        """Fetch correction records.
+
+        Args:
+            request_id: If provided, filter to corrections for this request_id.
+
+        Returns:
+            List of correction dicts ordered by created_at DESC.
+        """
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            if request_id is not None:
+                query = "SELECT * FROM corrections WHERE request_id = ? ORDER BY created_at DESC"
+                params: tuple = (request_id,)
+            else:
+                query = "SELECT * FROM corrections ORDER BY created_at DESC"
+                params = ()
+            async with db.execute(query, params) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(row) for row in rows]
+
+    async def query_hitl_queue(
+        self,
+        since: str,
+        rail_filter: str = "all",
+        tenant_filter: str = "all",
+        hide_reviewed: bool = False,
+        limit: int = 200,
+    ) -> list[dict]:
+        """Fetch HITL review queue: flagged traces sorted by priority.
+
+        Priority ordering: unreviewed items before reviewed, within each group
+        sorted by priority DESC (closest to threshold first).
+
+        Args:
+            since: ISO8601 timestamp lower bound (inclusive).
+            rail_filter: Rail name to filter on, or 'all' for no filter.
+            tenant_filter: Tenant ID to filter on, or 'all' for no filter.
+            hide_reviewed: If True, exclude traces with existing corrections.
+            limit: Maximum traces to fetch from DB before Python post-processing.
+
+        Returns:
+            List of trace dicts augmented with: priority (float),
+            triggering_rail (str|None), correction_action (str|None),
+            correction_reviewer (str|None), cai_critique (dict|None).
+        """
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                """
+                SELECT t.*, c.action AS correction_action, c.reviewer AS correction_reviewer
+                FROM traces t
+                LEFT JOIN corrections c ON c.request_id = t.request_id
+                WHERE t.timestamp >= ?
+                  AND t.guardrail_decisions IS NOT NULL
+                  AND (? = 'all' OR t.tenant = ?)
+                ORDER BY t.timestamp DESC
+                LIMIT ?
+                """,
+                (since, tenant_filter, tenant_filter, limit),
+            ) as cursor:
+                rows = await cursor.fetchall()
+
+        results = []
+        for row in rows:
+            record = dict(row)
+
+            # Parse guardrail_decisions JSON
+            gd_raw = record.get("guardrail_decisions")
+            if gd_raw is not None:
+                try:
+                    gd = json.loads(gd_raw) if isinstance(gd_raw, str) else gd_raw
+                except (json.JSONDecodeError, TypeError):
+                    gd = {}
+            else:
+                gd = {}
+            record["guardrail_decisions"] = gd
+
+            # Compute priority and extract triggering rail
+            priority = compute_priority(gd)
+            triggering_rail = _extract_triggering_rail(gd)
+            record["priority"] = priority
+            record["triggering_rail"] = triggering_rail
+
+            # Apply rail filter
+            if rail_filter != "all" and triggering_rail != rail_filter:
+                continue
+
+            # Apply hide_reviewed filter
+            if hide_reviewed and record.get("correction_action") is not None:
+                continue
+
+            # Parse cai_critique JSON if present
+            cai_raw = record.get("cai_critique")
+            if cai_raw is not None:
+                try:
+                    record["cai_critique"] = json.loads(cai_raw) if isinstance(cai_raw, str) else cai_raw
+                except (json.JSONDecodeError, TypeError):
+                    record["cai_critique"] = None
+            else:
+                record["cai_critique"] = None
+
+            results.append(record)
+
+        # Sort: reviewed items last, then by priority DESC
+        results.sort(
+            key=lambda r: (r.get("correction_action") is not None, -r.get("priority", 0.0))
+        )
+
+        return results
 
     async def query_by_timerange(
         self, since: str, until: str | None = None

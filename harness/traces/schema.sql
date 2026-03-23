@@ -43,3 +43,15 @@ CREATE TABLE IF NOT EXISTS redteam_jobs (
 );
 CREATE INDEX IF NOT EXISTS idx_redteam_jobs_status     ON redteam_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_redteam_jobs_created_at ON redteam_jobs(created_at);
+
+CREATE TABLE IF NOT EXISTS corrections (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id      TEXT NOT NULL,
+    reviewer        TEXT NOT NULL,
+    action          TEXT NOT NULL CHECK(action IN ('approve', 'reject', 'edit')),
+    edited_response TEXT,
+    created_at      TEXT NOT NULL,
+    trace_ref       TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_corrections_request_id ON corrections(request_id);
+CREATE INDEX IF NOT EXISTS idx_corrections_created_at ON corrections(created_at);
