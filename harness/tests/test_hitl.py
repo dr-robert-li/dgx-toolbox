@@ -881,3 +881,54 @@ async def test_export_cai_critique_none(tmp_path):
 
     assert record["messages"][1]["content"] == "blue"
     assert record["label"] == "approve"
+
+
+# ---------------------------------------------------------------------------
+# Task 2 (Plan 02): CLI entry point tests
+# ---------------------------------------------------------------------------
+
+
+def test_cli_no_command(monkeypatch):
+    """Calling main() with no subcommand exits with code 1."""
+    import sys
+    from harness.hitl.__main__ import main
+
+    monkeypatch.setattr(sys, "argv", ["python -m harness.hitl"])
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+    assert exc_info.value.code == 1
+
+
+def test_cli_calibrate(tmp_path, monkeypatch):
+    """main() with ['calibrate', '--db', tmp_db] runs without error on empty db."""
+    import sys
+    import asyncio
+    from harness.hitl.__main__ import main
+    from harness.traces.store import TraceStore
+
+    db_path = str(tmp_path / "cli_cal.db")
+    # Initialize DB schema so the command doesn't fail on missing table
+    asyncio.run(TraceStore(db_path=db_path).init_db())
+
+    monkeypatch.setattr(sys, "argv", ["python -m harness.hitl", "calibrate", "--db", db_path])
+    # Should print "No suggestions" and return without error
+    main()  # No SystemExit expected for empty db case
+
+
+def test_cli_export(tmp_path, monkeypatch):
+    """main() with ['export', '--output', out_path, '--db', tmp_db] creates output file."""
+    import sys
+    import asyncio
+    from harness.hitl.__main__ import main
+    from harness.traces.store import TraceStore
+
+    db_path = str(tmp_path / "cli_exp.db")
+    out_path = str(tmp_path / "out.jsonl")
+    asyncio.run(TraceStore(db_path=db_path).init_db())
+
+    monkeypatch.setattr(
+        sys, "argv",
+        ["python -m harness.hitl", "export", "--output", out_path, "--db", db_path],
+    )
+    main()
+    assert (tmp_path / "out.jsonl").exists(), "export should create the output file"
