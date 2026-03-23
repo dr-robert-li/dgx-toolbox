@@ -148,19 +148,24 @@ def build_ui(api_url: str, api_key: str):  # -> gr.Blocks
             pass
         return None
 
-    def select_item(queue_data):
+    def select_item(dataframe_value, evt):
         """Handle queue row selection — populate detail panel.
 
-        Gradio 6.x passes SelectData as the sole argument when using .select().
-        The selected row index is in queue_data.index.
-        The dataframe value is accessed via queue_data.value.
+        Gradio 6.x: fn(dataframe_value, evt) with inputs=[queue_table].
+        dataframe_value = the full table data (list of lists).
+        evt = SelectData injected by Gradio as the extra arg (has .index, .value, .row_value).
         """
         _empty = ("No item selected.", "", "", "", "")
         try:
-            row_idx = queue_data.index[0]
-            # queue_data.value is the cell value; we need the row's first column (request_id)
-            # Re-fetch via the row index from the stored data
-            request_id = str(queue_data.row_value[0]) if hasattr(queue_data, "row_value") else str(queue_data.value)
+            # evt.row_value has the full row; first column is request_id
+            if hasattr(evt, "row_value") and evt.row_value:
+                request_id = str(evt.row_value[0])
+            elif hasattr(evt, "index") and dataframe_value is not None:
+                row_idx = evt.index[0]
+                row = dataframe_value[row_idx]
+                request_id = str(row[0]) if isinstance(row, (list, tuple)) else str(row)
+            else:
+                return _empty
         except Exception:  # noqa: BLE001
             return _empty
 
@@ -347,9 +352,11 @@ def build_ui(api_url: str, api_key: str):  # -> gr.Blocks
         hide_reviewed.change(fn=refresh_queue, inputs=refresh_inputs, outputs=[queue_table])
 
         # Row selection in queue table
-        # Gradio 6.x: .select() passes SelectData as sole arg (no inputs needed)
+        # Gradio 6.x: fn(dataframe_value, evt) — inputs provide the table data,
+        # Gradio auto-injects SelectData as the extra arg
         queue_table.select(
             fn=select_item,
+            inputs=[queue_table],
             outputs=[
                 detail_header,
                 original_output,
