@@ -155,7 +155,7 @@ Plans:
   2. lm-eval generative tasks route through POST /v1/chat/completions and loglikelihood tasks route directly to LiteLLM — both paths complete without errors and produce plausible benchmark scores
   3. Lowering a refusal threshold below a known-bad prompt causes the CI gate to report a safety regression and exit non-zero, blocking promotion
   4. Each eval run's results are stored and a trend chart shows metric history across runs, making regressions and improvements visible over time
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 - [ ] 08-01-PLAN.md — Replay harness with metrics scoring, eval_runs SQLite table, starter safety dataset
@@ -207,6 +207,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 5. Gateway and Trace Foundation | 3/3 | Complete   | 2026-03-22 |
 | 6. Input/Output Guardrails and Refusal | 3/3 | Complete   | 2026-03-22 |
 | 7. Constitutional AI Critique | 3/3 | Complete   | 2026-03-22 |
-| 8. Eval Harness and CI Gate | 0/2 | Not started | - |
+| 8. Eval Harness and CI Gate | 1/2 | In Progress|  |
 | 9. Red Teaming | 0/? | Not started | - |
 | 10. HITL Dashboard | 0/? | Not started | - |
