@@ -109,5 +109,33 @@ fi
 # shellcheck disable=SC1090
 source "$HOME/.bashrc" || true
 
+# -----------------------------------------------------------------------------
+# Safety Harness (user-level, idempotent)
+# -----------------------------------------------------------------------------
+HARNESS_DIR="$(cd "$(dirname "$0")/.." && pwd)/harness"
+if [ -f "$HARNESS_DIR/pyproject.toml" ]; then
+  echo "=== Installing Safety Harness (pip install -e) ==="
+  pip install -e "$HARNESS_DIR[test]" --quiet
+  echo "=== Downloading spaCy NER model (en_core_web_lg) ==="
+  python -m spacy download en_core_web_lg --quiet 2>/dev/null || true
+else
+  echo "=== Safety Harness not found at $HARNESS_DIR, skipping ==="
+fi
+
+# Ensure HARNESS_API_KEY is in .bashrc (idempotent)
+if ! grep -q "HARNESS_API_KEY" "$HOME/.bashrc" 2>/dev/null; then
+  echo "=== Adding HARNESS_API_KEY to .bashrc ==="
+  echo 'export HARNESS_API_KEY="sk-devteam-test"' >> "$HOME/.bashrc"
+else
+  echo "=== HARNESS_API_KEY already set in .bashrc ==="
+fi
+
+# Copy bash aliases if not already present
+ALIASES_SRC="$(cd "$(dirname "$0")/.." && pwd)/example.bash_aliases"
+if [ -f "$ALIASES_SRC" ]; then
+  cp "$ALIASES_SRC" "$HOME/.bash_aliases"
+  echo "=== Bash aliases updated from example.bash_aliases ==="
+fi
+
 echo "=== Base global setup complete (idempotent, no global pip). ==="
 echo "Open a new shell or 'source ~/.bashrc' to use conda/pyenv."
