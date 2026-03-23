@@ -42,7 +42,11 @@ def _action_taken(item: dict) -> str:
             gd = {}
     status_code = item.get("status_code", 200)
     refusal_event = item.get("refusal_event", 0)
-    all_results = gd.get("all_results", [])
+    # guardrail_decisions may be a list (from trace JSON) or a dict with 'all_results'
+    if isinstance(gd, list):
+        all_results = gd
+    else:
+        all_results = gd.get("all_results", [])
     # Any result with score > threshold means it was blocked/steered
     has_cai = item.get("cai_critique") is not None
     if refusal_event:
