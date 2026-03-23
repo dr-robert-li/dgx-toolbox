@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Safety Harness
 status: Roadmap defined
-stopped_at: Completed 09-red-teaming/09-01-PLAN.md
-last_updated: "2026-03-23T05:55:28.842Z"
+stopped_at: Completed 09-red-teaming/09-02-PLAN.md
+last_updated: "2026-03-23T06:03:28.568Z"
 last_activity: 2026-03-22 — v1.1 roadmap created
 progress:
   total_phases: 10
-  completed_phases: 8
+  completed_phases: 9
   total_plans: 21
-  completed_plans: 20
+  completed_plans: 21
   percent: 0
 ---
 
@@ -110,6 +110,9 @@ Recent decisions affecting current work:
 - [Phase 09-red-teaming]: query_near_misses uses SQL pre-filter (refusal_event=0) then Python score>0 post-filter — avoids complex SQL JSON parsing while keeping DB reads bounded
 - [Phase 09-red-teaming]: garak YAML profiles require plugins.generators.openai.OpenAICompatible.uri nesting — garak silently ignores wrong nesting
 - [Phase 09-red-teaming]: check_balance evaluates combined active+pending total — balance enforced on final merged state not delta batch
+- [Phase 09-red-teaming]: asyncio.Lock (not Semaphore) for single-job gate — lock.locked() is public API
+- [Phase 09-red-teaming]: asyncio.create_task stored in app.state.redteam_active_task to prevent garbage collection
+- [Phase 09-red-teaming]: garak runner uses asyncio.create_subprocess_exec not subprocess.run to avoid blocking event loop
 
 ### v1.1 Architecture Decisions (Pre-Phase 5)
 
@@ -147,7 +150,7 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-23T05:55:28.839Z
-Stopped at: Completed 09-red-teaming/09-01-PLAN.md
+Last session: 2026-03-23T06:03:28.566Z
+Stopped at: Completed 09-red-teaming/09-02-PLAN.md
 Resume file: None
 Next action: `/gsd:plan-phase 5`

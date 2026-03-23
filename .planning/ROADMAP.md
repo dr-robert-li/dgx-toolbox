@@ -27,7 +27,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: Input/Output Guardrails and Refusal** - NeMo Guardrails input/output rails, PII redaction, refusal calibration modes, user-tunable thresholds (completed 2026-03-22)
 - [x] **Phase 7: Constitutional AI Critique** - Risk-gated two-pass critique pipeline, user-editable constitution, configurable judge model, AI-guided suggestions (completed 2026-03-22)
 - [x] **Phase 8: Eval Harness and CI Gate** - Custom replay eval harness, lm-eval-harness integration, CI/CD promotion gate, trend dashboarding (completed 2026-03-23)
-- [ ] **Phase 9: Red Teaming** - Trace-driven adversarial prompt generation, garak scanning, deepteam feedback loop, Celery async dispatch
+- [x] **Phase 9: Red Teaming** - Trace-driven adversarial prompt generation, garak scanning, deepteam feedback loop, Celery async dispatch (completed 2026-03-23)
 - [ ] **Phase 10: HITL Dashboard** - Gradio review UI, priority-sorted review queue, correction feedback loop, API-only headless mode
 
 ## Phase Details
@@ -170,7 +170,7 @@ Plans:
   2. The deepteam generator reads the trace store, identifies failure records, and writes adversarial prompt variants to a pending review queue — generated prompts require explicit promotion before entering eval datasets
   3. Submitting a red-team job via the API returns a job_id; polling job status shows running then complete; completed results are retrievable by job_id
   4. Before any generated dataset is written, a balance check enforces the configured ratio cap per attack category — datasets that would exceed the cap are rejected with a clear error
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 09-01-PLAN.md — Schema extension, TraceStore job CRUD, near-miss query, balance check, garak profiles
@@ -207,5 +207,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Input/Output Guardrails and Refusal | 3/3 | Complete   | 2026-03-22 |
 | 7. Constitutional AI Critique | 3/3 | Complete   | 2026-03-22 |
 | 8. Eval Harness and CI Gate | 2/2 | Complete   | 2026-03-23 |
-| 9. Red Teaming | 1/2 | In Progress|  |
+| 9. Red Teaming | 2/2 | Complete   | 2026-03-23 |
 | 10. HITL Dashboard | 0/? | Not started | - |

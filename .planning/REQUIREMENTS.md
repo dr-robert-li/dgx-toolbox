@@ -122,8 +122,8 @@ Requirements for the AI safety harness milestone. Each maps to roadmap phases.
 
 ### Red Teaming
 
-- [ ] **RDTM-01**: garak runs one-shot vulnerability scans against the gateway endpoint
-- [ ] **RDTM-02**: Adversarial prompts are generated from past critiques, evals, and trace logs via deepteam
+- [x] **RDTM-01**: garak runs one-shot vulnerability scans against the gateway endpoint
+- [x] **RDTM-02**: Adversarial prompts are generated from past critiques, evals, and trace logs via deepteam
 - [x] **RDTM-03**: Red team jobs run asynchronously via Celery/Redis
 - [x] **RDTM-04**: Generated adversarial datasets are balanced to prevent category drift
 
@@ -235,8 +235,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | EVAL-02 | Phase 8 | Complete |
 | EVAL-03 | Phase 8 | Complete |
 | EVAL-04 | Phase 8 | Complete |
-| RDTM-01 | Phase 9 | Pending |
-| RDTM-02 | Phase 9 | Pending |
+| RDTM-01 | Phase 9 | Complete |
+| RDTM-02 | Phase 9 | Complete |
 | RDTM-03 | Phase 9 | Complete |
 | RDTM-04 | Phase 9 | Complete |
 | HITL-01 | Phase 10 | Pending |
