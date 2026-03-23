@@ -68,6 +68,12 @@ async def lifespan(app: FastAPI):
     except (FileNotFoundError, ValueError):
         app.state.critique_engine = None  # CAI optional — service runs without it
 
+    # Red team job dispatch — single-job lock + state
+    import asyncio
+    app.state.redteam_lock = asyncio.Lock()
+    app.state.redteam_current_job_id = None
+    app.state.redteam_active_task = None
+
     yield
 
     await app.state.http_client.aclose()
@@ -86,6 +92,9 @@ app.include_router(router)
 
 from harness.proxy.admin import admin_router  # noqa: E402
 app.include_router(admin_router)
+
+from harness.redteam.router import redteam_router  # noqa: E402
+app.include_router(redteam_router)
 
 
 @app.post("/probe")

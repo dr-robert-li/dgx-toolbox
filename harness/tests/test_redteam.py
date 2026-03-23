@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -289,3 +290,295 @@ async def test_run_deepteam_job_skips_on_few_near_misses():
     assert "skip_reason" in result
     # http_client.post should NOT have been called
     mock_http.post.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Task 2: Router tests — helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_app(tmp_path: Path):
+    """Create a minimal FastAPI test app with mocked state."""
+    import asyncio
+    from fastapi import FastAPI
+    from harness.redteam.router import redteam_router
+
+    app = FastAPI()
+    app.include_router(redteam_router)
+
+    # Fake trace store backed by in-memory dict
+    jobs: dict = {}
+
+    class FakeTraceStore:
+        async def create_job(self, job: dict) -> None:
+            jobs[job["job_id"]] = {
+                "job_id": job["job_id"],
+                "type": job["type"],
+                "status": "pending",
+                "created_at": job.get("created_at", "2026-01-01T00:00:00Z"),
+                "completed_at": None,
+                "result": None,
+            }
+
+        async def update_job_status(self, job_id: str, status: str, result: dict | None = None) -> None:
+            if job_id in jobs:
+                jobs[job_id]["status"] = status
+                if result is not None:
+                    jobs[job_id]["result"] = result
+
+        async def get_job(self, job_id: str) -> dict | None:
+            return jobs.get(job_id)
+
+        async def list_jobs(self, limit: int = 20) -> list[dict]:
+            return list(jobs.values())[-limit:]
+
+    # Override verify_api_key dependency to always succeed
+    from harness.config.loader import TenantConfig
+
+    async def fake_verify_api_key():
+        return TenantConfig(
+            tenant_id="test",
+            api_key_hash="$argon2id$v=19$m=65536,t=3,p=4$fakehash",
+            bypass=True,
+        )
+
+    from harness.auth.bearer import verify_api_key
+    app.dependency_overrides[verify_api_key] = fake_verify_api_key
+
+    app.state.trace_store = FakeTraceStore()
+    app.state.redteam_lock = asyncio.Lock()
+    app.state.redteam_current_job_id = None
+    app.state.redteam_active_task = None
+    app.state.http_client = AsyncMock()
+    app.state.critique_engine = None
+
+    return app, jobs
+
+
+# ---------------------------------------------------------------------------
+# Task 2: Router tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_submit_garak_job(tmp_path):
+    """POST /admin/redteam/jobs with type=garak returns 202 with job_id starting with rt-."""
+    from httpx import ASGITransport, AsyncClient
+
+    app, jobs = _make_app(tmp_path)
+
+    # Patch _dispatch_garak to avoid actual subprocess
+    with patch("harness.redteam.router._dispatch_garak", new=AsyncMock(return_value={"scores": {}})):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                "/admin/redteam/jobs",
+                json={"type": "garak", "profile": "quick"},
+                headers={"Authorization": "Bearer test-key"},
+            )
+
+    assert resp.status_code == 202
+    data = resp.json()
+    assert "job_id" in data
+    assert data["job_id"].startswith("rt-")
+    assert data["status"] == "pending"
+
+
+@pytest.mark.asyncio
+async def test_submit_deepteam_job(tmp_path):
+    """POST /admin/redteam/jobs with type=deepteam returns 202 with job_id."""
+    from httpx import ASGITransport, AsyncClient
+
+    app, jobs = _make_app(tmp_path)
+
+    with patch("harness.redteam.router._dispatch_deepteam", new=AsyncMock(return_value={"variants_generated": 0})):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                "/admin/redteam/jobs",
+                json={"type": "deepteam"},
+                headers={"Authorization": "Bearer test-key"},
+            )
+
+    assert resp.status_code == 202
+    data = resp.json()
+    assert "job_id" in data
+
+
+@pytest.mark.asyncio
+async def test_409_conflict(tmp_path):
+    """Second job submission while one is running returns 409 Conflict with running job_id."""
+    from httpx import ASGITransport, AsyncClient
+    import asyncio
+
+    app, jobs = _make_app(tmp_path)
+
+    # Manually acquire the lock to simulate a running job
+    await app.state.redteam_lock.acquire()
+    app.state.redteam_current_job_id = "rt-running-job"
+
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                "/admin/redteam/jobs",
+                json={"type": "garak", "profile": "quick"},
+                headers={"Authorization": "Bearer test-key"},
+            )
+    finally:
+        app.state.redteam_lock.release()
+
+    assert resp.status_code == 409
+    data = resp.json()
+    assert "error" in data
+    assert data["job_id"] == "rt-running-job"
+
+
+@pytest.mark.asyncio
+async def test_get_job_status(tmp_path):
+    """Submit a job, then GET /admin/redteam/jobs/{job_id} returns dict with job fields."""
+    from httpx import ASGITransport, AsyncClient
+
+    app, jobs = _make_app(tmp_path)
+
+    with patch("harness.redteam.router._dispatch_garak", new=AsyncMock(return_value={"scores": {}})):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            post_resp = await client.post(
+                "/admin/redteam/jobs",
+                json={"type": "garak", "profile": "quick"},
+                headers={"Authorization": "Bearer test-key"},
+            )
+            job_id = post_resp.json()["job_id"]
+
+            get_resp = await client.get(
+                f"/admin/redteam/jobs/{job_id}",
+                headers={"Authorization": "Bearer test-key"},
+            )
+
+    assert get_resp.status_code == 200
+    data = get_resp.json()
+    assert data["job_id"] == job_id
+    assert "type" in data
+    assert "status" in data
+    assert "created_at" in data
+
+
+@pytest.mark.asyncio
+async def test_get_job_404(tmp_path):
+    """GET /admin/redteam/jobs/nonexistent returns 404."""
+    from httpx import ASGITransport, AsyncClient
+
+    app, jobs = _make_app(tmp_path)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get(
+            "/admin/redteam/jobs/nonexistent-job",
+            headers={"Authorization": "Bearer test-key"},
+        )
+
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_list_jobs(tmp_path):
+    """Submit 2 jobs, GET /admin/redteam/jobs returns list of 2."""
+    from httpx import ASGITransport, AsyncClient
+
+    app, jobs = _make_app(tmp_path)
+
+    with patch("harness.redteam.router._dispatch_garak", new=AsyncMock(return_value={"scores": {}})):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            for _ in range(2):
+                await client.post(
+                    "/admin/redteam/jobs",
+                    json={"type": "garak", "profile": "quick"},
+                    headers={"Authorization": "Bearer test-key"},
+                )
+            resp = await client.get(
+                "/admin/redteam/jobs",
+                headers={"Authorization": "Bearer test-key"},
+            )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "jobs" in data
+    assert len(data["jobs"]) == 2
+
+
+# ---------------------------------------------------------------------------
+# Task 2: CLI promote tests
+# ---------------------------------------------------------------------------
+
+
+def _write_jsonl(path: Path, entries: list[dict]) -> None:
+    path.write_text("\n".join(json.dumps(e) for e in entries))
+
+
+def test_promote_cli_success(tmp_path, monkeypatch):
+    """Pending JSONL within balance limits gets moved to active dir."""
+    import harness.redteam.__main__ as cli_main
+
+    active_dir = tmp_path / "active"
+    active_dir.mkdir()
+    pending_dir = tmp_path / "pending"
+    pending_dir.mkdir()
+
+    pending_file = pending_dir / "deepteam-20260323T120000.jsonl"
+    _write_jsonl(pending_file, [
+        {"prompt": "test1", "category": "injection", "expected_action": "block"},
+        {"prompt": "test2", "category": "violence", "expected_action": "block"},
+    ])
+
+    monkeypatch.setattr(cli_main, "ACTIVE_DIR", active_dir)
+    monkeypatch.setattr(cli_main, "PENDING_DIR", pending_dir)
+
+    args = MagicMock()
+    args.file = str(pending_file)
+    args.max_ratio = 0.40
+
+    # Should not raise — within balance limits (50% each, but max ratio 0.40 means we need to check)
+    # With 2 entries: injection=1/2=0.5, violence=1/2=0.5, both exceed 0.40
+    # Let's use 3 categories to stay within 0.40
+    pending_file.write_text(
+        "\n".join(json.dumps(e) for e in [
+            {"prompt": "test1", "category": "injection", "expected_action": "block"},
+            {"prompt": "test2", "category": "violence", "expected_action": "block"},
+            {"prompt": "test3", "category": "roleplay", "expected_action": "block"},
+        ])
+    )
+
+    cli_main.cmd_promote(args)
+
+    dest = active_dir / pending_file.name
+    assert dest.exists(), "File should have been moved to active dir"
+    assert not pending_file.exists(), "File should have been removed from pending dir"
+
+
+def test_promote_cli_balance_failure(tmp_path, monkeypatch):
+    """Pending JSONL exceeding balance causes sys.exit(1), file NOT moved."""
+    import harness.redteam.__main__ as cli_main
+
+    active_dir = tmp_path / "active"
+    active_dir.mkdir()
+    pending_dir = tmp_path / "pending"
+    pending_dir.mkdir()
+
+    pending_file = pending_dir / "deepteam-20260323T120001.jsonl"
+    # 4 out of 5 are injection -> 80% > 40% cap
+    _write_jsonl(pending_file, [
+        {"prompt": f"inj-{i}", "category": "injection", "expected_action": "block"}
+        for i in range(4)
+    ] + [{"prompt": "other", "category": "other", "expected_action": "block"}])
+
+    monkeypatch.setattr(cli_main, "ACTIVE_DIR", active_dir)
+    monkeypatch.setattr(cli_main, "PENDING_DIR", pending_dir)
+
+    args = MagicMock()
+    args.file = str(pending_file)
+    args.max_ratio = 0.40
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli_main.cmd_promote(args)
+
+    assert exc_info.value.code == 1
+    # File should NOT have been moved
+    assert pending_file.exists(), "File should remain in pending dir on balance failure"
+    dest = active_dir / pending_file.name
+    assert not dest.exists(), "File should NOT be in active dir after failed balance check"
