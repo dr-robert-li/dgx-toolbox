@@ -28,7 +28,11 @@ def compute_priority(guardrail_decisions: dict) -> float:
     Returns:
         Float in [0.0, 1.0], higher = more urgent review needed.
     """
-    all_results = guardrail_decisions.get("all_results", [])
+    # guardrail_decisions may be a list (from trace JSON) or a dict with 'all_results'
+    if isinstance(guardrail_decisions, list):
+        all_results = guardrail_decisions
+    else:
+        all_results = guardrail_decisions.get("all_results", [])
     distances = []
     for result in all_results:
         score = result.get("score", 0)
@@ -40,16 +44,19 @@ def compute_priority(guardrail_decisions: dict) -> float:
     return 1.0 - min(distances)
 
 
-def _extract_triggering_rail(guardrail_decisions: dict) -> str | None:
+def _extract_triggering_rail(guardrail_decisions) -> str | None:
     """Return the rail name from the all_results entry closest to threshold.
 
     Args:
-        guardrail_decisions: Dict with optional 'all_results' list.
+        guardrail_decisions: List of rail results, or dict with 'all_results' key.
 
     Returns:
         Rail name string, or None if no results with score > 0.
     """
-    all_results = guardrail_decisions.get("all_results", [])
+    if isinstance(guardrail_decisions, list):
+        all_results = guardrail_decisions
+    else:
+        all_results = guardrail_decisions.get("all_results", [])
     best = None
     best_distance = float("inf")
     for result in all_results:
