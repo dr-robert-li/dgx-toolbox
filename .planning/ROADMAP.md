@@ -170,12 +170,11 @@ Plans:
   2. The deepteam generator reads the trace store, identifies failure records, and writes adversarial prompt variants to a pending review queue — generated prompts require explicit promotion before entering eval datasets
   3. Submitting a red-team job via the API returns a job_id; polling job status shows running then complete; completed results are retrievable by job_id
   4. Before any generated dataset is written, a balance check enforces the configured ratio cap per attack category — datasets that would exceed the cap are rejected with a clear error
-**Plans:** 3 plans
+**Plans:** 2 plans
 
 Plans:
-- [ ] 06-01-PLAN.md — Config, normalizer, type contracts, NeMo config files, and dependencies
-- [ ] 06-02-PLAN.md — GuardrailEngine class with check_input/check_output and unit tests
-- [ ] 06-03-PLAN.md — Proxy wiring, TenantConfig rail_overrides, integration tests
+- [ ] 09-01-PLAN.md — Schema extension, TraceStore job CRUD, near-miss query, balance check, garak profiles
+- [ ] 09-02-PLAN.md — garak runner, deepteam engine, router with async dispatch, CLI promote, app wiring
 
 ### Phase 10: HITL Dashboard
 **Goal**: Operators can review flagged requests through a Gradio UI sorted by review priority, apply corrections that feed back into threshold calibration and fine-tuning data, and access the same workflow via API when no UI is available
@@ -208,5 +207,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Input/Output Guardrails and Refusal | 3/3 | Complete   | 2026-03-22 |
 | 7. Constitutional AI Critique | 3/3 | Complete   | 2026-03-22 |
 | 8. Eval Harness and CI Gate | 2/2 | Complete   | 2026-03-23 |
-| 9. Red Teaming | 0/? | Not started | - |
+| 9. Red Teaming | 0/2 | Not started | - |
 | 10. HITL Dashboard | 0/? | Not started | - |
