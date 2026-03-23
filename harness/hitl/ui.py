@@ -148,22 +148,17 @@ def build_ui(api_url: str, api_key: str):  # -> gr.Blocks
             pass
         return None
 
-    def select_item(dataframe_value, evt):
+    def select_item(evt: gr.SelectData):
         """Handle queue row selection — populate detail panel.
 
-        Gradio 6.x: fn(dataframe_value, evt) with inputs=[queue_table].
-        dataframe_value = the full table data (list of lists).
-        evt = SelectData injected by Gradio as the extra arg (has .index, .value, .row_value).
+        Gradio 6.x: use `evt: gr.SelectData` type hint (no positional injection).
+        Gradio recognizes the type hint and injects the event data automatically.
+        evt has: .index, .value, .row_value, .selected
         """
         _empty = ("No item selected.", "", "", "", "")
         try:
-            # evt.row_value has the full row; first column is request_id
-            if hasattr(evt, "row_value") and evt.row_value:
+            if evt.row_value:
                 request_id = str(evt.row_value[0])
-            elif hasattr(evt, "index") and dataframe_value is not None:
-                row_idx = evt.index[0]
-                row = dataframe_value[row_idx]
-                request_id = str(row[0]) if isinstance(row, (list, tuple)) else str(row)
             else:
                 return _empty
         except Exception:  # noqa: BLE001
@@ -352,11 +347,9 @@ def build_ui(api_url: str, api_key: str):  # -> gr.Blocks
         hide_reviewed.change(fn=refresh_queue, inputs=refresh_inputs, outputs=[queue_table])
 
         # Row selection in queue table
-        # Gradio 6.x: fn(dataframe_value, evt) — inputs provide the table data,
-        # Gradio auto-injects SelectData as the extra arg
+        # Gradio 6.x: evt: gr.SelectData type hint — Gradio injects event data
         queue_table.select(
             fn=select_item,
-            inputs=[queue_table],
             outputs=[
                 detail_header,
                 original_output,
