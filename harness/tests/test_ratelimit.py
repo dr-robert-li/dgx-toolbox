@@ -112,6 +112,16 @@ async def test_separate_tenants():
     await limiter.check_rpm("tenant-b", rpm_limit=3)
 
 
+async def test_tpm_exactly_at_limit():
+    """tpm_limit=100, record exactly 100 tokens — check_tpm should raise (>= boundary)."""
+    limiter = SlidingWindowLimiter()
+    await limiter.record_tpm("tenant-a", tokens=100)
+    # Total == limit: must raise (>= is correct; old > would have passed this incorrectly)
+    with pytest.raises(RateLimitExceeded) as exc_info:
+        await limiter.check_tpm("tenant-a", tpm_limit=100)
+    assert "TPM" in exc_info.value.detail
+
+
 async def test_main_has_rate_limiter():
     """harness/main.py exposes app.state.rate_limiter after lifespan setup."""
     from harness.main import app

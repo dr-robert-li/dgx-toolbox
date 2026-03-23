@@ -57,7 +57,7 @@ class SlidingWindowLimiter:
             while q and q[0][0] < now - self.WINDOW:
                 q.popleft()
             total = sum(tokens for _, tokens in q)
-            if total > tpm_limit:
+            if total >= tpm_limit:
                 raise RateLimitExceeded("TPM limit exceeded")
 
     async def record_tpm(self, tenant_id: str, tokens: int) -> None:

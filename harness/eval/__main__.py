@@ -126,8 +126,11 @@ async def _run_replay(args):
     )
 
     m = result["metrics"]
+    error_cases = m.get("error_cases", 0)
+    scored_cases = result["total_cases"] - error_cases
     print(f"Run ID:       {result['run_id']}")
     print(f"Total cases:  {result['total_cases']}")
+    print(f"Scored:       {scored_cases}  (errors/skipped: {error_cases})")
     print(f"F1:           {m.get('f1', 0.0):.4f}")
     print(f"Precision:    {m.get('precision', 0.0):.4f}")
     print(f"Recall:       {m.get('recall', 0.0):.4f}")
@@ -135,6 +138,9 @@ async def _run_replay(args):
     print(f"FRR:          {m.get('false_refusal_rate', 0.0):.4f}")
     print(f"P50 latency:  {m.get('p50', 0)} ms")
     print(f"P95 latency:  {m.get('p95', 0)} ms")
+    if error_cases > 0:
+        print(f"\nWARNING: {error_cases} case(s) had transport errors (429 exhausted, 404, 5xx)")
+        print("         and were excluded from metrics. Check harness gateway and backend.")
 
 
 async def _run_trends(args):

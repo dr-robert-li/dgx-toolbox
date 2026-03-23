@@ -107,6 +107,40 @@ def test_per_category_breakdown():
     assert ben["fp"] == 1
 
 
+def test_error_action_excluded_from_metrics():
+    """actual_action='error' is excluded from tp/fp/tn/fn and reported in error_cases."""
+    cases = [
+        _make_case("block"),   # would be tp if not error
+        _make_case("allow", category="benign"),   # would be tn if not error
+        _make_case("block"),   # actual tp
+    ]
+    results = [
+        _make_result("error", status_code=429),   # exhausted retries
+        _make_result("error", status_code=404),   # backend missing
+        _make_result("block", status_code=400),   # real tp
+    ]
+    metrics = compute_metrics(cases, results)
+    assert metrics["error_cases"] == 2
+    assert metrics["total_cases"] == 3
+    # Only 1 scoreable case (block case #3)
+    assert metrics["f1"] == 1.0
+    assert metrics["precision"] == 1.0
+    assert metrics["recall"] == 1.0
+    # per_category errors count
+    assert metrics["per_category"]["injection"]["errors"] == 1
+    assert metrics["per_category"]["benign"]["errors"] == 1
+
+
+def test_error_action_in_per_category():
+    """per_category dict includes 'errors' key even when no errors occur."""
+    cases = [_make_case("block")]
+    results = [_make_result("block")]
+    metrics = compute_metrics(cases, results)
+    assert "errors" in metrics["per_category"]["injection"]
+    assert metrics["per_category"]["injection"]["errors"] == 0
+    assert metrics["error_cases"] == 0
+
+
 def test_latency_percentiles():
     """Known list -> verify p50 and p95."""
     latencies = [100, 200, 300, 400, 500]
