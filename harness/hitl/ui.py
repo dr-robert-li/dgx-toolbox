@@ -330,12 +330,14 @@ def build_ui(api_url: str, api_key: str):  # -> gr.Blocks
             )
 
         with gr.Row():
+            gr.Markdown("**Reviewer:**", scale=0, min_width=80)
             reviewer_name = gr.Textbox(
-                label="Reviewer",
                 value="operator",
                 scale=2,
                 lines=1,
                 max_lines=1,
+                show_label=False,
+                container=False,
             )
             approve_btn = gr.Button("Approve", variant="primary", scale=1)
             reject_btn = gr.Button("Reject", variant="stop", scale=1)
