@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-03-24 — Safety Harness Fixes & Polish
+
+### Fixed
+
+- **Replay eval rate limiting** — TPM boundary off-by-one (`>` → `>=`), retry backoff too short for 60s sliding window, transport errors (429/404/502/503/timeout) now retried with exponential backoff [2s, 4s, 8s, 16s, 65s]
+- **Replay eval error handling** — Transport errors no longer misclassified as "allow"; new `error_cases` counter excludes them from F1/precision/recall; CLI prints warning when errors > 0
+- **Replay eval timeout** — Increased httpx timeout from 60s to 180s for shared-GPU inference; `ReadTimeout` caught and retried instead of crashing
+- **Default model** — Changed default from `llama3.1` to `nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16` (matches DGX Spark vLLM config)
+- **vLLM compose** — Added `--trust-remote-code` and configurable `--gpu-memory-utilization` (default 0.5) for coexistence with other GPU workloads
+- **Dev-team rate limits** — Increased from 60 RPM / 100K TPM to 600 RPM / 1M TPM for eval replay runs
+- **Dev-team allowed models** — Changed from restricted list to wildcard (`"*"`)
+
+### Changed
+
+- **gradio and asciichartpy** moved from optional to core dependencies — installed by default with `pip install -e .`
+- **Default Nemotron model** — Updated across docker-compose, README, LiteLLM config, vllm-model to `nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16`
+- **.gitignore** — Fixed path from `safety-harness/` to `harness/`, added trace DB and pending dataset ignores
+- **example.bash_aliases** — Added `harness`, `harness-stop`, `hitl` aliases
+
 ## 2026-03-23 — Safety Harness (v1.1)
 
 ### Added (Safety Harness)
