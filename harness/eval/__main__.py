@@ -40,8 +40,8 @@ def main():
                                help="Gateway base URL")
     replay_parser.add_argument("--api-key", default=None,
                                help="API key (or set HARNESS_API_KEY env var)")
-    replay_parser.add_argument("--model", default="Qwen/Qwen2.5-1.5B-Instruct",
-                               help="Model identifier (default: Qwen/Qwen2.5-1.5B-Instruct)")
+    replay_parser.add_argument("--model", default="Qwen/Qwen3.5-2B",
+                               help="Model identifier (default: Qwen/Qwen3.5-2B)")
     replay_parser.add_argument("--db", default=None,
                                help="Path to traces.db")
 
