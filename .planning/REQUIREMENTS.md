@@ -134,6 +134,33 @@ Requirements for the AI safety harness milestone. Each maps to roadmap phases.
 - [x] **HITL-03**: Reviewer corrections feed back into threshold calibration and fine-tuning data
 - [x] **HITL-04**: Dashboard works headlessly (API-only mode) when no UI is needed
 
+## v1.2 Requirements — Autoresearch Integration
+
+Requirements for the autoresearch end-to-end pipeline milestone. Each maps to roadmap phases.
+
+### Data Integration
+
+- [ ] **DATA-01**: Autoresearch launcher auto-discovers datasets in `~/data/` subdirectories and presents them as data source options
+- [ ] **DATA-02**: Autoresearch launcher can use a local HF cache model as the base model for training (auto-detected from `~/.cache/huggingface/hub/`)
+- [ ] **DATA-03**: Training data is optionally screened through harness input guardrails (PII, toxicity) before feeding to autoresearch
+
+### Training Safety
+
+- [ ] **TRSF-01**: A post-training hook runs the harness safety replay dataset against each trained checkpoint and logs pass/fail
+- [ ] **TRSF-02**: Checkpoints that fail safety eval are flagged with a warning but not deleted (non-destructive)
+- [ ] **TRSF-03**: Safety eval results are stored alongside the autoresearch experiment log for review
+
+### Model Registration
+
+- [ ] **MREG-01**: Passing checkpoints are auto-registered in LiteLLM config so they're immediately available for inference behind the harness
+- [ ] **MREG-02**: Registered models are servable via vLLM and accessible through the safety harness gateway on :5000
+- [ ] **MREG-03**: A deregistration command removes a trained model from LiteLLM config
+
+### Demo & Documentation
+
+- [ ] **DEMO-01**: A runnable demo script executes the full pipeline with a small sample dataset end-to-end
+- [ ] **DEMO-02**: Step-by-step documentation walkthrough in README covering data prep → training → safety eval → inference
+
 ## v2 Requirements
 
 ### Streaming Guardrails
