@@ -295,78 +295,79 @@ def build_ui(api_url: str, api_key: str):  # -> gr.Blocks
         selected_id_state = gr.State("")
         edit_box_visible_state = gr.State(False)
 
+        # ------ Top section: filters + full-width queue table ------
         with gr.Row():
-            # ------ Left panel: filters + queue table ------
-            with gr.Column(scale=1):
-                gr.Markdown("### Queue Filters")
-                rail_filter = gr.Dropdown(
-                    choices=["all", "injection", "pii", "toxicity", "content_filter", "jailbreak"],
-                    value="all",
-                    label="Rail Type",
-                )
-                tenant_filter = gr.Dropdown(
-                    choices=["all"],
-                    value="all",
-                    label="Tenant",
-                )
-                time_range = gr.Dropdown(
-                    choices=["1h", "24h", "7d", "30d"],
-                    value="24h",
-                    label="Time Range",
-                )
-                hide_reviewed = gr.Checkbox(label="Hide Reviewed", value=False)
-                refresh_btn = gr.Button("Refresh Queue", variant="secondary")
+            rail_filter = gr.Dropdown(
+                choices=["all", "injection", "pii", "toxicity", "content_filter", "jailbreak"],
+                value="all",
+                label="Rail Type",
+                scale=1,
+            )
+            tenant_filter = gr.Dropdown(
+                choices=["all"],
+                value="all",
+                label="Tenant",
+                scale=1,
+            )
+            time_range = gr.Dropdown(
+                choices=["1h", "24h", "7d", "30d"],
+                value="24h",
+                label="Time Range",
+                scale=1,
+            )
+            hide_reviewed = gr.Checkbox(label="Hide Reviewed", value=False, scale=1)
+            refresh_btn = gr.Button("Refresh Queue", variant="secondary", scale=1)
 
-                queue_table = gr.Dataframe(
-                    headers=["Request ID", "Timestamp", "Tenant", "Rail", "Priority", "Action", "Status", "Prompt"],
-                    interactive=False,
-                    wrap=True,
-                    label="Review Queue",
-                )
+        queue_table = gr.Dataframe(
+            headers=["Request ID", "Timestamp", "Tenant", "Rail", "Priority", "Action", "Status", "Prompt"],
+            interactive=False,
+            wrap=True,
+            label="Review Queue",
+        )
 
-            # ------ Right panel: detail + diff + corrections ------
-            with gr.Column(scale=2):
-                detail_header = gr.Markdown("Select an item from the queue to review.")
+        # ------ Bottom section: detail + diff + corrections ------
+        gr.Markdown("---")
+        detail_header = gr.Markdown("Select an item from the queue to review.")
 
-                with gr.Row():
-                    with gr.Column():
-                        original_output = gr.Textbox(
-                            label="Original Output",
-                            lines=12,
-                            interactive=False,
-                        )
-                    with gr.Column():
-                        revised_output = gr.Textbox(
-                            label="Revised Output",
-                            lines=12,
-                            interactive=False,
-                            visible=True,
-                        )
-
-                diff_text = gr.Textbox(
-                    label="Changes (diff)",
-                    lines=6,
+        with gr.Row():
+            with gr.Column():
+                original_output = gr.Textbox(
+                    label="Original Output",
+                    lines=10,
                     interactive=False,
                 )
-
-                reviewer_name = gr.Textbox(
-                    label="Reviewer",
-                    value="operator",
+            with gr.Column():
+                revised_output = gr.Textbox(
+                    label="Revised Output",
+                    lines=10,
+                    interactive=False,
+                    visible=True,
                 )
 
-                edit_box = gr.Textbox(
-                    label="Edited Response (for Edit action)",
-                    lines=5,
-                    visible=False,
-                )
-                submit_edit_btn = gr.Button("Submit Edit", variant="primary", visible=False)
+        diff_text = gr.Textbox(
+            label="Changes (diff)",
+            lines=4,
+            interactive=False,
+        )
 
-                with gr.Row():
-                    approve_btn = gr.Button("Approve", variant="primary")
-                    reject_btn = gr.Button("Reject", variant="stop")
-                    edit_btn = gr.Button("Edit", variant="secondary")
+        with gr.Row():
+            reviewer_name = gr.Textbox(
+                label="Reviewer",
+                value="operator",
+                scale=2,
+            )
+            approve_btn = gr.Button("Approve", variant="primary", scale=1)
+            reject_btn = gr.Button("Reject", variant="stop", scale=1)
+            edit_btn = gr.Button("Edit", variant="secondary", scale=1)
 
-                status_msg = gr.Textbox(label="Status", interactive=False)
+        edit_box = gr.Textbox(
+            label="Edited Response (for Edit action)",
+            lines=5,
+            visible=False,
+        )
+        submit_edit_btn = gr.Button("Submit Edit", variant="primary", visible=False)
+
+        status_msg = gr.Textbox(label="Status", interactive=False)
 
         # -----------------------------------------------------------------------
         # Wire callbacks
