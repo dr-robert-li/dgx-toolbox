@@ -3,8 +3,11 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import logging
 import time
 import uuid
+
+logger = logging.getLogger("harness.proxy")
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -47,12 +50,14 @@ async def chat_completions(
     try:
         await rate_limiter.check_rpm(tenant.tenant_id, tenant.rpm_limit)
     except RateLimitExceeded as exc:
+        logger.warning("429 RPM: tenant=%s limit=%d detail=%s", tenant.tenant_id, tenant.rpm_limit, exc.detail)
         raise HTTPException(status_code=429, detail=str(exc))
 
     # 2. TPM check (one-request lag)
     try:
         await rate_limiter.check_tpm(tenant.tenant_id, tenant.tpm_limit)
     except RateLimitExceeded as exc:
+        logger.warning("429 TPM: tenant=%s limit=%d detail=%s", tenant.tenant_id, tenant.tpm_limit, exc.detail)
         raise HTTPException(status_code=429, detail=str(exc))
 
     # 3. Read request body
@@ -152,6 +157,8 @@ async def chat_completions(
     resp = await http_client.post("/v1/chat/completions", json=body)
     latency_ms = int((time.monotonic() - start_time) * 1000)
     response_data = resp.json()
+    if resp.status_code >= 400:
+        logger.warning("LiteLLM %d: model=%s error=%s", resp.status_code, body.get("model"), str(response_data)[:200])
 
     # 6. Record actual token usage for next request's TPM gate
     usage = response_data.get("usage") or {}
