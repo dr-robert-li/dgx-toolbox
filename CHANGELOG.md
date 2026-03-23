@@ -11,6 +11,9 @@
 - **vLLM compose** — Added `--trust-remote-code` and configurable `--gpu-memory-utilization` (default 0.5) for coexistence with other GPU workloads
 - **Dev-team rate limits** — Increased from 60 RPM / 100K TPM to 600 RPM / 1M TPM for eval replay runs
 - **Dev-team allowed models** — Changed from restricted list to wildcard (`"*"`)
+- **HITL Gradio select** — Fixed row selection crash (`NameError: 'gr' is not defined`) caused by PEP 563 lazy annotations; `select_item.__annotations__` now assigned as actual class object to bypass `typing.get_type_hints()` string resolution
+- **HITL guardrail_decisions** — Fixed `'list' object has no attribute 'get'` in `_action_taken` and `_extract_triggering_rail_inline` (guardrail_decisions stored as JSON list, not dict)
+- **HITL default API URL** — Changed from `:8080` to `:5000` (matching actual harness port)
 
 ### Changed
 
@@ -20,6 +23,8 @@
 - **LiteLLM config** — Removed stale `Qwen/Qwen3.5-2B` entry that caused 404→429 cascading failures
 - **.gitignore** — Fixed path from `safety-harness/` to `harness/`, added trace DB and pending dataset ignores
 - **example.bash_aliases** — Added `harness`, `harness-stop`, `hitl` aliases
+- **HITL dashboard layout** — Queue table full-width on top, detail panel below; original output and diff side-by-side; reviewer input single-line with placeholder
+- **HITL API key** — Uses `HARNESS_API_KEY` env var (not hardcoded in alias) for multi-tenant support
 - **README** — Added step-by-step startup guide, OpenAI SDK example, HITL dashboard section, stopping instructions
 
 ## 2026-03-23 — Safety Harness (v1.1)

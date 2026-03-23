@@ -623,15 +623,15 @@ A Gradio-based review UI for human-in-the-loop safety calibration. Runs as a sta
 
 ```bash
 # Launch the dashboard (harness must be running on :5000)
+# Set your API key first (or pass --api-key):
+export HARNESS_API_KEY="sk-devteam-test"
 hitl
-# Or with explicit connection:
-python -m harness.hitl ui --port 8501 --api-url http://localhost:5000 --api-key sk-devteam-test
 # → http://localhost:8501
 ```
 
 **What you see:**
-- **Left panel:** Priority-sorted review queue (most uncertain decisions first), filterable by rail type, tenant, and time range
-- **Right panel:** Side-by-side diff of original model output vs critique-revised output, with approve/reject/edit buttons
+- **Top:** Full-width review queue table sorted by priority (most uncertain decisions first), with filters for rail type, tenant, and time range
+- **Bottom:** Side-by-side panels — original output (left) and diff/revised output (right). Approve/reject/edit buttons with operator name input
 
 **What corrections do:**
 - **Approve** — Revised output was correct; used as positive training example
