@@ -331,8 +331,8 @@ def build_ui(api_url: str, api_key: str):  # -> gr.Blocks
 
         with gr.Row():
             reviewer_name = gr.Textbox(
-                label="Reviewer:",
-                value="operator",
+                show_label=False,
+                placeholder="Enter operator name",
                 scale=2,
                 lines=1,
                 max_lines=1,
