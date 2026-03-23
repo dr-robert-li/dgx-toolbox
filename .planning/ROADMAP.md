@@ -28,7 +28,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 7: Constitutional AI Critique** - Risk-gated two-pass critique pipeline, user-editable constitution, configurable judge model, AI-guided suggestions (completed 2026-03-22)
 - [x] **Phase 8: Eval Harness and CI Gate** - Custom replay eval harness, lm-eval-harness integration, CI/CD promotion gate, trend dashboarding (completed 2026-03-23)
 - [x] **Phase 9: Red Teaming** - Trace-driven adversarial prompt generation, garak scanning, deepteam feedback loop, Celery async dispatch (completed 2026-03-23)
-- [ ] **Phase 10: HITL Dashboard** - Gradio review UI, priority-sorted review queue, correction feedback loop, API-only headless mode
+- [x] **Phase 10: HITL Dashboard** - Gradio review UI, priority-sorted review queue, correction feedback loop, API-only headless mode (completed 2026-03-23)
 
 ## Phase Details
 
@@ -185,7 +185,7 @@ Plans:
   2. Clicking any queue item shows a side-by-side diff of the original model output vs the critique-revised output, and the reviewer can approve, reject, or edit the revision
   3. A reviewer correction is written to the corrections store, appears in the fine-tuning data export, and is reflected in threshold calibration on its next scheduled run
   4. The review queue and correction submission are fully accessible via REST API with no Gradio process running — headless mode produces identical corrections store entries
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 - [ ] 10-01-PLAN.md — corrections schema, TraceStore extensions, FastAPI HITL router, app wiring, tests
@@ -208,4 +208,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Constitutional AI Critique | 3/3 | Complete   | 2026-03-22 |
 | 8. Eval Harness and CI Gate | 2/2 | Complete   | 2026-03-23 |
 | 9. Red Teaming | 2/2 | Complete   | 2026-03-23 |
-| 10. HITL Dashboard | 2/3 | In Progress|  |
+| 10. HITL Dashboard | 3/3 | Complete   | 2026-03-23 |

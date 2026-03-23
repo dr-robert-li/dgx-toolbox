@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Safety Harness
 status: Roadmap defined
-stopped_at: Completed 10-02-PLAN.md
-last_updated: "2026-03-23T07:17:45.494Z"
+stopped_at: Completed 10-03-PLAN.md
+last_updated: "2026-03-23T08:33:45.288Z"
 last_activity: 2026-03-22 — v1.1 roadmap created
 progress:
   total_phases: 10
-  completed_phases: 9
+  completed_phases: 10
   total_plans: 24
-  completed_plans: 23
+  completed_plans: 24
   percent: 0
 ---
 
@@ -119,6 +119,7 @@ Recent decisions affecting current work:
 - [Phase 10-02]: compute_calibration: midpoint when both approved+rejected; P95 for approved-only; min-0.05 for rejected-only
 - [Phase 10-02]: export_jsonl edit action uses PII-redacted edited_response; falls back to cai_critique.revised_output then trace.response
 - [Phase 10-02]: CLI __main__.py rewritten to match eval/__main__.py pattern: subparsers variable, _resolve_db_path, asyncio.run() for async commands
+- [Phase 10-hitl-dashboard]: Gradio UI defaults to port 8501; sync httpx.Client used in callbacks; build_ui() returns Blocks without .launch()
 
 ### v1.1 Architecture Decisions (Pre-Phase 5)
 
@@ -156,7 +157,7 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-23T07:17:45.490Z
-Stopped at: Completed 10-02-PLAN.md
+Last session: 2026-03-23T08:33:45.286Z
+Stopped at: Completed 10-03-PLAN.md
 Resume file: None
 Next action: `/gsd:plan-phase 5`
