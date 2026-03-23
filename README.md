@@ -91,7 +91,7 @@ Tools for serving models and interacting with them — chat, code, agentic workf
 inference-up
 
 # Start Open-WebUI + LiteLLM + vLLM
-VLLM_MODEL=nvidia/Llama-3.1-Nemotron-Nano-8B-v1 docker compose -f ~/dgx-toolbox/docker-compose.inference.yml --profile with-vllm up -d
+VLLM_MODEL=nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16 docker compose -f ~/dgx-toolbox/docker-compose.inference.yml --profile with-vllm up -d
 
 # View logs / stop
 inference-logs
@@ -141,7 +141,7 @@ OpenAI-compatible API server optimized for high-throughput batched inference. Fa
 cp ~/dgx-toolbox/example.vllm-model ~/.vllm-model
 
 # Or set it directly
-echo 'nvidia/Llama-3.1-Nemotron-Nano-8B-v1' > ~/.vllm-model
+echo 'nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16' > ~/.vllm-model
 ```
 
 Both scripts read from `~/.vllm-model` when no model argument is passed. This is how the NVIDIA Sync custom app knows which model to serve — change the file to switch models.
@@ -151,7 +151,7 @@ Both scripts read from `~/.vllm-model` when no model argument is passed. This is
 vllm
 
 # Or pass a model explicitly (overrides ~/.vllm-model)
-vllm nvidia/Llama-3.1-Nemotron-Nano-8B-v1
+vllm nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16
 
 # Serve a local fine-tuned model from ~/eval/models/
 vllm /models/my-finetuned-model
@@ -162,7 +162,7 @@ vllm unsloth/Llama-3.1-8B-Instruct --max-model-len 4096
 # Query the API
 curl http://localhost:8020/v1/chat/completions \
   -H 'Content-Type: application/json' \
-  -d '{"model": "nvidia/Llama-3.1-Nemotron-Nano-8B-v1", "messages": [{"role": "user", "content": "Hello"}]}'
+  -d '{"model": "nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16", "messages": [{"role": "user", "content": "Hello"}]}'
 
 # Stop
 vllm-stop
@@ -204,9 +204,9 @@ model_list:
     litellm_params:
       model: ollama/llama3.1
       api_base: http://host.docker.internal:11434
-  - model_name: nvidia/Llama-3.1-Nemotron-Nano-8B-v1
+  - model_name: nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16
     litellm_params:
-      model: openai/nvidia/Llama-3.1-Nemotron-Nano-8B-v1
+      model: openai/nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16
       api_base: http://host.docker.internal:8020/v1
       api_key: "none"
 
@@ -276,7 +276,7 @@ All toolbox containers can reach host inference services (Ollama, vLLM, LiteLLM)
 ```bash
 # Inside eval-toolbox: evaluate a model served by vLLM
 lm_eval --model local-completions \
-  --model_args model=nvidia/Llama-3.1-Nemotron-Nano-8B-v1,base_url=http://host.docker.internal:8020/v1,tokenizer_backend=huggingface \
+  --model_args model=nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16,base_url=http://host.docker.internal:8020/v1,tokenizer_backend=huggingface \
   --tasks hellaswag,arc_easy
 
 # Or evaluate via LiteLLM (any model configured there)

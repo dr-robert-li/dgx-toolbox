@@ -189,9 +189,9 @@ fi
 if ! $VLLM_RUNNING; then
     cat >> "$CONFIG_FILE" << 'EOF'
   # --- vLLM model (uncomment when running) ---
-  # - model_name: nvidia/Llama-3.1-Nemotron-Nano-8B-v1
+  # - model_name: nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16
   #   litellm_params:
-  #     model: openai/nvidia/Llama-3.1-Nemotron-Nano-8B-v1
+  #     model: openai/nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16
   #     api_base: http://host.docker.internal:8020/v1
   #     api_key: "none"
 
