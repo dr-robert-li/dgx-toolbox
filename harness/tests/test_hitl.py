@@ -520,3 +520,364 @@ async def test_queue_response_shape(tmp_path):
     required_fields = {"request_id", "timestamp", "tenant", "priority", "correction_action", "guardrail_decisions", "cai_critique"}
     for field in required_fields:
         assert field in item, f"Missing field: {field}"
+
+
+# ---------------------------------------------------------------------------
+# Task 1 (Plan 02): calibrate.py and export.py tests
+# ---------------------------------------------------------------------------
+
+
+def _gd_toxicity(score: float, threshold: float = 0.6) -> dict:
+    """Build a guardrail_decisions dict for the toxicity rail."""
+    return {
+        "blocked": score >= threshold,
+        "all_results": [{"rail_name": "toxicity", "score": score, "threshold": threshold}],
+    }
+
+
+@pytest.mark.asyncio
+async def test_calibrate_suggestions(tmp_path):
+    """6 corrections (3 approve at 0.45/0.50/0.55 and 3 reject at 0.65/0.70/0.75) for toxicity.
+
+    compute_calibration should return suggested_threshold = (0.55 + 0.65) / 2 = 0.60 for toxicity.
+    """
+    from harness.traces.store import TraceStore
+    from harness.hitl.calibrate import compute_calibration
+
+    db_path = str(tmp_path / "cal_test.db")
+    store = TraceStore(db_path=db_path)
+    await store.init_db()
+
+    # Insert 6 traces with known toxicity scores
+    approve_scores = [0.45, 0.50, 0.55]
+    reject_scores = [0.65, 0.70, 0.75]
+
+    for i, score in enumerate(approve_scores):
+        req_id = f"req-approve-{i}"
+        await store.write({
+            "request_id": req_id,
+            "tenant": "tenant-a",
+            "timestamp": "2026-01-01T12:00:00+00:00",
+            "model": "llama3",
+            "prompt": f"prompt {i}",
+            "response": f"response {i}",
+            "latency_ms": 50,
+            "status_code": 200,
+            "guardrail_decisions": _gd_toxicity(score),
+            "cai_critique": None,
+            "refusal_event": False,
+            "bypass_flag": False,
+        })
+        await store.write_correction({
+            "request_id": req_id,
+            "reviewer": "alice",
+            "action": "approve",
+            "edited_response": None,
+            "trace_ref": None,
+        })
+
+    for i, score in enumerate(reject_scores):
+        req_id = f"req-reject-{i}"
+        await store.write({
+            "request_id": req_id,
+            "tenant": "tenant-a",
+            "timestamp": "2026-01-01T12:00:00+00:00",
+            "model": "llama3",
+            "prompt": f"prompt reject {i}",
+            "response": f"response reject {i}",
+            "latency_ms": 50,
+            "status_code": 200,
+            "guardrail_decisions": _gd_toxicity(score),
+            "cai_critique": None,
+            "refusal_event": False,
+            "bypass_flag": False,
+        })
+        await store.write_correction({
+            "request_id": req_id,
+            "reviewer": "alice",
+            "action": "reject",
+            "edited_response": None,
+            "trace_ref": None,
+        })
+
+    suggestions = await compute_calibration(store, since="2025-01-01T00:00:00Z")
+
+    assert len(suggestions) >= 1
+    tox = next((s for s in suggestions if s["rail"] == "toxicity"), None)
+    assert tox is not None, "Expected a suggestion for toxicity rail"
+    assert abs(tox["suggested_threshold"] - 0.60) < 0.001, (
+        f"Expected 0.60, got {tox['suggested_threshold']}"
+    )
+    assert tox["approved_count"] == 3
+    assert tox["rejected_count"] == 3
+
+
+@pytest.mark.asyncio
+async def test_calibrate_min_corrections(tmp_path):
+    """With only 3 corrections for a rail (below MIN_CORRECTIONS=5), no suggestion returned."""
+    from harness.traces.store import TraceStore
+    from harness.hitl.calibrate import compute_calibration
+
+    db_path = str(tmp_path / "cal_min_test.db")
+    store = TraceStore(db_path=db_path)
+    await store.init_db()
+
+    for i in range(3):
+        req_id = f"req-few-{i}"
+        await store.write({
+            "request_id": req_id,
+            "tenant": "tenant-a",
+            "timestamp": "2026-01-01T12:00:00+00:00",
+            "model": "llama3",
+            "prompt": f"prompt {i}",
+            "response": f"response {i}",
+            "latency_ms": 50,
+            "status_code": 200,
+            "guardrail_decisions": _gd_toxicity(0.50),
+            "cai_critique": None,
+            "refusal_event": False,
+            "bypass_flag": False,
+        })
+        await store.write_correction({
+            "request_id": req_id,
+            "reviewer": "alice",
+            "action": "approve",
+            "edited_response": None,
+            "trace_ref": None,
+        })
+
+    suggestions = await compute_calibration(store, since="2025-01-01T00:00:00Z")
+    tox = [s for s in suggestions if s["rail"] == "toxicity"]
+    assert len(tox) == 0, "Expected no suggestion for rail with fewer than 5 corrections"
+
+
+@pytest.mark.asyncio
+async def test_calibrate_approve_only(tmp_path):
+    """With only approved corrections (no rejects), suggested threshold = P95 of approved scores."""
+    from harness.traces.store import TraceStore
+    from harness.hitl.calibrate import compute_calibration
+
+    db_path = str(tmp_path / "cal_approve_only.db")
+    store = TraceStore(db_path=db_path)
+    await store.init_db()
+
+    # Insert 6 approve-only corrections with sorted scores
+    scores = [0.40, 0.45, 0.50, 0.55, 0.58, 0.60]
+    for i, score in enumerate(scores):
+        req_id = f"req-apponly-{i}"
+        await store.write({
+            "request_id": req_id,
+            "tenant": "tenant-a",
+            "timestamp": "2026-01-01T12:00:00+00:00",
+            "model": "llama3",
+            "prompt": f"prompt {i}",
+            "response": f"response {i}",
+            "latency_ms": 50,
+            "status_code": 200,
+            "guardrail_decisions": _gd_toxicity(score),
+            "cai_critique": None,
+            "refusal_event": False,
+            "bypass_flag": False,
+        })
+        await store.write_correction({
+            "request_id": req_id,
+            "reviewer": "alice",
+            "action": "approve",
+            "edited_response": None,
+            "trace_ref": None,
+        })
+
+    suggestions = await compute_calibration(store, since="2025-01-01T00:00:00Z")
+    tox = next((s for s in suggestions if s["rail"] == "toxicity"), None)
+    assert tox is not None
+    # P95 of [0.40, 0.45, 0.50, 0.55, 0.58, 0.60]: index = int(0.95 * 6) = 5 -> 0.60
+    sorted_scores = sorted(scores)
+    p95_idx = int(0.95 * len(sorted_scores))
+    expected_p95 = sorted_scores[p95_idx]
+    assert abs(tox["suggested_threshold"] - expected_p95) < 0.001, (
+        f"Expected P95={expected_p95}, got {tox['suggested_threshold']}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_export_jsonl_format(tmp_path):
+    """export_jsonl() for an approved correction produces correct OpenAI JSONL format."""
+    from harness.traces.store import TraceStore
+    from harness.hitl.export import export_jsonl
+
+    db_path = str(tmp_path / "export_test.db")
+    store = TraceStore(db_path=db_path)
+    await store.init_db()
+
+    await store.write({
+        "request_id": "req-exp-approve",
+        "tenant": "tenant-a",
+        "timestamp": "2026-01-01T12:00:00+00:00",
+        "model": "llama3",
+        "prompt": "What is 2+2?",
+        "response": "4",
+        "latency_ms": 50,
+        "status_code": 200,
+        "guardrail_decisions": _gd_toxicity(0.30),
+        "cai_critique": None,
+        "refusal_event": False,
+        "bypass_flag": False,
+    })
+    await store.write_correction({
+        "request_id": "req-exp-approve",
+        "reviewer": "alice",
+        "action": "approve",
+        "edited_response": None,
+        "trace_ref": None,
+    })
+
+    output_path = str(tmp_path / "out.jsonl")
+    count = await export_jsonl(store, output_path=output_path)
+    assert count == 1
+
+    import json as json_mod
+    with open(output_path) as f:
+        record = json_mod.loads(f.readline())
+
+    assert "messages" in record
+    assert len(record["messages"]) == 2
+    assert record["messages"][0]["role"] == "user"
+    assert record["messages"][0]["content"] == "What is 2+2?"
+    assert record["messages"][1]["role"] == "assistant"
+    assert record["messages"][1]["content"] == "4"
+    assert record["label"] == "approve"
+
+
+@pytest.mark.asyncio
+async def test_export_jsonl_edit(tmp_path):
+    """export_jsonl() for an edited correction uses edited_response as assistant content."""
+    from harness.traces.store import TraceStore
+    from harness.hitl.export import export_jsonl
+
+    db_path = str(tmp_path / "export_edit.db")
+    store = TraceStore(db_path=db_path)
+    await store.init_db()
+
+    await store.write({
+        "request_id": "req-exp-edit",
+        "tenant": "tenant-a",
+        "timestamp": "2026-01-01T12:00:00+00:00",
+        "model": "llama3",
+        "prompt": "Tell me a joke",
+        "response": "original response",
+        "latency_ms": 50,
+        "status_code": 200,
+        "guardrail_decisions": _gd_toxicity(0.30),
+        "cai_critique": None,
+        "refusal_event": False,
+        "bypass_flag": False,
+    })
+    await store.write_correction({
+        "request_id": "req-exp-edit",
+        "reviewer": "bob",
+        "action": "edit",
+        "edited_response": "edited safe response",
+        "trace_ref": None,
+    })
+
+    output_path = str(tmp_path / "out_edit.jsonl")
+    count = await export_jsonl(store, output_path=output_path)
+    assert count == 1
+
+    import json as json_mod
+    with open(output_path) as f:
+        record = json_mod.loads(f.readline())
+
+    assert record["messages"][1]["role"] == "assistant"
+    # edited_response may be PII-redacted but should still contain the core content
+    # (no PII in "edited safe response")
+    assert "edited safe response" in record["messages"][1]["content"]
+    assert record["label"] == "edit"
+
+
+@pytest.mark.asyncio
+async def test_export_jsonl_reject(tmp_path):
+    """export_jsonl() for a rejected correction has label 'reject'."""
+    from harness.traces.store import TraceStore
+    from harness.hitl.export import export_jsonl
+
+    db_path = str(tmp_path / "export_reject.db")
+    store = TraceStore(db_path=db_path)
+    await store.init_db()
+
+    await store.write({
+        "request_id": "req-exp-reject",
+        "tenant": "tenant-a",
+        "timestamp": "2026-01-01T12:00:00+00:00",
+        "model": "llama3",
+        "prompt": "Harmful query",
+        "response": "harmful response",
+        "latency_ms": 50,
+        "status_code": 200,
+        "guardrail_decisions": _gd_toxicity(0.90),
+        "cai_critique": None,
+        "refusal_event": False,
+        "bypass_flag": False,
+    })
+    await store.write_correction({
+        "request_id": "req-exp-reject",
+        "reviewer": "alice",
+        "action": "reject",
+        "edited_response": None,
+        "trace_ref": None,
+    })
+
+    output_path = str(tmp_path / "out_reject.jsonl")
+    count = await export_jsonl(store, output_path=output_path)
+    assert count == 1
+
+    import json as json_mod
+    with open(output_path) as f:
+        record = json_mod.loads(f.readline())
+
+    assert record["label"] == "reject"
+    assert record["messages"][0]["role"] == "user"
+
+
+@pytest.mark.asyncio
+async def test_export_cai_critique_none(tmp_path):
+    """export_jsonl() for a correction whose trace has cai_critique=None uses trace response."""
+    from harness.traces.store import TraceStore
+    from harness.hitl.export import export_jsonl
+
+    db_path = str(tmp_path / "export_no_cai.db")
+    store = TraceStore(db_path=db_path)
+    await store.init_db()
+
+    await store.write({
+        "request_id": "req-exp-no-cai",
+        "tenant": "tenant-a",
+        "timestamp": "2026-01-01T12:00:00+00:00",
+        "model": "llama3",
+        "prompt": "What is the sky color?",
+        "response": "blue",
+        "latency_ms": 50,
+        "status_code": 200,
+        "guardrail_decisions": _gd_toxicity(0.30),
+        "cai_critique": None,
+        "refusal_event": False,
+        "bypass_flag": False,
+    })
+    await store.write_correction({
+        "request_id": "req-exp-no-cai",
+        "reviewer": "alice",
+        "action": "approve",
+        "edited_response": None,
+        "trace_ref": None,
+    })
+
+    output_path = str(tmp_path / "out_no_cai.jsonl")
+    count = await export_jsonl(store, output_path=output_path)
+    assert count == 1
+
+    import json as json_mod
+    with open(output_path) as f:
+        record = json_mod.loads(f.readline())
+
+    assert record["messages"][1]["content"] == "blue"
+    assert record["label"] == "approve"
