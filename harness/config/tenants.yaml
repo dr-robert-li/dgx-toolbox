@@ -4,9 +4,7 @@ tenants:
     rpm_limit: 60
     tpm_limit: 100000
     allowed_models:
-      - nvidia/Llama-3.1-Nemotron-Nano-8B-v1
-      - llama3.1
-      - gemma3
+      - "*"
     bypass: false
     pii_strictness: balanced
     rail_overrides: {}
