@@ -29,7 +29,7 @@ def main():
     # --- ui ---
     ui_p = subparsers.add_parser("ui", help="Start Gradio review UI")
     ui_p.add_argument("--port", type=int, default=8501, help="Gradio port")
-    ui_p.add_argument("--api-url", default="http://localhost:8080", help="Harness API URL")
+    ui_p.add_argument("--api-url", default="http://localhost:5000", help="Harness API URL")
     ui_p.add_argument("--api-key", default=None, help="API key (or HARNESS_API_KEY env)")
 
     args = parser.parse_args()

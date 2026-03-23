@@ -60,7 +60,7 @@ alias data-stack-down='docker compose -f ~/dgx-toolbox/docker-compose.data.yml d
 # --- Safety Harness ---
 alias harness='~/dgx-toolbox/harness/start-harness.sh'                        # Safety gateway (:5000) — proxies to LiteLLM with guardrails
 alias harness-stop='pkill -f "uvicorn harness.main:app" 2>/dev/null && echo "Harness stopped" || echo "Not running"'  # Stop safety harness
-alias hitl='python -m harness.hitl ui --port 8501'                             # HITL review dashboard (:8501)
+alias hitl='python -m harness.hitl ui --port 8501 --api-key sk-devteam-test'    # HITL review dashboard (:8501)
 
 # --- Model Store ---
 alias modelstore='~/dgx-toolbox/modelstore.sh'               # Tiered model storage manager
