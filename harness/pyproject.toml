@@ -23,6 +23,8 @@ dependencies = [
     "confusable-homoglyphs>=3.2",
     "langchain-openai>=0.1",
     "nemoguardrails>=0.21",
+    "gradio>=6.0,<7.0",
+    "asciichartpy>=1.5",
 ]
 
 [project.optional-dependencies]
@@ -32,10 +34,8 @@ test = [
 ]
 eval = [
     "lm-eval>=0.4.9",
-    "asciichartpy>=1.5",
 ]
 redteam = ["garak>=0.14"]
-hitl = ["gradio>=6.0,<7.0"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
