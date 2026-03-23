@@ -148,11 +148,18 @@ def build_ui(api_url: str, api_key: str):  # -> gr.Blocks
             pass
         return None
 
-    def select_item(evt: gr.SelectData):
+    def select_item(evt):
         """Handle queue row selection — populate detail panel.
 
-        Gradio 6.x: use `evt: gr.SelectData` type hint (no positional injection).
-        Gradio recognizes the type hint and injects the event data automatically.
+        Gradio 6.x: Gradio recognizes the SelectData type hint and injects the
+        event data automatically.  We cannot write `evt: gr.SelectData` directly
+        because `from __future__ import annotations` (PEP 563) at the top of
+        this module makes ALL annotations lazy strings.  typing.get_type_hints()
+        then tries to resolve 'gr.SelectData' in the MODULE's global namespace,
+        where `gr` is not defined (it is only imported inside build_ui()).
+        The workaround is to assign the annotation dict manually after `gr` is
+        imported — that stores the actual class object, not a string, so
+        get_type_hints() resolves it without any name lookup.
         evt has: .index, .value, .row_value, .selected
         """
         _empty = ("No item selected.", "", "", "", "")
@@ -220,6 +227,13 @@ def build_ui(api_url: str, api_key: str):  # -> gr.Blocks
             diff_text = "(No critique — blocked before revision)"
 
         return (header, orig, diff_text, request_id, request_id)
+
+    # Assign the annotation as an actual class object (not a string).
+    # We cannot use `evt: gr.SelectData` in the signature because
+    # `from __future__ import annotations` (PEP 563) makes all annotations
+    # lazy strings, and typing.get_type_hints() would then fail to resolve
+    # 'gr.SelectData' in the module's global namespace (gr is local here).
+    select_item.__annotations__ = {"evt": gr.SelectData}
 
     def submit_correction(request_id: str, reviewer: str, action: str, edited_response: str) -> str:
         """POST /admin/hitl/correct with the given action."""
@@ -320,6 +334,8 @@ def build_ui(api_url: str, api_key: str):  # -> gr.Blocks
                 label="Reviewer",
                 value="operator",
                 scale=2,
+                lines=1,
+                max_lines=1,
             )
             approve_btn = gr.Button("Approve", variant="primary", scale=1)
             reject_btn = gr.Button("Reject", variant="stop", scale=1)
