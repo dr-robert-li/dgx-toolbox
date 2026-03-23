@@ -148,7 +148,7 @@ def build_ui(api_url: str, api_key: str):  # -> gr.Blocks
             pass
         return None
 
-    def select_item(queue_data: gr.SelectData):
+    def select_item(queue_data):
         """Handle queue row selection — populate detail panel.
 
         Gradio 6.x passes SelectData as the sole argument when using .select().
