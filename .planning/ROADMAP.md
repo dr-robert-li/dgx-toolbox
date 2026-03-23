@@ -170,7 +170,7 @@ Plans:
   2. The deepteam generator reads the trace store, identifies failure records, and writes adversarial prompt variants to a pending review queue — generated prompts require explicit promotion before entering eval datasets
   3. Submitting a red-team job via the API returns a job_id; polling job status shows running then complete; completed results are retrievable by job_id
   4. Before any generated dataset is written, a balance check enforces the configured ratio cap per attack category — datasets that would exceed the cap are rejected with a clear error
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 - [ ] 09-01-PLAN.md — Schema extension, TraceStore job CRUD, near-miss query, balance check, garak profiles
@@ -207,5 +207,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 6. Input/Output Guardrails and Refusal | 3/3 | Complete   | 2026-03-22 |
 | 7. Constitutional AI Critique | 3/3 | Complete   | 2026-03-22 |
 | 8. Eval Harness and CI Gate | 2/2 | Complete   | 2026-03-23 |
-| 9. Red Teaming | 0/2 | Not started | - |
+| 9. Red Teaming | 1/2 | In Progress|  |
 | 10. HITL Dashboard | 0/? | Not started | - |
