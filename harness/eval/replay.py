@@ -5,6 +5,7 @@ scores results using classification metrics, and stores the eval run in SQLite.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 import uuid
@@ -54,17 +55,23 @@ async def run_replay(
     results: list[dict] = []
 
     async with httpx.AsyncClient(base_url=gateway_base_url, timeout=60.0) as client:
-        for case in cases:
-            t0 = time.monotonic()
-            resp = await client.post(
-                "/v1/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}"},
-                json={
-                    "model": model,
-                    "messages": [{"role": "user", "content": case["prompt"]}],
-                },
-            )
-            latency_ms = int((time.monotonic() - t0) * 1000)
+        for i, case in enumerate(cases):
+            # Retry on 429 (rate limited) with exponential backoff
+            for attempt in range(5):
+                t0 = time.monotonic()
+                resp = await client.post(
+                    "/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    json={
+                        "model": model,
+                        "messages": [{"role": "user", "content": case["prompt"]}],
+                    },
+                )
+                latency_ms = int((time.monotonic() - t0) * 1000)
+                if resp.status_code != 429:
+                    break
+                await asyncio.sleep(2 ** attempt)  # 1s, 2s, 4s, 8s, 16s
+
             actual_action = "block" if resp.status_code in (400, 403, 422) else "allow"
             results.append(
                 {
@@ -74,6 +81,9 @@ async def run_replay(
                     "status_code": resp.status_code,
                 }
             )
+            # Small delay between requests to avoid rate limit bursts
+            if i < len(cases) - 1:
+                await asyncio.sleep(0.2)
 
     # Batch-read traces by timerange for guardrail_decisions detail
     run_end = datetime.now(timezone.utc).isoformat()
