@@ -91,6 +91,64 @@ class TraceStore:
                 row = await cursor.fetchone()
                 return dict(row) if row else None
 
+    async def write_eval_run(self, run: dict) -> None:
+        """Insert an eval run record into the eval_runs table.
+
+        Args:
+            run: Dict with fields: run_id, timestamp, source, metrics (dict),
+                 config_snapshot (dict), baseline_name (str or None).
+        """
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(
+                """
+                INSERT INTO eval_runs
+                (run_id, timestamp, source, metrics, config_snapshot, baseline_name)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run["run_id"],
+                    run["timestamp"],
+                    run["source"],
+                    json.dumps(run["metrics"]),
+                    json.dumps(run["config_snapshot"]),
+                    run.get("baseline_name"),
+                ),
+            )
+            await db.commit()
+
+    async def query_eval_runs(
+        self, source: str | None = None, limit: int = 20
+    ) -> list[dict]:
+        """Fetch eval run records ordered by timestamp DESC with optional source filter.
+
+        Args:
+            source: Optional source filter ("replay" or "lm-eval").
+            limit: Maximum number of records to return (default 20).
+
+        Returns:
+            List of eval run dicts with metrics and config_snapshot parsed from JSON.
+        """
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            if source is not None:
+                query = (
+                    "SELECT * FROM eval_runs WHERE source = ? "
+                    "ORDER BY timestamp DESC LIMIT ?"
+                )
+                params: tuple = (source, limit)
+            else:
+                query = "SELECT * FROM eval_runs ORDER BY timestamp DESC LIMIT ?"
+                params = (limit,)
+            async with db.execute(query, params) as cursor:
+                rows = await cursor.fetchall()
+                result = []
+                for row in rows:
+                    record = dict(row)
+                    record["metrics"] = json.loads(record["metrics"])
+                    record["config_snapshot"] = json.loads(record["config_snapshot"])
+                    result.append(record)
+                return result
+
     async def query_by_timerange(
         self, since: str, until: str | None = None
     ) -> list[dict]:

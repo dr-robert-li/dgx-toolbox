@@ -19,3 +19,15 @@ CREATE TABLE IF NOT EXISTS traces (
 CREATE INDEX IF NOT EXISTS idx_traces_request_id ON traces(request_id);
 CREATE INDEX IF NOT EXISTS idx_traces_timestamp  ON traces(timestamp);
 CREATE INDEX IF NOT EXISTS idx_traces_tenant     ON traces(tenant);
+
+CREATE TABLE IF NOT EXISTS eval_runs (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id          TEXT NOT NULL UNIQUE,
+    timestamp       TEXT NOT NULL,
+    source          TEXT NOT NULL CHECK(source IN ('replay', 'lm-eval')),
+    metrics         TEXT NOT NULL,
+    config_snapshot TEXT NOT NULL,
+    baseline_name   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_eval_runs_timestamp ON eval_runs(timestamp);
+CREATE INDEX IF NOT EXISTS idx_eval_runs_source    ON eval_runs(source);
