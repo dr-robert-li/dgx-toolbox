@@ -54,25 +54,50 @@ async def run_replay(
 
     results: list[dict] = []
 
-    async with httpx.AsyncClient(base_url=gateway_base_url, timeout=60.0) as client:
+    async with httpx.AsyncClient(base_url=gateway_base_url, timeout=180.0) as client:
         for i, case in enumerate(cases):
-            # Retry on 429 (rate limited) with exponential backoff
-            for attempt in range(5):
+            # Retry on 429 (rate limited), 404/502/503 (transient backend errors),
+            # and timeouts with exponential backoff.  The sliding window is 60 s,
+            # so the final sleep must be long enough to let the window drain.
+            # Schedule: 2s, 4s, 8s, 16s, 65s  (worst-case: full 60s window flush)
+            _retry_delays = [2, 4, 8, 16, 65]
+            resp = None
+            for attempt in range(len(_retry_delays) + 1):
                 t0 = time.monotonic()
-                resp = await client.post(
-                    "/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {api_key}"},
-                    json={
-                        "model": model,
-                        "messages": [{"role": "user", "content": case["prompt"]}],
-                    },
-                )
+                try:
+                    resp = await client.post(
+                        "/v1/chat/completions",
+                        headers={"Authorization": f"Bearer {api_key}"},
+                        json={
+                            "model": model,
+                            "messages": [{"role": "user", "content": case["prompt"]}],
+                        },
+                    )
+                except httpx.TimeoutException:
+                    resp = None
+                    latency_ms = int((time.monotonic() - t0) * 1000)
+                    if attempt < len(_retry_delays):
+                        await asyncio.sleep(_retry_delays[attempt])
+                    continue
                 latency_ms = int((time.monotonic() - t0) * 1000)
-                if resp.status_code != 429:
+                if resp.status_code not in (429, 404, 502, 503):
                     break
-                await asyncio.sleep(2 ** attempt)  # 1s, 2s, 4s, 8s, 16s
+                if attempt < len(_retry_delays):
+                    await asyncio.sleep(_retry_delays[attempt])
 
-            actual_action = "block" if resp.status_code in (400, 403, 422) else "allow"
+            # Classify outcome:
+            #   400/403/422 → guardrail block (expected for safety cases)
+            #   any other non-2xx → error (not a meaningful block/allow signal)
+            #   timeout (resp is None) → error
+            if resp is None:
+                actual_action = "error"
+            elif resp.status_code in (400, 403, 422):
+                actual_action = "block"
+            elif 200 <= resp.status_code < 300:
+                actual_action = "allow"
+            else:
+                # 429 exhausted, 404 backend missing, 5xx — record as error
+                actual_action = "error"
             results.append(
                 {
                     "case": case,
