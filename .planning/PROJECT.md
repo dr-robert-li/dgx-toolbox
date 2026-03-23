@@ -60,18 +60,16 @@ Models are always accessible regardless of which tier they're on — symlinks en
 - Model hosting/serving — LiteLLM and vLLM handle that; harness is a safety layer only
 - Web UI for policy editing — policies are code/config, not a CMS
 
-## Current Milestone: v1.1 Safety Harness
+## Current Milestone: v1.2 Autoresearch Integration
 
-**Goal:** A reusable, model-agnostic safety harness that wraps any open-source model with guardrails, constitutional self-critique, evals, and human-in-the-loop feedback — usable at inference or training time.
+**Goal:** End-to-end data → training → inferencing pipeline connecting Karpathy autoresearch to local data sources and models on DGX Spark, with safety harness evals after each training experiment, and the resulting model available for inference behind the harness.
 
 **Target features:**
-- Gateway service (FastAPI) with full request pipeline: routing → guardrails → model → critique → evals
-- NeMo Guardrails for pluggable input/output safety checks
-- Constitutional AI-style two-pass critique with configurable judge model
-- User-tunable guardrails and constitutional principles with AI-guided suggestions from the judge model
-- Dual eval harness (custom replay + lm-eval-harness) with CI/CD integration
-- Distributed live red teaming with adversarial prompt generation from past results
-- Optional human-in-the-loop dashboard for eval steering and threshold calibration
+- Config + glue scripts connecting autoresearch to local datasets (~/data/) and HF cache models
+- Post-training safety eval hook: after each autoresearch experiment, run harness replay evals on the checkpoint
+- Model registration: trained checkpoints automatically registered in LiteLLM/vLLM for inference behind the safety harness
+- Runnable demo script showing the full pipeline with a small sample dataset
+- Step-by-step documentation walkthrough
 
 ## Context
 
@@ -104,4 +102,4 @@ Models are always accessible regardless of which tier they're on — symlinks en
 | Bash only (no Python) | Core scripts run on host, not in containers; minimize dependencies | — Pending |
 
 ---
-*Last updated: 2026-03-22 after v1.1 Safety Harness milestone start*
+*Last updated: 2026-03-24 after v1.2 Autoresearch Integration milestone start*

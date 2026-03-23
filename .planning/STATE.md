@@ -1,9 +1,9 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: Safety Harness
-status: Roadmap defined
-stopped_at: Completed 10-03-PLAN.md
+milestone: v1.2
+milestone_name: Autoresearch Integration
+status: Defining requirements
+stopped_at: Milestone v1.2 started
 last_updated: "2026-03-23T08:38:50.912Z"
 last_activity: 2026-03-22 — v1.1 roadmap created
 progress:
@@ -21,27 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-22)
 
 **Core value:** Models are always accessible regardless of which tier they're on while the hot drive never fills up with stale models.
-**Current focus:** v1.1 Safety Harness — roadmap defined, ready to plan Phase 5
+**Current focus:** v1.2 Autoresearch Integration — defining requirements
 
 ## Current Position
 
-Phase: 5 (not started)
+Phase: Not started (defining requirements)
 Plan: —
-Status: Roadmap defined
-Last activity: 2026-03-22 — v1.1 roadmap created
+Status: Defining requirements
+Last activity: 2026-03-24 — Milestone v1.2 started
 
-Progress: [░░░░░░░░░░] 0% (v1.1)
-
-## v1.1 Phase Map
-
-| Phase | Name | Requirements | Status |
-|-------|------|--------------|--------|
-| 5 | Gateway and Trace Foundation | GATE-01–05, TRAC-01–04 | Not started |
-| 6 | Input/Output Guardrails and Refusal | INRL-01–05, OURL-01–04, REFU-01–04 | Not started |
-| 7 | Constitutional AI Critique | CSTL-01–05 | Not started |
-| 8 | Eval Harness and CI Gate | EVAL-01–04 | Not started |
-| 9 | Red Teaming | RDTM-01–04 | Not started |
-| 10 | HITL Dashboard | HITL-01–04 | Not started |
+Progress: [░░░░░░░░░░] 0% (v1.2)
 
 ## Accumulated Context
 
