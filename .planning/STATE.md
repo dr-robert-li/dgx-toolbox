@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Safety Harness
 status: Roadmap defined
-stopped_at: Completed 10-01-PLAN.md
-last_updated: "2026-03-23T07:10:48.833Z"
+stopped_at: Completed 10-02-PLAN.md
+last_updated: "2026-03-23T07:17:45.494Z"
 last_activity: 2026-03-22 — v1.1 roadmap created
 progress:
   total_phases: 10
   completed_phases: 9
   total_plans: 24
-  completed_plans: 22
+  completed_plans: 23
   percent: 0
 ---
 
@@ -116,6 +116,9 @@ Recent decisions affecting current work:
 - [Phase 10-01]: compute_priority uses 1.0 - min(distances) formula: closest-to-threshold items get highest priority
 - [Phase 10-01]: SQL LEFT JOIN corrections pattern for reviewed status: single query, no N+1; rail_filter and hide_reviewed applied in Python post-processing
 - [Phase 10-01]: CorrectionRequest Literal action enum gives FastAPI 422 validation before handler; hitl_router has no gradio import for headless API mode
+- [Phase 10-02]: compute_calibration: midpoint when both approved+rejected; P95 for approved-only; min-0.05 for rejected-only
+- [Phase 10-02]: export_jsonl edit action uses PII-redacted edited_response; falls back to cai_critique.revised_output then trace.response
+- [Phase 10-02]: CLI __main__.py rewritten to match eval/__main__.py pattern: subparsers variable, _resolve_db_path, asyncio.run() for async commands
 
 ### v1.1 Architecture Decisions (Pre-Phase 5)
 
@@ -153,7 +156,7 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-23T07:10:48.831Z
-Stopped at: Completed 10-01-PLAN.md
+Last session: 2026-03-23T07:17:45.490Z
+Stopped at: Completed 10-02-PLAN.md
 Resume file: None
 Next action: `/gsd:plan-phase 5`
