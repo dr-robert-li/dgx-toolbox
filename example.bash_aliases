@@ -57,6 +57,11 @@ alias inference-logs='docker compose -f ~/dgx-toolbox/docker-compose.inference.y
 alias data-stack-up='docker compose -f ~/dgx-toolbox/docker-compose.data.yml up -d'        # Start Label Studio + Argilla
 alias data-stack-down='docker compose -f ~/dgx-toolbox/docker-compose.data.yml down'        # Stop data stack
 
+# --- Safety Harness ---
+alias harness='~/dgx-toolbox/harness/start-harness.sh'                        # Safety gateway (:5000) — proxies to LiteLLM with guardrails
+alias harness-stop='pkill -f "uvicorn harness.main:app" 2>/dev/null && echo "Harness stopped" || echo "Not running"'  # Stop safety harness
+alias hitl='python -m harness.hitl ui --port 8501'                             # HITL review dashboard (:8501)
+
 # --- Model Store ---
 alias modelstore='~/dgx-toolbox/modelstore.sh'               # Tiered model storage manager
 

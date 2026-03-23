@@ -48,6 +48,9 @@ dgx-status
 │ vLLM         │ Argilla      │ Triton       │                 │
 │ LiteLLM      │ distilabel   │ tritonclient │                 │
 ├──────────────┴──────────────┴──────────────┴─────────────────┤
+│  Safety Harness (FastAPI :5000)                               │
+│  Auth │ Guardrails │ Critique │ Evals │ Red Team │ HITL      │
+├──────────────────────────────────────────────────────────────┤
 │  Shared: base-toolbox image │ lib.sh │ docker-compose        │
 ├──────────────────────────────────────────────────────────────┤
 │  NGC PyTorch base (nvcr.io/nvidia/pytorch:26.02-py3)         │
@@ -505,6 +508,132 @@ AUTORESEARCH_DATA_PATH=karpathy/climbmix-400b-shuffle \
 
 **DGX Spark tuning:** Parameters are automatically scaled for the Blackwell GB10 (6,144 CUDA cores, 192 Tensor Cores, 128 GB LPDDR5x). Skip with `AUTORESEARCH_SKIP_TUNE=1`. Edit `spark-config.sh` to customize.
 
+## Safety Harness
+
+A model-agnostic safety layer that sits between clients and LiteLLM. All requests are screened through guardrails, constitutional AI critique, and full trace logging before reaching the model — and all outputs are screened before delivery.
+
+### Quick Start
+
+```bash
+# Install the harness (first time)
+cd ~/dgx-toolbox/harness && pip install -e ".[test]"
+
+# Start the harness (requires LiteLLM running on :4000)
+harness                     # http://localhost:5000
+
+# Or start manually
+bash ~/dgx-toolbox/harness/start-harness.sh
+
+# Test auth
+curl -s -H "Authorization: Bearer sk-devteam-test" http://localhost:5000/probe -X POST
+
+# Send a request through the safety pipeline
+curl -s http://localhost:5000/v1/chat/completions \
+  -H "Authorization: Bearer sk-devteam-test" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "llama3.1", "messages": [{"role": "user", "content": "Hello"}]}'
+```
+
+Point Open-WebUI or any OpenAI-compatible client at `http://localhost:5000/v1` instead of LiteLLM's `:4000` to route through the safety pipeline.
+
+### Architecture
+
+```
+Clients (Open-WebUI, curl, SDKs)
+         │
+         ▼
+┌──────────────────────────────────────────────────┐
+│  Safety Harness (:5000)                           │
+│                                                   │
+│  Auth → Rate Limit → Unicode Normalize            │
+│  → Input Guardrails (content, PII, injection)     │
+│  → LiteLLM Proxy (:4000)                          │
+│  → Output Guardrails (toxicity, jailbreak, PII)   │
+│  → Constitutional AI Critique (if high-risk)       │
+│  → PII-Redacted Trace → SQLite                    │
+└──────────────────────────────────────────────────┘
+         │
+         ▼
+    LiteLLM (:4000) → Ollama / vLLM / Cloud APIs
+```
+
+### Features
+
+| Feature | Description |
+|---------|-------------|
+| **Multi-tenant auth** | API key auth with per-tenant rate limits (RPM + TPM), allowed models, and bypass flags |
+| **Input guardrails** | Unicode normalization, content filtering, PII/secrets detection, prompt injection detection (regex + NeMo LLM-as-judge) |
+| **Output guardrails** | Toxicity scanning, jailbreak-success detection, output PII redaction |
+| **3 refusal modes** | Hard block (principled refusal), soft steer (LLM rewrite), informative (explains why + suggests alternatives) |
+| **Constitutional AI** | High-risk outputs trigger a critique-revise loop against user-editable principles with configurable judge model |
+| **PII-safe tracing** | Every request/response logged to SQLite with PII redacted before write |
+| **Eval harness** | Replay safety datasets, lm-eval capability benchmarks, CI gate that blocks on regression |
+| **Red teaming** | garak vulnerability scans, adversarial prompt generation from near-miss traces, async job dispatch |
+| **HITL dashboard** | Gradio review UI with priority-sorted queue, diff view, corrections that feed calibration and fine-tuning |
+| **Bypass mode** | Per-tenant bypass flag skips guardrails/critique but still enforces auth and logging |
+
+### Configuration
+
+All config is YAML-based in `harness/config/`:
+
+| File | Purpose |
+|------|---------|
+| `tenants.yaml` | Tenant API keys (argon2 hashed), rate limits, allowed models, bypass flags, per-tenant rail overrides |
+| `rails/rails.yaml` | Guardrail thresholds, enable/disable per rail, refusal modes, critique thresholds |
+| `rails/config.yml` | NeMo Guardrails LLMRails configuration |
+| `rails/input_output.co` | NeMo Colang flow definitions |
+| `constitution.yaml` | Constitutional AI principles (categorized, prioritized, per-principle toggles), judge model selection |
+| `redteam.yaml` | Red team settings (max category ratio, near-miss window, variants per trace) |
+
+### CLI Tools
+
+```bash
+# Eval harness
+python -m harness.eval replay                      # Run safety replay dataset
+python -m harness.eval gate --tolerance 0.02       # CI regression gate (exit 0=pass, 1=fail)
+python -m harness.eval trends --last 20            # ASCII trend charts + JSON export
+
+# Constitutional AI tuning
+python -m harness.critique analyze --since 24h     # Judge-based tuning suggestions
+
+# Red teaming
+python -m harness.redteam promote <file>           # Promote adversarial dataset after review
+python -m harness.redteam list                     # List pending datasets
+
+# HITL dashboard
+python -m harness.hitl ui --port 8501              # Gradio review dashboard
+python -m harness.hitl calibrate                   # Threshold suggestions from corrections
+python -m harness.hitl export --format jsonl       # Fine-tuning data export
+```
+
+### API Endpoints
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/v1/chat/completions` | Main proxy endpoint (auth + guardrails + trace) |
+| POST | `/probe` | Auth verification test |
+| POST | `/admin/suggest-tuning` | AI-guided guardrail/constitution tuning suggestions |
+| GET | `/admin/hitl/queue` | Priority-sorted review queue (filters: rail, tenant, since) |
+| POST | `/admin/hitl/correct` | Submit correction (approve/reject/edit) |
+| POST | `/admin/redteam/jobs` | Submit red team job (garak or deepteam) |
+| GET | `/admin/redteam/jobs/{id}` | Poll job status and results |
+
+### Test Tenants
+
+| Tenant | API Key | Bypass |
+|--------|---------|--------|
+| dev-team | `sk-devteam-test` | No (full pipeline) |
+| ci-runner | `sk-ci-test` | Yes (auth + trace only) |
+
+### Environment Variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `HARNESS_PORT` | 5000 | Gateway port |
+| `HARNESS_CONFIG_DIR` | `harness/config` | Config directory |
+| `HARNESS_DATA_DIR` | `harness/data` | SQLite trace database directory |
+| `LITELLM_BASE_URL` | `http://localhost:4000` | LiteLLM proxy URL |
+
 ## Model Store
 
 Tiered model storage management for DGX Spark. Automatically migrates stale models from the hot NVMe drive to a cold drive (external SSD, NAS, or cloud mount) and recalls them on demand. Hot storage stays free for active models while all models remain accessible via symlinks.
@@ -546,6 +675,7 @@ Supports HuggingFace (`~/.cache/huggingface/hub/`) and Ollama (`~/.ollama/models
 | Port | Service |
 |------|---------|
 | 4000 | LiteLLM Proxy |
+| 5000 | Safety Harness |
 | 5678 | n8n |
 | 6900 | Argilla |
 | 8000 | Unsloth Studio |
@@ -555,6 +685,7 @@ Supports HuggingFace (`~/.cache/huggingface/hub/`) and Ollama (`~/.ollama/models
 | 8020 | vLLM |
 | 8080 | code-server |
 | 8081 | Label Studio |
+| 8501 | HITL Dashboard (Gradio) |
 | 8888 | Jupyter Lab (NGC) |
 | 8889 | Jupyter Lab (Eval Toolbox) |
 | 8890 | Jupyter Lab (Data Toolbox) |
@@ -625,6 +756,14 @@ nvidia-sync forward 8081
 # Argilla
 nvidia-sync exec -- bash ~/dgx-toolbox/data/start-argilla.sh &
 nvidia-sync forward 6900
+
+# Safety Harness
+nvidia-sync exec -- bash ~/dgx-toolbox/harness/start-harness.sh &
+nvidia-sync forward 5000
+
+# HITL Dashboard
+nvidia-sync exec -- python -m harness.hitl ui --port 8501 &
+nvidia-sync forward 8501
 ```
 
 For **interactive containers**, use `nvidia-sync exec -it`:
@@ -666,6 +805,8 @@ Register these tools as custom apps in NVIDIA Sync so they appear in the Sync UI
 | Triton TRT-LLM | `bash ~/dgx-toolbox/eval/triton-trtllm-sync.sh` | 8010 | No |
 | vLLM | `bash ~/dgx-toolbox/inference/start-vllm-sync.sh` | 8020 | No |
 | Autoresearch | `bash ~/dgx-toolbox/karpathy-autoresearch/launch-autoresearch-sync.sh` | -- | No |
+| Safety Harness | `bash ~/dgx-toolbox/harness/start-harness.sh` | 5000 | No |
+| HITL Dashboard | `python -m harness.hitl ui --port 8501` | 8501 | Yes |
 | Model Store | `bash ~/dgx-toolbox/modelstore.sh status` | -- | No |
 
 Refer to the [NVIDIA Sync custom apps documentation](https://docs.nvidia.com/dgx/dgx-spark/nvidia-sync.html#spark-nvidia-sync) for the exact configuration format.
@@ -676,6 +817,7 @@ Refer to the [NVIDIA Sync custom apps documentation](https://docs.nvidia.com/dgx
 
 ```bash
 nvidia-sync forward 4000    # LiteLLM Proxy
+nvidia-sync forward 5000    # Safety Harness
 nvidia-sync forward 5678    # n8n
 nvidia-sync forward 6900    # Argilla
 nvidia-sync forward 8000    # Unsloth Studio
@@ -684,6 +826,7 @@ nvidia-sync forward 8011    # Triton TRT-LLM (gRPC)
 nvidia-sync forward 8020    # vLLM
 nvidia-sync forward 8080    # code-server
 nvidia-sync forward 8081    # Label Studio
+nvidia-sync forward 8501    # HITL Dashboard
 nvidia-sync forward 8888    # Jupyter Lab (NGC)
 nvidia-sync forward 8889    # Jupyter Lab (Eval Toolbox)
 nvidia-sync forward 8890    # Jupyter Lab (Data Toolbox)
@@ -709,6 +852,8 @@ Key aliases:
 | `data-stack-up` / `data-stack-down` | Start/stop data stack (Label Studio + Argilla) |
 | `litellm-config` | Interactive LiteLLM config generator |
 | `eval-toolbox` / `data-toolbox` | Interactive toolbox shells |
+| `harness` / `harness-stop` | Start/stop safety harness gateway |
+| `hitl` | Launch HITL review dashboard |
 | `docker-stop-all` | Stop all running containers |
 
 ## GPU Requirements File

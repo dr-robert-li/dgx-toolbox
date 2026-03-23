@@ -69,9 +69,12 @@ modelstore/op_state.json
 modelstore/audit.log
 
 # Safety harness runtime
-safety-harness/traces/
-safety-harness/*.db
-safety-harness/*.sqlite
+harness/data/traces.db
+harness/data/traces.db-wal
+harness/data/traces.db-shm
+harness/data/archive/
+harness/eval/datasets/pending/*.jsonl
+!harness/eval/datasets/pending/.gitkeep
 
 # Autoresearch runtime (cloned repo lives outside dgx-toolbox)
 karpathy-autoresearch/autoresearch/

@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-03-23 — Safety Harness (v1.1)
+
+### Added (Safety Harness)
+
+- **harness/** — FastAPI safety gateway on :5000 that proxies to LiteLLM with full request/response screening
+- **Multi-tenant auth** — API key verification (argon2), per-tenant rate limiting (RPM + TPM sliding window), bypass flags
+- **Input guardrails** — Unicode NFC/NFKC normalization + zero-width stripping + homoglyph detection, NeMo Guardrails content filtering, Presidio PII/secrets detection, prompt injection detection (regex heuristics + NeMo LLM-as-judge)
+- **Output guardrails** — Toxicity scanning, jailbreak-success detection, output PII redaction via NeMo output rails
+- **3 refusal modes** — Hard block (principled refusal), soft steer (LLM-rewrites flagged prompts), informative (explains policy + suggests alternatives). Configurable per-rail
+- **Constitutional AI critique** — Single-pass critique-revise loop for high-risk outputs against user-editable `constitution.yaml` with 12 default principles across 4 categories. Configurable judge model (default = same model). AI-guided tuning suggestions via `POST /admin/suggest-tuning` and `python -m harness.critique analyze`
+- **PII-safe trace store** — Every request/response logged to SQLite (WAL mode) with PII redacted before write. Guardrail decisions, CAI critique, and refusal events recorded per trace. Query by request_id or time range
+- **Eval harness** — Replay safety/refusal datasets (40-case starter included) with F1/CRR/FRR + P50/P95 latency scoring. lm-eval integration via custom HarnessLM class (generative through gateway, loglikelihood direct to LiteLLM). Unified eval_runs SQLite storage with ASCII trend charts and JSON export
+- **CI regression gate** — `python -m harness.eval gate --tolerance 0.02` checks safety + capability + latency metrics against previous run or pinned baseline. Exit 0=pass, 1=regression, 2=error
+- **Red teaming** — garak one-shot vulnerability scans via subprocess wrapper with 3 preset profiles (quick/standard/thorough). Adversarial prompt generation from near-miss traces via judge model. Async job dispatch (asyncio + SQLite, one-at-a-time semaphore). Dataset balance enforcement with configurable max category ratio
+- **HITL dashboard** — Gradio review UI (`python -m harness.hitl ui --port 8501`) with priority-sorted queue (closest-to-threshold first), side-by-side diff view, approve/reject/edit corrections. Headless API mode (same endpoints, no Gradio required). Threshold calibration from corrections (`python -m harness.hitl calibrate`). OpenAI-format JSONL fine-tuning export
+- **NeMo Guardrails aarch64 validated** — `pip install nemoguardrails` + Annoy C++ build + Presidio + spaCy confirmed working on DGX Spark aarch64
+- Added `harness`, `harness-stop`, and `hitl` aliases to `example.bash_aliases`
+- Updated `.gitignore` for harness runtime artifacts
+- Updated README with Safety Harness section, architecture diagram, API reference, and CLI tools
+
 ## 2026-03-22 — Autonomous Research + Model Store
 
 ### Added (Autonomous Research)
