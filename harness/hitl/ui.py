@@ -148,44 +148,28 @@ def build_ui(api_url: str, api_key: str):  # -> gr.Blocks
             pass
         return None
 
-    def select_item(evt, queue_data):  # evt: gr.SelectData
-        """Handle queue row selection — populate detail panel."""
+    def select_item(queue_data: gr.SelectData):
+        """Handle queue row selection — populate detail panel.
+
+        Gradio 6.x passes SelectData as the sole argument when using .select().
+        The selected row index is in queue_data.index.
+        The dataframe value is accessed via queue_data.value.
+        """
+        _empty = ("No item selected.", "", "", "", "")
         try:
-            row_idx = evt.index[0]
-            if not queue_data or row_idx >= len(queue_data):
-                return (
-                    "No item selected.",
-                    "",
-                    "",
-                    "",
-                    gr.update(visible=False),
-                    gr.update(visible=False),
-                    "",
-                )
-            row = queue_data[row_idx]
-            request_id = row[0] if isinstance(row, (list, tuple)) else ""
+            row_idx = queue_data.index[0]
+            # queue_data.value is the cell value; we need the row's first column (request_id)
+            # Re-fetch via the row index from the stored data
+            request_id = str(queue_data.row_value[0]) if hasattr(queue_data, "row_value") else str(queue_data.value)
         except Exception:  # noqa: BLE001
-            return (
-                "Selection error.",
-                "",
-                "",
-                "",
-                gr.update(visible=False),
-                gr.update(visible=False),
-                "",
-            )
+            return _empty
+
+        if not request_id:
+            return _empty
 
         item = _fetch_item_by_id(request_id)
         if item is None:
-            return (
-                f"Could not load item: {request_id}",
-                "",
-                "",
-                "",
-                gr.update(visible=False),
-                gr.update(visible=False),
-                request_id,
-            )
+            return (f"Could not load item: {request_id}", "", "", "", request_id)
 
         # Build detail header markdown
         ts = item.get("timestamp", "")
@@ -219,35 +203,23 @@ def build_ui(api_url: str, api_key: str):  # -> gr.Blocks
                 cai_critique = None
 
         if cai_critique is not None:
-            original_output = cai_critique.get("original_output", "")
-            revised_output = cai_critique.get("revised_output", "")
+            orig = cai_critique.get("original_output", "")
+            revised = cai_critique.get("revised_output", "")
             diff_lines = list(
                 difflib.unified_diff(
-                    original_output.splitlines(),
-                    revised_output.splitlines(),
+                    orig.splitlines(),
+                    revised.splitlines(),
                     lineterm="",
                     fromfile="original",
                     tofile="revised",
                 )
             )
             diff_text = "\n".join(diff_lines)
-            show_revised = gr.update(visible=True)
         else:
-            # Blocked before revision — no cai_critique
-            original_output = item.get("response", "")
-            revised_output = "(Blocked before revision - no revised output available)"
-            diff_text = ""
-            show_revised = gr.update(visible=True)
+            orig = item.get("response") or item.get("prompt") or ""
+            diff_text = "(No critique — blocked before revision)"
 
-        return (
-            header,
-            original_output,
-            revised_output,
-            diff_text,
-            gr.update(visible=False),   # edit_box hidden by default
-            show_revised,
-            request_id,
-        )
+        return (header, orig, diff_text, request_id, request_id)
 
     def submit_correction(request_id: str, reviewer: str, action: str, edited_response: str) -> str:
         """POST /admin/hitl/correct with the given action."""
@@ -325,30 +297,23 @@ def build_ui(api_url: str, api_key: str):  # -> gr.Blocks
             label="Review Queue",
         )
 
-        # ------ Bottom section: detail + diff + corrections ------
+        # ------ Bottom section: detail + side-by-side panels + corrections ------
         gr.Markdown("---")
         detail_header = gr.Markdown("Select an item from the queue to review.")
 
-        with gr.Row():
-            with gr.Column():
-                original_output = gr.Textbox(
-                    label="Original Output",
-                    lines=10,
-                    interactive=False,
-                )
-            with gr.Column():
-                revised_output = gr.Textbox(
-                    label="Revised Output",
-                    lines=10,
-                    interactive=False,
-                    visible=True,
-                )
-
-        diff_text = gr.Textbox(
-            label="Changes (diff)",
-            lines=4,
-            interactive=False,
-        )
+        with gr.Row(equal_height=True):
+            original_output = gr.Textbox(
+                label="Original Output",
+                lines=12,
+                interactive=False,
+                scale=1,
+            )
+            diff_text = gr.Textbox(
+                label="Changes (diff / revised)",
+                lines=12,
+                interactive=False,
+                scale=1,
+            )
 
         with gr.Row():
             reviewer_name = gr.Textbox(
@@ -382,16 +347,14 @@ def build_ui(api_url: str, api_key: str):  # -> gr.Blocks
         hide_reviewed.change(fn=refresh_queue, inputs=refresh_inputs, outputs=[queue_table])
 
         # Row selection in queue table
+        # Gradio 6.x: .select() passes SelectData as sole arg (no inputs needed)
         queue_table.select(
             fn=select_item,
-            inputs=[queue_table],
             outputs=[
                 detail_header,
                 original_output,
-                revised_output,
                 diff_text,
-                edit_box,
-                revised_output,
+                selected_id_state,
                 selected_id_state,
             ],
         )
