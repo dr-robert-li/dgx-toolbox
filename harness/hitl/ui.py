@@ -18,7 +18,10 @@ def _extract_triggering_rail_inline(guardrail_decisions: dict) -> str | None:
     Mirrors harness.traces.store._extract_triggering_rail for inline use
     without importing the async store module.
     """
-    all_results = guardrail_decisions.get("all_results", [])
+    if isinstance(guardrail_decisions, list):
+        all_results = guardrail_decisions
+    else:
+        all_results = guardrail_decisions.get("all_results", [])
     best: str | None = None
     best_distance = float("inf")
     for result in all_results:
