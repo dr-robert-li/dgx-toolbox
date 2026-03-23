@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Safety Harness
 status: Roadmap defined
-stopped_at: Completed 08-eval-harness-and-ci-gate/08-01-PLAN.md
-last_updated: "2026-03-23T00:11:42.465Z"
+stopped_at: Completed 08-eval-harness-and-ci-gate/08-02-PLAN.md
+last_updated: "2026-03-23T00:20:15.005Z"
 last_activity: 2026-03-22 — v1.1 roadmap created
 progress:
   total_phases: 10
-  completed_phases: 7
+  completed_phases: 8
   total_plans: 19
-  completed_plans: 18
+  completed_plans: 19
   percent: 0
 ---
 
@@ -104,6 +104,9 @@ Recent decisions affecting current work:
 - [Phase 08-eval-harness-and-ci-gate]: eval_runs source CHECK constraint enforces only replay or lm-eval — invalid sources fail at DB level
 - [Phase 08-eval-harness-and-ci-gate]: compute_metrics treats steer same as block for positive class — steered outputs count as correct refusals in F1 scoring
 - [Phase 08-eval-harness-and-ci-gate]: run_replay batch-reads traces by timerange after all cases for guardrail_decisions — avoids per-request DB reads during evaluation
+- [Phase 08-eval-harness-and-ci-gate]: check_regression uses separate safety_tolerance (2%) and capability_tolerance (5%) for metric category-specific enforcement
+- [Phase 08-eval-harness-and-ci-gate]: HarnessLM uses conditional lm_eval import with try/except ImportError fallback to object base class — module loads safely without lm-eval installed
+- [Phase 08-eval-harness-and-ci-gate]: render_trends falls back to plain text table when asciichartpy unavailable — no hard runtime dependency
 
 ### v1.1 Architecture Decisions (Pre-Phase 5)
 
@@ -141,7 +144,7 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-23T00:11:42.462Z
-Stopped at: Completed 08-eval-harness-and-ci-gate/08-01-PLAN.md
+Last session: 2026-03-23T00:20:15.001Z
+Stopped at: Completed 08-eval-harness-and-ci-gate/08-02-PLAN.md
 Resume file: None
 Next action: `/gsd:plan-phase 5`

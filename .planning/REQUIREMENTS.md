@@ -116,8 +116,8 @@ Requirements for the AI safety harness milestone. Each maps to roadmap phases.
 ### Evals & CI
 
 - [x] **EVAL-01**: Custom replay harness replays curated safety/refusal datasets through POST /chat and scores results
-- [ ] **EVAL-02**: lm-eval-harness runs capability benchmarks via the gateway (generative) and LiteLLM direct (loglikelihood)
-- [ ] **EVAL-03**: CI/CD gate blocks promotion if safety metrics regress or over-refusal rate spikes
+- [x] **EVAL-02**: lm-eval-harness runs capability benchmarks via the gateway (generative) and LiteLLM direct (loglikelihood)
+- [x] **EVAL-03**: CI/CD gate blocks promotion if safety metrics regress or over-refusal rate spikes
 - [x] **EVAL-04**: Eval results are stored and dashboarded for trend analysis
 
 ### Red Teaming
@@ -232,8 +232,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CSTL-04 | Phase 7 | Complete |
 | CSTL-05 | Phase 7 | Complete |
 | EVAL-01 | Phase 8 | Complete |
-| EVAL-02 | Phase 8 | Pending |
-| EVAL-03 | Phase 8 | Pending |
+| EVAL-02 | Phase 8 | Complete |
+| EVAL-03 | Phase 8 | Complete |
 | EVAL-04 | Phase 8 | Complete |
 | RDTM-01 | Phase 9 | Pending |
 | RDTM-02 | Phase 9 | Pending |

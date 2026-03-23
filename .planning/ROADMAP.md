@@ -26,7 +26,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Gateway and Trace Foundation** - Validated aarch64 environment, passthrough FastAPI gateway, auth, rate limiting, and PII-safe trace store (completed 2026-03-22)
 - [x] **Phase 6: Input/Output Guardrails and Refusal** - NeMo Guardrails input/output rails, PII redaction, refusal calibration modes, user-tunable thresholds (completed 2026-03-22)
 - [x] **Phase 7: Constitutional AI Critique** - Risk-gated two-pass critique pipeline, user-editable constitution, configurable judge model, AI-guided suggestions (completed 2026-03-22)
-- [ ] **Phase 8: Eval Harness and CI Gate** - Custom replay eval harness, lm-eval-harness integration, CI/CD promotion gate, trend dashboarding
+- [x] **Phase 8: Eval Harness and CI Gate** - Custom replay eval harness, lm-eval-harness integration, CI/CD promotion gate, trend dashboarding (completed 2026-03-23)
 - [ ] **Phase 9: Red Teaming** - Trace-driven adversarial prompt generation, garak scanning, deepteam feedback loop, Celery async dispatch
 - [ ] **Phase 10: HITL Dashboard** - Gradio review UI, priority-sorted review queue, correction feedback loop, API-only headless mode
 
@@ -155,7 +155,7 @@ Plans:
   2. lm-eval generative tasks route through POST /v1/chat/completions and loglikelihood tasks route directly to LiteLLM — both paths complete without errors and produce plausible benchmark scores
   3. Lowering a refusal threshold below a known-bad prompt causes the CI gate to report a safety regression and exit non-zero, blocking promotion
   4. Each eval run's results are stored and a trend chart shows metric history across runs, making regressions and improvements visible over time
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 08-01-PLAN.md — Replay harness with metrics scoring, eval_runs SQLite table, starter safety dataset
@@ -207,6 +207,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 5. Gateway and Trace Foundation | 3/3 | Complete   | 2026-03-22 |
 | 6. Input/Output Guardrails and Refusal | 3/3 | Complete   | 2026-03-22 |
 | 7. Constitutional AI Critique | 3/3 | Complete   | 2026-03-22 |
-| 8. Eval Harness and CI Gate | 1/2 | In Progress|  |
+| 8. Eval Harness and CI Gate | 2/2 | Complete   | 2026-03-23 |
 | 9. Red Teaming | 0/? | Not started | - |
 | 10. HITL Dashboard | 0/? | Not started | - |
