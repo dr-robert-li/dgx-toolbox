@@ -31,3 +31,15 @@ CREATE TABLE IF NOT EXISTS eval_runs (
 );
 CREATE INDEX IF NOT EXISTS idx_eval_runs_timestamp ON eval_runs(timestamp);
 CREATE INDEX IF NOT EXISTS idx_eval_runs_source    ON eval_runs(source);
+
+CREATE TABLE IF NOT EXISTS redteam_jobs (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id       TEXT NOT NULL UNIQUE,
+    type         TEXT NOT NULL CHECK(type IN ('garak', 'deepteam')),
+    status       TEXT NOT NULL CHECK(status IN ('pending', 'running', 'complete', 'failed')),
+    created_at   TEXT NOT NULL,
+    completed_at TEXT,
+    result       TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_redteam_jobs_status     ON redteam_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_redteam_jobs_created_at ON redteam_jobs(created_at);

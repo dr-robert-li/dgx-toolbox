@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import aiosqlite
@@ -148,6 +149,133 @@ class TraceStore:
                     record["config_snapshot"] = json.loads(record["config_snapshot"])
                     result.append(record)
                 return result
+
+    async def create_job(self, job: dict) -> None:
+        """Insert a new red team job with status='pending'.
+
+        Args:
+            job: Dict with fields: job_id, type ('garak' or 'deepteam').
+        """
+        created_at = datetime.now(timezone.utc).isoformat()
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(
+                """
+                INSERT INTO redteam_jobs (job_id, type, status, created_at)
+                VALUES (?, ?, 'pending', ?)
+                """,
+                (job["job_id"], job["type"], created_at),
+            )
+            await db.commit()
+
+    async def update_job_status(
+        self, job_id: str, status: str, result: dict | None = None
+    ) -> None:
+        """Update a red team job's status (and optionally result).
+
+        Sets completed_at for terminal statuses ('complete', 'failed').
+
+        Args:
+            job_id: Unique job identifier.
+            status: New status ('running', 'complete', 'failed').
+            result: Optional result dict (JSON-serialized).
+        """
+        completed_at = (
+            datetime.now(timezone.utc).isoformat()
+            if status in ("complete", "failed")
+            else None
+        )
+        result_json = json.dumps(result) if result is not None else None
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(
+                """
+                UPDATE redteam_jobs
+                SET status = ?, completed_at = ?, result = ?
+                WHERE job_id = ?
+                """,
+                (status, completed_at, result_json, job_id),
+            )
+            await db.commit()
+
+    async def get_job(self, job_id: str) -> dict | None:
+        """Fetch a single red team job by job_id.
+
+        Returns:
+            dict of the row with result parsed from JSON, or None if not found.
+        """
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM redteam_jobs WHERE job_id = ?", (job_id,)
+            ) as cursor:
+                row = await cursor.fetchone()
+                if row is None:
+                    return None
+                record = dict(row)
+                if record.get("result") is not None:
+                    record["result"] = json.loads(record["result"])
+                return record
+
+    async def list_jobs(self, limit: int = 20) -> list[dict]:
+        """Fetch red team jobs ordered by created_at DESC.
+
+        Args:
+            limit: Maximum number of records to return (default 20).
+
+        Returns:
+            List of job dicts with result parsed from JSON.
+        """
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM redteam_jobs ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ) as cursor:
+                rows = await cursor.fetchall()
+                result = []
+                for row in rows:
+                    record = dict(row)
+                    if record.get("result") is not None:
+                        record["result"] = json.loads(record["result"])
+                    result.append(record)
+                return result
+
+    async def query_near_misses(self, since: str, limit: int = 100) -> list[dict]:
+        """Fetch traces that scored above zero but were not blocked.
+
+        Queries traces since the given timestamp that were not refusals and
+        had guardrail decisions recorded, then filters in Python to keep only
+        those where at least one rail result has score > 0.
+
+        Args:
+            since: ISO8601 string — lower bound (inclusive).
+            limit: Maximum number of records to return (default 100).
+
+        Returns:
+            List of trace dicts matching near-miss criteria.
+        """
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                """
+                SELECT * FROM traces
+                WHERE timestamp >= ?
+                  AND guardrail_decisions IS NOT NULL
+                  AND refusal_event = 0
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (since, limit),
+            ) as cursor:
+                rows = await cursor.fetchall()
+
+        near_misses = []
+        for row in rows:
+            record = dict(row)
+            gd = json.loads(record["guardrail_decisions"])
+            all_results = gd.get("all_results", [])
+            if any(r.get("score", 0) > 0 for r in all_results):
+                near_misses.append(record)
+        return near_misses
 
     async def query_by_timerange(
         self, since: str, until: str | None = None
