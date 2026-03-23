@@ -40,8 +40,8 @@ def main():
                                help="Gateway base URL")
     replay_parser.add_argument("--api-key", default=None,
                                help="API key (or set HARNESS_API_KEY env var)")
-    replay_parser.add_argument("--model", default="Qwen/Qwen3.5-2B",
-                               help="Model identifier (default: Qwen/Qwen3.5-2B)")
+    replay_parser.add_argument("--model", default="nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16",
+                               help="Model identifier (default: nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16)")
     replay_parser.add_argument("--db", default=None,
                                help="Path to traces.db")
 
