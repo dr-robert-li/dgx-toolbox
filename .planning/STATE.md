@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Safety Harness
 status: Roadmap defined
-stopped_at: Phase 10 context gathered
-last_updated: "2026-03-23T06:46:46.051Z"
+stopped_at: Completed 10-01-PLAN.md
+last_updated: "2026-03-23T07:10:48.833Z"
 last_activity: 2026-03-22 — v1.1 roadmap created
 progress:
   total_phases: 10
   completed_phases: 9
-  total_plans: 21
-  completed_plans: 21
+  total_plans: 24
+  completed_plans: 22
   percent: 0
 ---
 
@@ -113,6 +113,9 @@ Recent decisions affecting current work:
 - [Phase 09-red-teaming]: asyncio.Lock (not Semaphore) for single-job gate — lock.locked() is public API
 - [Phase 09-red-teaming]: asyncio.create_task stored in app.state.redteam_active_task to prevent garbage collection
 - [Phase 09-red-teaming]: garak runner uses asyncio.create_subprocess_exec not subprocess.run to avoid blocking event loop
+- [Phase 10-01]: compute_priority uses 1.0 - min(distances) formula: closest-to-threshold items get highest priority
+- [Phase 10-01]: SQL LEFT JOIN corrections pattern for reviewed status: single query, no N+1; rail_filter and hide_reviewed applied in Python post-processing
+- [Phase 10-01]: CorrectionRequest Literal action enum gives FastAPI 422 validation before handler; hitl_router has no gradio import for headless API mode
 
 ### v1.1 Architecture Decisions (Pre-Phase 5)
 
@@ -150,7 +153,7 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-23T06:46:46.049Z
-Stopped at: Phase 10 context gathered
-Resume file: .planning/phases/10-hitl-dashboard/10-CONTEXT.md
+Last session: 2026-03-23T07:10:48.831Z
+Stopped at: Completed 10-01-PLAN.md
+Resume file: None
 Next action: `/gsd:plan-phase 5`

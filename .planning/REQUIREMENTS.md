@@ -129,10 +129,10 @@ Requirements for the AI safety harness milestone. Each maps to roadmap phases.
 
 ### HITL Dashboard
 
-- [ ] **HITL-01**: Gradio dashboard shows a priority-sorted review queue of flagged requests
-- [ ] **HITL-02**: Reviewers can see diff-view of original vs critique-revised outputs
+- [x] **HITL-01**: Gradio dashboard shows a priority-sorted review queue of flagged requests
+- [x] **HITL-02**: Reviewers can see diff-view of original vs critique-revised outputs
 - [ ] **HITL-03**: Reviewer corrections feed back into threshold calibration and fine-tuning data
-- [ ] **HITL-04**: Dashboard works headlessly (API-only mode) when no UI is needed
+- [x] **HITL-04**: Dashboard works headlessly (API-only mode) when no UI is needed
 
 ## v2 Requirements
 
@@ -239,10 +239,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RDTM-02 | Phase 9 | Complete |
 | RDTM-03 | Phase 9 | Complete |
 | RDTM-04 | Phase 9 | Complete |
-| HITL-01 | Phase 10 | Pending |
-| HITL-02 | Phase 10 | Pending |
+| HITL-01 | Phase 10 | Complete |
+| HITL-02 | Phase 10 | Complete |
 | HITL-03 | Phase 10 | Pending |
-| HITL-04 | Phase 10 | Pending |
+| HITL-04 | Phase 10 | Complete |
 
 **Coverage:**
 - v1.0 requirements: 38 total (38 complete)
