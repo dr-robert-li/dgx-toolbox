@@ -15,9 +15,12 @@
 ### Changed
 
 - **gradio and asciichartpy** moved from optional to core dependencies — installed by default with `pip install -e .`
-- **Default Nemotron model** — Updated across docker-compose, README, LiteLLM config, vllm-model to `nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16`
+- **Default model** — Set to `nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16` across eval CLI, docker-compose, LiteLLM config, and vllm-model (was `llama3.1` which didn't exist in LiteLLM)
+- **HITL queue** — `compute_priority` and `_extract_triggering_rail` now handle `guardrail_decisions` stored as JSON list (not just dict)
+- **LiteLLM config** — Removed stale `Qwen/Qwen3.5-2B` entry that caused 404→429 cascading failures
 - **.gitignore** — Fixed path from `safety-harness/` to `harness/`, added trace DB and pending dataset ignores
 - **example.bash_aliases** — Added `harness`, `harness-stop`, `hitl` aliases
+- **README** — Added step-by-step startup guide, OpenAI SDK example, HITL dashboard section, stopping instructions
 
 ## 2026-03-23 — Safety Harness (v1.1)
 

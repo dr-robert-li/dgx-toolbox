@@ -515,26 +515,58 @@ A model-agnostic safety layer that sits between clients and LiteLLM. All request
 ### Quick Start
 
 ```bash
-# Install the harness (first time)
+# 1. Install the harness (first time only)
 cd ~/dgx-toolbox/harness && pip install -e ".[test]"
 
-# Start the harness (requires LiteLLM running on :4000)
-harness                     # http://localhost:5000
+# 2. Start the inference backend
+inference-up                                    # LiteLLM (:4000) + Open-WebUI (:12000)
 
-# Or start manually
-bash ~/dgx-toolbox/harness/start-harness.sh
+# 3. Start vLLM with a model (optional — can use cloud models via LiteLLM instead)
+VLLM_MODEL=nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16 \
+  docker compose -f ~/dgx-toolbox/docker-compose.inference.yml --profile with-vllm up -d vllm
+# Wait for model load: docker logs -f vllm 2>&1 | grep -m1 "startup complete"
 
-# Test auth
-curl -s -H "Authorization: Bearer sk-devteam-test" http://localhost:5000/probe -X POST
+# 4. Start the safety harness
+harness                                         # http://localhost:5000
 
-# Send a request through the safety pipeline
+# 5. Test it
+curl -s -X POST http://localhost:5000/probe \
+  -H "Authorization: Bearer sk-devteam-test"
+# → {"tenant_id":"dev-team","bypass":false}
+
+# 6. Send a request through the full safety pipeline
 curl -s http://localhost:5000/v1/chat/completions \
   -H "Authorization: Bearer sk-devteam-test" \
   -H "Content-Type: application/json" \
-  -d '{"model": "llama3.1", "messages": [{"role": "user", "content": "Hello"}]}'
+  -d '{"model": "nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16",
+       "messages": [{"role": "user", "content": "Hello"}]}'
 ```
 
-Point Open-WebUI or any OpenAI-compatible client at `http://localhost:5000/v1` instead of LiteLLM's `:4000` to route through the safety pipeline.
+**Using with Open-WebUI:** Point Open-WebUI at `http://localhost:5000/v1` instead of LiteLLM's `:4000` to route all chat through the safety pipeline. In Admin Panel → Settings → Connections, add an OpenAI API connection with URL `http://host.docker.internal:5000/v1` and API key `sk-devteam-test`.
+
+**Using with any OpenAI SDK:**
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://localhost:5000/v1",
+    api_key="sk-devteam-test",
+)
+response = client.chat.completions.create(
+    model="nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16",
+    messages=[{"role": "user", "content": "Hello"}],
+)
+print(response.choices[0].message.content)
+```
+
+### Stopping
+
+```bash
+harness-stop                # Stop safety harness
+inference-down              # Stop LiteLLM + Open-WebUI
+docker stop vllm            # Stop vLLM
+```
 
 ### Architecture
 
@@ -585,25 +617,55 @@ All config is YAML-based in `harness/config/`:
 | `constitution.yaml` | Constitutional AI principles (categorized, prioritized, per-principle toggles), judge model selection |
 | `redteam.yaml` | Red team settings (max category ratio, near-miss window, variants per trace) |
 
-### CLI Tools
+### HITL Review Dashboard
+
+A Gradio-based review UI for human-in-the-loop safety calibration. Runs as a standalone process that connects to the harness API.
 
 ```bash
-# Eval harness
-python -m harness.eval replay                      # Run safety replay dataset
-python -m harness.eval gate --tolerance 0.02       # CI regression gate (exit 0=pass, 1=fail)
-python -m harness.eval trends --last 20            # ASCII trend charts + JSON export
+# Launch the dashboard (harness must be running on :5000)
+hitl
+# Or with explicit connection:
+python -m harness.hitl ui --port 8501 --api-url http://localhost:5000 --api-key sk-devteam-test
+# → http://localhost:8501
+```
 
-# Constitutional AI tuning
-python -m harness.critique analyze --since 24h     # Judge-based tuning suggestions
+**What you see:**
+- **Left panel:** Priority-sorted review queue (most uncertain decisions first), filterable by rail type, tenant, and time range
+- **Right panel:** Side-by-side diff of original model output vs critique-revised output, with approve/reject/edit buttons
 
-# Red teaming
-python -m harness.redteam promote <file>           # Promote adversarial dataset after review
+**What corrections do:**
+- **Approve** — Revised output was correct; used as positive training example
+- **Reject** — Revision was wrong; flags for threshold tightening
+- **Edit** — Reviewer writes a better response; used as gold standard
+
+```bash
+# Generate threshold suggestions from accumulated corrections
+python -m harness.hitl calibrate
+
+# Export corrections as fine-tuning data (OpenAI JSONL format)
+python -m harness.hitl export --format jsonl
+```
+
+### Eval & CI Tools
+
+```bash
+# Run the 40-case safety replay dataset (harness + model must be running)
+python -m harness.eval replay \
+  --dataset harness/eval/datasets/safety-core.jsonl \
+  --api-key sk-devteam-test
+
+# CI regression gate — exits 0 (pass) or 1 (regression detected)
+python -m harness.eval gate --tolerance 0.02 --api-key sk-devteam-test
+
+# View metric trends across eval runs
+python -m harness.eval trends --last 20
+
+# Constitutional AI tuning suggestions from trace history
+python -m harness.critique analyze --since 24h
+
+# Red teaming — promote reviewed adversarial dataset to active evals
+python -m harness.redteam promote <file>
 python -m harness.redteam list                     # List pending datasets
-
-# HITL dashboard
-python -m harness.hitl ui --port 8501              # Gradio review dashboard
-python -m harness.hitl calibrate                   # Threshold suggestions from corrections
-python -m harness.hitl export --format jsonl       # Fine-tuning data export
 ```
 
 ### API Endpoints
