@@ -56,7 +56,7 @@ services:
       - ${HOME}/.cache/huggingface:/root/.cache/huggingface
       - ${HOME}/eval/models:/models
     ipc: host
-    command: --model ${VLLM_MODEL:-nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16} --host 0.0.0.0 --port 8000
+    command: --model ${VLLM_MODEL:-nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16} --host 0.0.0.0 --port 8000 --trust-remote-code
     deploy:
       resources:
         reservations:
