@@ -35,6 +35,7 @@ eval = [
     "asciichartpy>=1.5",
 ]
 redteam = ["garak>=0.14"]
+hitl = ["gradio>=6.0,<7.0"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

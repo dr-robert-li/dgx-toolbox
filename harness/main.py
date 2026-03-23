@@ -96,6 +96,9 @@ app.include_router(admin_router)
 from harness.redteam.router import redteam_router  # noqa: E402
 app.include_router(redteam_router)
 
+from harness.hitl.router import hitl_router  # noqa: E402
+app.include_router(hitl_router)
+
 
 @app.post("/probe")
 async def probe(tenant: Annotated[TenantConfig, Depends(verify_api_key)]):
