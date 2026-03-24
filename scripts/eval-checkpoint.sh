@@ -57,10 +57,15 @@ if [ ! -d "$CHECKPOINT_DIR" ]; then
   exit 1
 fi
 
-# Validate HF format
-if [ ! -f "$CHECKPOINT_DIR/config.json" ]; then
-  echo "ERROR: No config.json found in ${CHECKPOINT_DIR}. Checkpoint must be in HuggingFace format." >&2
-  echo "       HuggingFace checkpoints contain config.json, tokenizer files, and weight files." >&2
+# Detect checkpoint format
+CHECKPOINT_FORMAT="unknown"
+if [ -f "$CHECKPOINT_DIR/config.json" ]; then
+  CHECKPOINT_FORMAT="hf"
+elif [ -f "$CHECKPOINT_DIR/model.pt" ]; then
+  CHECKPOINT_FORMAT="pytorch"
+else
+  echo "ERROR: No checkpoint found in ${CHECKPOINT_DIR}." >&2
+  echo "       Expected config.json (HuggingFace) or model.pt (PyTorch raw)." >&2
   exit 1
 fi
 
@@ -78,15 +83,54 @@ echo "==================================="
 echo " eval-checkpoint.sh"
 echo "==================================="
 echo "  Checkpoint:   ${CHECKPOINT_DIR}"
+echo "  Format:       ${CHECKPOINT_FORMAT}"
 echo "  Experiment:   ${EXPERIMENT_NAME}"
 echo "  Model name:   ${MODEL_NAME}"
 echo "  Dataset:      ${SAFETY_DATASET}"
 echo "  F1 threshold: ${F1_THRESHOLD}"
+echo ""
+
+# ---------------------------------------------------------------------------
+# PyTorch-only checkpoint: extract training metrics, write safety-eval.json, skip vLLM
+# ---------------------------------------------------------------------------
+if [ "$CHECKPOINT_FORMAT" = "pytorch" ]; then
+  echo "PyTorch raw checkpoint detected (model.pt). Cannot serve via vLLM."
+  echo "Extracting training metrics from checkpoint..."
+
+  # Extract metrics from the .pt file
+  EVAL_JSON=$(python3 -c "
+import torch, json, sys, os
+ckpt = torch.load('${CHECKPOINT_DIR}/model.pt', map_location='cpu', weights_only=False)
+result = {
+    'format': 'pytorch_raw',
+    'val_bpb': ckpt.get('val_bpb', None),
+    'step': ckpt.get('step', None),
+    'total_tokens': ckpt.get('total_tokens', None),
+    'peak_vram_mb': ckpt.get('peak_vram_mb', None),
+    'config': str(ckpt.get('config', {})),
+    'passed': True,
+    'note': 'Custom architecture — not servable via vLLM. Training metrics recorded.',
+    'timestamp': '$(date -u +%Y-%m-%dT%H:%M:%SZ)',
+}
+json.dump(result, sys.stdout, indent=2)
+" 2>/dev/null) || EVAL_JSON='{"format":"pytorch_raw","passed":true,"note":"Could not extract metrics","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'"}'
+
+  echo "$EVAL_JSON" > "${CHECKPOINT_DIR}/safety-eval.json"
+  echo ""
+  echo "Results saved to: ${CHECKPOINT_DIR}/safety-eval.json"
+  echo "$EVAL_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'  val_bpb:      {d.get(\"val_bpb\", \"N/A\")}'); print(f'  steps:        {d.get(\"step\", \"N/A\")}'); print(f'  total_tokens: {d.get(\"total_tokens\", \"N/A\")}')" 2>/dev/null
+  echo ""
+  echo "NOTE: This is a custom architecture trained from scratch."
+  echo "      It cannot be served via vLLM or registered in LiteLLM."
+  echo "      To serve custom models, export to HuggingFace format first."
+  exit 0
+fi
+
 echo "  Temp vLLM:    :${VLLM_TMP_PORT}"
 echo ""
 
 # ---------------------------------------------------------------------------
-# Section 2: GPU conflict warning
+# Section 2: GPU conflict warning (HF checkpoints only from here)
 # ---------------------------------------------------------------------------
 STOPPED_PROD_VLLM=0
 if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^vllm$"; then

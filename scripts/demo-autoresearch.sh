@@ -488,18 +488,26 @@ printf '\n  Training complete. Log saved to: %s\n\n' "$DEMO_LOG"
 # ---------------------------------------------------------------------------
 printf '[6/7] Running post-training safety eval...\n'
 
-# Find the latest checkpoint: HF-format dir with config.json
+# Find the latest checkpoint: HF-format (config.json) or PyTorch raw (model.pt)
 CHECKPOINT_DIR=""
 
 # Common autoresearch checkpoint locations
 for search_base in \
+    "$AUTORESEARCH_DIR/checkpoint" \
     "$AUTORESEARCH_DIR/experiments" \
     "$AUTORESEARCH_DIR/out" \
     "$AUTORESEARCH_DIR/checkpoints" \
     "$AUTORESEARCH_DIR"; do
   if [ -d "$search_base" ]; then
-    # Find most recent directory containing config.json
+    # First try HF format (config.json)
     FOUND=$(find "$search_base" -maxdepth 4 -name "config.json" -printf '%T@ %h\n' 2>/dev/null \
+      | sort -rn | head -1 | awk '{print $2}' || true)
+    if [ -n "$FOUND" ] && [ -d "$FOUND" ]; then
+      CHECKPOINT_DIR="$FOUND"
+      break
+    fi
+    # Then try PyTorch raw (model.pt)
+    FOUND=$(find "$search_base" -maxdepth 4 -name "model.pt" -printf '%T@ %h\n' 2>/dev/null \
       | sort -rn | head -1 | awk '{print $2}' || true)
     if [ -n "$FOUND" ] && [ -d "$FOUND" ]; then
       CHECKPOINT_DIR="$FOUND"
@@ -509,9 +517,8 @@ for search_base in \
 done
 
 if [ -z "$CHECKPOINT_DIR" ]; then
-  printf '\n  %s: No HuggingFace-format checkpoint found (no config.json in %s).\n' \
+  printf '\n  %s: No checkpoint found in %s.\n' \
     "$(_yellow "WARNING")" "$AUTORESEARCH_DIR"
-  printf '  Checkpoint saved raw at: %s\n' "$AUTORESEARCH_DIR"
   printf '  Run eval manually when checkpoint is ready:\n'
   printf '    scripts/eval-checkpoint.sh <path-to-checkpoint>\n\n'
   SUMMARY_EVAL_RESULT="no checkpoint found"

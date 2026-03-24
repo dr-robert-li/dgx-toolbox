@@ -102,6 +102,29 @@ apply_spark_config() {
     echo "  flash_attn_func: replaced with torch SDPA"
   fi
 
+  # Inject checkpoint saving at end of training (autoresearch doesn't save by default)
+  if ! grep -q "DGX Spark: save checkpoint" "$train_py"; then
+    cat >> "$train_py" << 'SAVE_EOF'
+
+# DGX Spark: save checkpoint after training
+import os as _os
+_ckpt_dir = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "checkpoint")
+_os.makedirs(_ckpt_dir, exist_ok=True)
+torch.save({
+    "model_state_dict": model.state_dict(),
+    "step": step,
+    "val_bpb": val_bpb,
+    "config": config._asdict() if hasattr(config, '_asdict') else vars(config) if hasattr(config, '__dict__') else str(config),
+    "total_tokens": total_tokens,
+    "peak_vram_mb": peak_vram_mb,
+}, _os.path.join(_ckpt_dir, "model.pt"))
+print(f"checkpoint:       {_ckpt_dir}/model.pt")
+SAVE_EOF
+    echo "  checkpoint save: injected at end of training"
+  else
+    echo "  checkpoint save: already present"
+  fi
+
   # Patch gradient accumulation if present
   if grep -qE "^GRAD_ACCUM\s*=" "$train_py"; then
     local old_ga
