@@ -118,6 +118,8 @@ if [ -f "$HARNESS_DIR/pyproject.toml" ]; then
   pip install -e "$HARNESS_DIR[test]" --quiet
   echo "=== Downloading spaCy NER model (en_core_web_lg) ==="
   python -m spacy download en_core_web_lg --quiet 2>/dev/null || true
+  echo "=== Installing Kaggle CLI ==="
+  python -m pip install kaggle --quiet
 else
   echo "=== Safety Harness not found at $HARNESS_DIR, skipping ==="
 fi
