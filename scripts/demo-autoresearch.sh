@@ -96,6 +96,19 @@ printf '\n'
 # ---------------------------------------------------------------------------
 printf '[1/7] Checking prerequisites...\n'
 
+# Fix HF cache permissions (Docker containers often create dirs as root)
+HF_CACHE="${HOME}/.cache/huggingface"
+if [ -d "$HF_CACHE" ]; then
+  HF_OWNER=$(stat -c '%U' "$HF_CACHE" 2>/dev/null || echo "unknown")
+  if [ "$HF_OWNER" != "$USER" ]; then
+    printf '  Fixing HuggingFace cache permissions (owned by %s, reclaiming for %s)...\n' "$HF_OWNER" "$USER"
+    sudo chown -R "$USER:$USER" "$HF_CACHE" 2>/dev/null || {
+      printf '  %s: Could not fix HF cache permissions. Training may fail.\n' "$(_yellow "WARNING")"
+      printf '  Run manually: sudo chown -R %s:%s %s\n' "$USER" "$USER" "$HF_CACHE"
+    }
+  fi
+fi
+
 # Check/clone autoresearch repo
 if [ -d "$AUTORESEARCH_DIR/.git" ]; then
   printf '  autoresearch: found at %s\n' "$AUTORESEARCH_DIR"
@@ -371,10 +384,10 @@ printf '  Log: %s\n\n' "$DEMO_LOG"
 cd "$AUTORESEARCH_DIR"
 
 # Start training in background, tee output to terminal and log file
+# Use a subshell so we can capture the PID reliably
 uv run train.py 2>&1 | tee "$DEMO_LOG" &
-TRAINING_PID="${PIPESTATUS[0]:-$!}"
-# After pipe, get the pid of uv run (not tee)
-TRAINING_PID=$(jobs -p | tail -1 2>/dev/null || echo "")
+TRAINING_PID=$!
+sleep 2
 
 # Cycle-limiting monitor: watch log for "Cycle N" completion patterns
 # and send SIGTERM after DEMO_CYCLES complete cycles
@@ -388,7 +401,8 @@ _monitor_cycles() {
   while kill -0 "$train_pid" 2>/dev/null; do
     if [ -f "$log_file" ]; then
       local new_count
-      new_count=$(grep -cE "(Cycle [0-9]+ complete|step [0-9]+.*loss|experiment [0-9]+)" "$log_file" 2>/dev/null || echo "0")
+      new_count=$(grep -cE "(Cycle [0-9]+ complete|step [0-9]+.*loss|experiment [0-9]+)" "$log_file" 2>/dev/null | tr -d '[:space:]')
+      new_count="${new_count:-0}"
       if [ "$new_count" -gt "$cycles_seen" ]; then
         cycles_seen="$new_count"
         printf '\n  [Cycle monitor] Detected %s/%s training iterations complete\n' \
