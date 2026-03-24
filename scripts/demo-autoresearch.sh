@@ -123,9 +123,9 @@ uv sync --quiet 2>/dev/null || printf '  WARNING: uv sync reported errors. Conti
 
 # Check harness reachability
 HARNESS_REACHABLE=0
-if curl -sf "${HARNESS_URL}/health" --max-time 5 >/dev/null 2>&1 || \
-   curl -sf "${HARNESS_URL}/" --max-time 5 >/dev/null 2>&1 || \
-   curl -sf "${HARNESS_URL}/probe" --max-time 5 >/dev/null 2>&1; then
+if curl -sf -X POST "${HARNESS_URL}/probe" \
+   -H "Authorization: Bearer ${HARNESS_API_KEY:-sk-devteam-test}" \
+   --max-time 5 >/dev/null 2>&1; then
   HARNESS_REACHABLE=1
   printf '  Harness: reachable at %s\n' "$HARNESS_URL"
 else

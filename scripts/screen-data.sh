@@ -78,10 +78,11 @@ esac
 # ============================================================
 # 3. Health check: harness must be reachable
 # ============================================================
-if ! curl -sf "${HARNESS_URL}/health" >/dev/null 2>&1 && \
-   ! curl -sf "${HARNESS_URL}/" >/dev/null 2>&1; then
+if ! curl -sf -X POST "${HARNESS_URL}/probe" \
+   -H "Authorization: Bearer ${HARNESS_API_KEY:-sk-devteam-test}" \
+   --max-time 5 >/dev/null 2>&1; then
   echo "ERROR: Harness not reachable at ${HARNESS_URL}. Start harness first." >&2
-  echo "  To start harness: cd /path/to/dgx-toolbox && docker compose up harness" >&2
+  echo "  To start harness: harness" >&2
   exit 1
 fi
 
