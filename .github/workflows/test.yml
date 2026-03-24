@@ -1,0 +1,46 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  shellcheck:
+    name: Shell lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ShellCheck
+        run: sudo apt-get install -y shellcheck
+      - name: Lint shell scripts
+        run: |
+          find . -name '*.sh' -not -path './.git/*' -not -path './karpathy-autoresearch/*' \
+            -exec shellcheck --severity=error {} +
+
+  harness-tests:
+    name: Harness unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install harness
+        run: |
+          cd harness
+          pip install -e ".[test]" --quiet
+          python -m spacy download en_core_web_lg --quiet || true
+      - name: Run tests
+        run: python -m pytest harness/tests/ -x -q --timeout=60
+
+  bash-syntax:
+    name: Bash syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check all scripts parse
+        run: |
+          find . -name '*.sh' -not -path './.git/*' -print0 | \
+            xargs -0 -I{} bash -n {} && echo "All scripts parse OK"
