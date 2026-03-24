@@ -113,111 +113,120 @@ uv sync
 # 3. Data source selection
 # ============================================================
 echo ""
-echo "Select training data source:"
 DATA_SOURCE_CHOSEN=""
 DATA_SOURCE_LABEL=""
 
-select src in \
-  "Default (autoresearch built-in)" \
-  "Local directory" \
-  "Hugging Face dataset" \
-  "GitHub repo" \
-  "Kaggle dataset" \
-  "Local datasets (auto-discovered)"; do
-  case "$src" in
-    "Default (autoresearch built-in)")
-      DATA_SOURCE_LABEL="default"
-      echo ""
-      echo "Using autoresearch built-in dataset..."
-      uv run prepare.py
-      break
-      ;;
-
-    "Local directory")
-      DATA_SOURCE_LABEL="local"
-      echo ""
-      read -rp "Path to local data directory: " LOCAL_DATA_PATH
-      if [ ! -d "$LOCAL_DATA_PATH" ]; then
-        echo "ERROR: Directory not found: $LOCAL_DATA_PATH" >&2
-        exit 1
-      fi
-      echo "Copying .txt and .parquet files from $LOCAL_DATA_PATH into data/..."
-      mkdir -p "$AUTORESEARCH_DIR/data"
-      find "$LOCAL_DATA_PATH" -maxdepth 2 \( -name "*.txt" -o -name "*.parquet" \) \
-        -exec cp {} "$AUTORESEARCH_DIR/data/" \;
-      echo "Running prepare.py..."
-      uv run prepare.py
-      break
-      ;;
-
-    "Hugging Face dataset")
-      DATA_SOURCE_LABEL="huggingface"
-      echo ""
-      read -rp "Hugging Face dataset name (e.g. karpathy/climbmix-400b-shuffle): " HF_DATASET
-      if [ -z "$HF_DATASET" ]; then
-        echo "ERROR: Dataset name cannot be empty." >&2
-        exit 1
-      fi
-      export AUTORESEARCH_HF_DATASET="$HF_DATASET"
-      # Try prepare.py first; if it does not consume the env var, fall back to manual download
-      echo "Attempting prepare.py with AUTORESEARCH_HF_DATASET=$HF_DATASET..."
-      if ! uv run prepare.py 2>&1 | grep -qi "error\|traceback"; then
-        echo "prepare.py completed using HF dataset."
-      else
-        echo "prepare.py does not support custom HF datasets directly."
-        echo "Downloading via huggingface-cli into data/..."
-        mkdir -p "$AUTORESEARCH_DIR/data"
-        uv run -- huggingface-cli download "$HF_DATASET" \
-          --local-dir "$AUTORESEARCH_DIR/data/" \
-          --repo-type dataset
+while true; do
+  echo "Select training data source:"
+  select src in \
+    "Default (autoresearch built-in)" \
+    "Local directory" \
+    "Hugging Face dataset" \
+    "GitHub repo" \
+    "Kaggle dataset" \
+    "Local datasets (auto-discovered)"; do
+    case "$src" in
+      "Default (autoresearch built-in)")
+        DATA_SOURCE_LABEL="default"
+        echo ""
+        echo "Using autoresearch built-in dataset..."
         uv run prepare.py
-      fi
-      break
-      ;;
+        break 2
+        ;;
 
-    "GitHub repo")
-      DATA_SOURCE_LABEL="github"
-      echo ""
-      read -rp "GitHub repo URL (e.g. https://github.com/user/repo): " GITHUB_URL
-      if [ -z "$GITHUB_URL" ]; then
-        echo "ERROR: Repo URL cannot be empty." >&2
-        exit 1
-      fi
-      GITHUB_TMP="$(mktemp -d)"
-      echo "Cloning $GITHUB_URL into temp dir..."
-      git clone --depth=1 "$GITHUB_URL" "$GITHUB_TMP/repo"
-      echo "Copying .txt and .parquet files into data/..."
-      mkdir -p "$AUTORESEARCH_DIR/data"
-      find "$GITHUB_TMP/repo" -maxdepth 4 \( -name "*.txt" -o -name "*.parquet" \) \
-        -exec cp {} "$AUTORESEARCH_DIR/data/" \;
-      rm -rf "$GITHUB_TMP"
-      echo "Running prepare.py..."
-      uv run prepare.py
-      break
-      ;;
+      "Local directory")
+        DATA_SOURCE_LABEL="local"
+        echo ""
+        read -rp "Path to local data directory (or 'back'): " LOCAL_DATA_PATH
+        if [ "$LOCAL_DATA_PATH" = "back" ]; then echo ""; break; fi
+        if [ ! -d "$LOCAL_DATA_PATH" ]; then
+          echo "ERROR: Directory not found: $LOCAL_DATA_PATH"
+          echo ""
+          break
+        fi
+        echo "Copying .txt and .parquet files from $LOCAL_DATA_PATH into data/..."
+        mkdir -p "$AUTORESEARCH_DIR/data"
+        find "$LOCAL_DATA_PATH" -maxdepth 2 \( -name "*.txt" -o -name "*.parquet" \) \
+          -exec cp {} "$AUTORESEARCH_DIR/data/" \;
+        echo "Running prepare.py..."
+        uv run prepare.py
+        break 2
+        ;;
 
-    "Kaggle dataset")
-      DATA_SOURCE_LABEL="kaggle"
-      echo ""
-      if ! command -v kaggle &>/dev/null; then
-        echo "WARNING: kaggle CLI not installed."
-        echo "Install with: pip install kaggle"
-        echo "Then add your API token to ~/.kaggle/kaggle.json"
-        echo "See: https://www.kaggle.com/docs/api"
-        exit 1
-      fi
-      read -rp "Kaggle dataset identifier (e.g. user/dataset-name): " KAGGLE_ID
-      if [ -z "$KAGGLE_ID" ]; then
-        echo "ERROR: Dataset identifier cannot be empty." >&2
-        exit 1
-      fi
-      mkdir -p "$AUTORESEARCH_DIR/data"
-      echo "Downloading Kaggle dataset $KAGGLE_ID..."
-      kaggle datasets download -d "$KAGGLE_ID" -p "$AUTORESEARCH_DIR/data/" --unzip
-      echo "Running prepare.py..."
-      uv run prepare.py
-      break
-      ;;
+      "Hugging Face dataset")
+        DATA_SOURCE_LABEL="huggingface"
+        echo ""
+        read -rp "Hugging Face dataset name (or 'back'): " HF_DATASET
+        if [ "$HF_DATASET" = "back" ]; then echo ""; break; fi
+        if [ -z "$HF_DATASET" ]; then
+          echo "ERROR: Dataset name cannot be empty."
+          echo ""
+          break
+        fi
+        export AUTORESEARCH_HF_DATASET="$HF_DATASET"
+        echo "Attempting prepare.py with AUTORESEARCH_HF_DATASET=$HF_DATASET..."
+        if ! uv run prepare.py 2>&1 | grep -qi "error\|traceback"; then
+          echo "prepare.py completed using HF dataset."
+        else
+          echo "prepare.py does not support custom HF datasets directly."
+          echo "Downloading via huggingface-cli into data/..."
+          mkdir -p "$AUTORESEARCH_DIR/data"
+          uv run -- huggingface-cli download "$HF_DATASET" \
+            --local-dir "$AUTORESEARCH_DIR/data/" \
+            --repo-type dataset
+          uv run prepare.py
+        fi
+        break 2
+        ;;
+
+      "GitHub repo")
+        DATA_SOURCE_LABEL="github"
+        echo ""
+        read -rp "GitHub repo URL (or 'back'): " GITHUB_URL
+        if [ "$GITHUB_URL" = "back" ]; then echo ""; break; fi
+        if [ -z "$GITHUB_URL" ]; then
+          echo "ERROR: Repo URL cannot be empty."
+          echo ""
+          break
+        fi
+        GITHUB_TMP="$(mktemp -d)"
+        echo "Cloning $GITHUB_URL into temp dir..."
+        git clone --depth=1 "$GITHUB_URL" "$GITHUB_TMP/repo"
+        echo "Copying .txt and .parquet files into data/..."
+        mkdir -p "$AUTORESEARCH_DIR/data"
+        find "$GITHUB_TMP/repo" -maxdepth 4 \( -name "*.txt" -o -name "*.parquet" \) \
+          -exec cp {} "$AUTORESEARCH_DIR/data/" \;
+        rm -rf "$GITHUB_TMP"
+        echo "Running prepare.py..."
+        uv run prepare.py
+        break 2
+        ;;
+
+      "Kaggle dataset")
+        DATA_SOURCE_LABEL="kaggle"
+        echo ""
+        if ! command -v kaggle &>/dev/null; then
+          echo "WARNING: kaggle CLI not installed."
+          echo "Install with: pip install kaggle"
+          echo "Then add your API token to ~/.kaggle/kaggle.json"
+          echo "See: https://www.kaggle.com/docs/api"
+          echo ""
+          break
+        fi
+        read -rp "Kaggle dataset identifier (or 'back'): " KAGGLE_ID
+        if [ "$KAGGLE_ID" = "back" ]; then echo ""; break; fi
+        if [ -z "$KAGGLE_ID" ]; then
+          echo "ERROR: Dataset identifier cannot be empty."
+          echo ""
+          break
+        fi
+        mkdir -p "$AUTORESEARCH_DIR/data"
+        echo "Downloading Kaggle dataset $KAGGLE_ID..."
+        kaggle datasets download -d "$KAGGLE_ID" -p "$AUTORESEARCH_DIR/data/" --unzip
+        echo "Running prepare.py..."
+        uv run prepare.py
+        break 2
+        ;;
 
     "Local datasets (auto-discovered)")
       DATA_SOURCE_LABEL="local-datasets"
@@ -225,11 +234,13 @@ select src in \
       # Discover ~/data/ subdirectories
       mapfile -t DATASET_NAMES < <(_discover_local_datasets 2>/dev/null)
       if [ ${#DATASET_NAMES[@]} -eq 0 ]; then
-        echo "No datasets found in ~/data/" >&2
-        exit 1
+        echo "No datasets found in ~/data/. Returning to menu."
+        echo ""
+        break
       fi
       echo "Available datasets in ~/data/:"
-      select dataset_entry in "${DATASET_NAMES[@]}"; do
+      select dataset_entry in "${DATASET_NAMES[@]}" "Back"; do
+        if [ "$dataset_entry" = "Back" ]; then echo ""; break; fi
         if [ -n "$dataset_entry" ]; then
           # Extract just the dirname (before the space and parenthesis)
           CHOSEN_DATASET="${dataset_entry%% (*}"
@@ -242,16 +253,17 @@ select src in \
             -exec cp {} "$AUTORESEARCH_DIR/data/" \;
           echo "Running prepare.py..."
           uv run prepare.py
-          break
+          break 2
         fi
       done
-      break
+      # If we got here via "Back" from the inner select, continue outer while loop
       ;;
 
     *)
       echo "Invalid option — please enter a number between 1 and 6."
       ;;
-  esac
+    esac
+  done
 done
 
 # ============================================================
