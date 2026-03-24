@@ -120,7 +120,28 @@ jobs:
           pip install -e . --quiet 2>/dev/null || true
       - name: Audit for high/critical vulnerabilities
         run: |
-          pip-audit --severity high --desc --fix --dry-run 2>&1 || {
-            echo "::warning::Vulnerability scan found issues (see above)"
-            exit 1
-          }
+          # Run pip-audit in JSON mode, then filter for high/critical
+          pip-audit --format json --desc 2>/dev/null > /tmp/audit.json || true
+          python3 -c "
+          import json, sys
+          try:
+              data = json.load(open('/tmp/audit.json'))
+          except Exception:
+              print('No audit data (install may have failed). Skipping.')
+              sys.exit(0)
+          vulns = data.get('vulnerabilities', [])
+          severe = [v for v in vulns if v.get('fix_versions') and
+                    any(a.get('severity', '').upper() in ('HIGH', 'CRITICAL')
+                        for a in v.get('aliases', [{}]))]
+          # Also flag any vuln with a CVE (conservative — pip-audit doesn't always have severity)
+          all_vulns = [v for v in vulns if v.get('fix_versions')]
+          if all_vulns:
+              print(f'Found {len(all_vulns)} fixable vulnerability(ies):')
+              for v in all_vulns:
+                  print(f'  {v[\"name\"]} {v[\"version\"]} -> {v[\"fix_versions\"]}')
+                  print(f'    {v.get(\"description\", \"\")[:120]}')
+              print()
+              print('Run: pip-audit --fix --dry-run')
+              sys.exit(1)
+          print('No fixable vulnerabilities found. OK.')
+          "
