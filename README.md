@@ -23,10 +23,11 @@ bash ~/dgx-toolbox/setup/dgx-global-base-setup.sh
 source ~/.bashrc
 
 # Optional: configure Kaggle API (for downloading Kaggle datasets)
-# Get your token from https://www.kaggle.com/settings → API → Create New Token
+# Get your key from https://www.kaggle.com/settings → API → Create New Token
 mkdir -p ~/.kaggle && chmod 700 ~/.kaggle
-echo '{"username":"YOUR_KAGGLE_USERNAME","key":"YOUR_KAGGLE_KEY"}' > ~/.kaggle/kaggle.json
+echo '{"username":"YOUR_KAGGLE_USERNAME","key":"KGAT_your_key_here"}' > ~/.kaggle/kaggle.json
 chmod 600 ~/.kaggle/kaggle.json
+# Both username and key are required — find your username at kaggle.com/account
 
 # Build all toolbox images (base → eval + data)
 build-all
