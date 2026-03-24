@@ -28,7 +28,7 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$PROJECT_DIR/lib.sh"
 source "$PROJECT_DIR/karpathy-autoresearch/spark-config.sh"
 
-DEMO_CYCLES="${DEMO_CYCLES:-3}"
+DEMO_CYCLES="${DEMO_CYCLES:-1}"
 HARNESS_URL="${HARNESS_URL:-http://localhost:5000}"
 AUTORESEARCH_DIR="${HOME}/autoresearch"
 AUTORESEARCH_REPO="https://github.com/karpathy/autoresearch.git"

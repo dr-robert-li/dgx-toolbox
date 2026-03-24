@@ -515,11 +515,11 @@ End-to-end pipeline that takes a dataset through autoresearch training, post-tra
 #### Quick Start
 
 ```bash
-# Run the full pipeline demo (3 training cycles, ~24 min)
+# Run the pipeline demo (1 baseline training cycle, ~8 min)
 demo-autoresearch
 
-# Or with custom cycle count
-DEMO_CYCLES=5 bash ~/dgx-toolbox/scripts/demo-autoresearch.sh
+# Or with more cycles
+DEMO_CYCLES=3 bash ~/dgx-toolbox/scripts/demo-autoresearch.sh
 ```
 
 #### Pipeline Stages
@@ -554,13 +554,15 @@ If harness is not running, the demo skips screening with a warning and continues
 
 **Stage 3: Autoresearch Training**
 
-Runs for `DEMO_CYCLES` cycles (default 3, ~8 min each on DGX Spark).
+Runs for `DEMO_CYCLES` cycles (default 1 baseline, ~8 min each on DGX Spark).
 
-- DGX Spark tuning is applied automatically via `spark-config.sh`
+- DGX Spark tuning is applied automatically via `spark-config.sh` (batch sizes, seq length, torch.compile disabled for GB10)
 - Training output is teed to both terminal and `~/dgx-toolbox/demo-training.log`
 - A cycle monitor stops training after the configured number of cycles
 
-Expected output: autoresearch training progress showing cycle number, loss, and eval metrics.
+Expected output: autoresearch training progress showing loss and eval metrics.
+
+> **Note:** The demo runs training only (no autonomous code modifications between cycles). For the full autonomous research agent that modifies `train.py` between cycles, see [Autonomous Agent Mode](#autonomous-agent-mode) below.
 
 **Stage 4: Safety Eval**
 
@@ -616,6 +618,44 @@ scripts/autoresearch-deregister.sh autoresearch/<experiment-name>
 | Safety eval FAIL | Checkpoint is preserved — review `safety-eval.json`, adjust constitution or thresholds |
 | "No checkpoint found" | Check `~/autoresearch/experiments/` for the latest experiment directory |
 | Model not queryable after registration | Run `docker restart litellm` to reload config |
+
+#### Autonomous Agent Mode
+
+The demo script runs training cycles without modifying the code between cycles. The **full autoresearch experience** uses an LLM agent (Claude Code, Cursor, etc.) that autonomously:
+
+1. Reads training results
+2. Modifies `train.py` (architecture, hyperparameters, optimizer)
+3. Runs training (~8 min)
+4. Evaluates — keeps improvements, reverts failures
+5. Repeats indefinitely until you stop it
+
+To run the full autonomous loop:
+
+```bash
+# 1. Prepare the data first (use the demo or manually)
+cd ~/autoresearch
+uv run prepare.py
+
+# 2. Start Claude Code with the autoresearch prompt
+claude "Read program.md and begin the experiment loop"
+```
+
+The agent reads `program.md` (the experiment protocol) and runs autonomously — ~12 experiments/hour, ~100 overnight. Each experiment modifies `train.py`, trains, evaluates, and commits or reverts. You wake up to a git history of experimental results.
+
+**After the agent finishes**, run safety eval and register the best checkpoint:
+
+```bash
+# Evaluate the final checkpoint
+scripts/eval-checkpoint.sh ~/autoresearch
+
+# If it passes, it's auto-registered and queryable:
+curl -s -X POST http://localhost:5000/v1/chat/completions \
+  -H "Authorization: Bearer sk-devteam-test" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "autoresearch/<experiment>", "messages": [{"role": "user", "content": "Hello"}]}'
+```
+
+**LLM API for the agent:** The agent needs an LLM API. Claude Code uses your Anthropic API key directly. Alternatively, point it at LiteLLM (`http://localhost:4000`) to use any configured model (local or cloud).
 
 #### Without a GPU
 
