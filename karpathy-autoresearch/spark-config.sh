@@ -70,6 +70,16 @@ apply_spark_config() {
     echo "  TOTAL_BATCH_SIZE: not found in train.py (skipped)"
   fi
 
+  # DEVICE_BATCH_SIZE in train.py — match lines like: DEVICE_BATCH_SIZE = 128
+  if grep -qE "^DEVICE_BATCH_SIZE\s*=" "$train_py"; then
+    local old_dbs_train
+    old_dbs_train=$(grep -E "^DEVICE_BATCH_SIZE\s*=" "$train_py" | head -1 | sed 's/.*=\s*//' | tr -d ' ')
+    sed -i "s/^DEVICE_BATCH_SIZE\s*=.*/DEVICE_BATCH_SIZE = ${SPARK_DEVICE_BATCH_SIZE}  # DGX Spark override/" "$train_py"
+    echo "  DEVICE_BATCH_SIZE: ${old_dbs_train} -> ${SPARK_DEVICE_BATCH_SIZE}"
+  else
+    echo "  DEVICE_BATCH_SIZE: not found in train.py (skipped)"
+  fi
+
   # Patch gradient accumulation if present
   if grep -qE "^GRAD_ACCUM\s*=" "$train_py"; then
     local old_ga
