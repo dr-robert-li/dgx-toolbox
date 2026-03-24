@@ -96,19 +96,38 @@ printf '\n'
 # ---------------------------------------------------------------------------
 printf '[1/7] Checking prerequisites...\n'
 
-# Prompt for HF_TOKEN if not set (enables higher rate limits and faster downloads)
-if [ -z "${HF_TOKEN:-}" ]; then
+# HF_TOKEN: check env → cached file → prompt
+_HF_TOKEN_CACHE="${HOME}/.cache/huggingface/token"
+if [ -n "${HF_TOKEN:-}" ]; then
+  printf '  HF_TOKEN: set (environment)\n'
+elif [ -f "$_HF_TOKEN_CACHE" ] && [ -s "$_HF_TOKEN_CACHE" ]; then
+  _cached_token=$(cat "$_HF_TOKEN_CACHE")
+  printf '  HF_TOKEN: found cached token. Use it? (Y/n/release) '
+  read -r _hf_choice
+  case "$_hf_choice" in
+    n|N) printf '  Continuing without HF_TOKEN.\n' ;;
+    release|Release)
+      rm -f "$_HF_TOKEN_CACHE"
+      printf '  Cached token removed.\n'
+      ;;
+    *)
+      export HF_TOKEN="$_cached_token"
+      printf '  HF_TOKEN: loaded from cache.\n'
+      ;;
+  esac
+else
   printf '  HuggingFace token not set. Set HF_TOKEN for faster downloads and private model access.\n'
   printf '  Get one at: https://huggingface.co/settings/tokens\n'
   read -rp "  Enter HF_TOKEN (or press Enter to skip): " _hf_token
   if [ -n "$_hf_token" ]; then
     export HF_TOKEN="$_hf_token"
-    printf '  HF_TOKEN set for this session.\n'
+    mkdir -p "$(dirname "$_HF_TOKEN_CACHE")"
+    printf '%s' "$_hf_token" > "$_HF_TOKEN_CACHE"
+    chmod 600 "$_HF_TOKEN_CACHE"
+    printf '  HF_TOKEN set and cached for next time.\n'
   else
     printf '  Continuing without HF_TOKEN (public models only, slower downloads).\n'
   fi
-else
-  printf '  HF_TOKEN: set\n'
 fi
 
 # Fix HF cache permissions (Docker containers often create dirs as root)
