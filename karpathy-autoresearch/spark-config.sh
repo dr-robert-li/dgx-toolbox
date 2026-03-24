@@ -106,26 +106,37 @@ apply_spark_config() {
   if ! grep -q "DGX Spark: save checkpoint" "$train_py"; then
     cat >> "$train_py" << 'SAVE_EOF'
 
-# DGX Spark: save checkpoint after training (epoch-timestamped to avoid overwrites)
-import os as _os, time as _time
+# DGX Spark: save checkpoint only when val_bpb improves (avoids buildup in autonomous mode)
+import os as _os, time as _time, json as _json
 _ckpt_dir = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "checkpoint")
 _os.makedirs(_ckpt_dir, exist_ok=True)
-_ckpt_name = f"model_{int(_time.time())}.pt"
-_ckpt_path = _os.path.join(_ckpt_dir, _ckpt_name)
-torch.save({
-    "model_state_dict": model.state_dict(),
-    "step": step,
-    "val_bpb": val_bpb,
-    "config": config._asdict() if hasattr(config, '_asdict') else vars(config) if hasattr(config, '__dict__') else str(config),
-    "total_tokens": total_tokens,
-    "peak_vram_mb": peak_vram_mb,
-}, _ckpt_path)
-# Also save as model.pt symlink for easy "latest" access
-_latest = _os.path.join(_ckpt_dir, "model.pt")
-if _os.path.islink(_latest) or _os.path.exists(_latest):
-    _os.remove(_latest)
-_os.symlink(_ckpt_name, _latest)
-print(f"checkpoint:       {_ckpt_path}")
+_best_file = _os.path.join(_ckpt_dir, "best.json")
+_prev_best = float("inf")
+if _os.path.exists(_best_file):
+    try:
+        _prev_best = _json.load(open(_best_file))["val_bpb"]
+    except Exception:
+        pass
+if val_bpb < _prev_best:
+    _ckpt_name = f"model_{int(_time.time())}.pt"
+    _ckpt_path = _os.path.join(_ckpt_dir, _ckpt_name)
+    torch.save({
+        "model_state_dict": model.state_dict(),
+        "step": step,
+        "val_bpb": val_bpb,
+        "config": config._asdict() if hasattr(config, '_asdict') else vars(config) if hasattr(config, '__dict__') else str(config),
+        "total_tokens": total_tokens,
+        "peak_vram_mb": peak_vram_mb,
+    }, _ckpt_path)
+    # Update best.json and model.pt symlink
+    _json.dump({"val_bpb": val_bpb, "file": _ckpt_name, "step": step}, open(_best_file, "w"))
+    _latest = _os.path.join(_ckpt_dir, "model.pt")
+    if _os.path.islink(_latest) or _os.path.exists(_latest):
+        _os.remove(_latest)
+    _os.symlink(_ckpt_name, _latest)
+    print(f"checkpoint:       {_ckpt_path} (NEW BEST: {val_bpb:.6f} < {_prev_best:.6f})")
+else:
+    print(f"checkpoint:       skipped (val_bpb {val_bpb:.6f} >= best {_prev_best:.6f})")
 SAVE_EOF
     echo "  checkpoint save: injected at end of training"
   else
