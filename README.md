@@ -508,6 +508,123 @@ AUTORESEARCH_DATA_PATH=karpathy/climbmix-400b-shuffle \
 
 **DGX Spark tuning:** Parameters are automatically scaled for the Blackwell GB10 (6,144 CUDA cores, 192 Tensor Cores, 128 GB LPDDR5x). Skip with `AUTORESEARCH_SKIP_TUNE=1`. Edit `spark-config.sh` to customize.
 
+### Autoresearch Pipeline (Data to Inference)
+
+End-to-end pipeline that takes a dataset through autoresearch training, post-training safety evaluation, and automatic model registration for inference behind the safety harness.
+
+#### Quick Start
+
+```bash
+# Run the full pipeline demo (3 training cycles, ~24 min)
+demo-autoresearch
+
+# Or with custom cycle count
+DEMO_CYCLES=5 bash ~/dgx-toolbox/scripts/demo-autoresearch.sh
+```
+
+#### Pipeline Stages
+
+**Stage 1: Data Source Selection**
+
+The demo presents a 6-option menu to choose your training data:
+
+| Option | Source |
+|--------|--------|
+| 1 | Built-in default (no setup required — best for quick test) |
+| 2 | Local directory from your filesystem |
+| 3 | HuggingFace dataset (e.g. `karpathy/climbmix-400b-shuffle`) |
+| 4 | GitHub repository |
+| 5 | Kaggle dataset (requires kaggle CLI) |
+| 6 | Local datasets auto-discovered from `~/data/` |
+
+Expected output: `"Select training data source:"` followed by numbered options. For a quick test, option 1 works without any setup.
+
+**Stage 2: Training Data Screening (Optional)**
+
+Pre-screens your training data through the safety harness guardrails to remove PII, toxicity, and other problematic content before training.
+
+```bash
+# Run screening manually (requires harness on :5000)
+scripts/screen-data.sh ~/data/my-dataset/train.jsonl
+```
+
+Expected output: `"Screened: N total, N clean, N removed."`
+
+If harness is not running, the demo skips screening with a warning and continues.
+
+**Stage 3: Autoresearch Training**
+
+Runs for `DEMO_CYCLES` cycles (default 3, ~8 min each on DGX Spark).
+
+- DGX Spark tuning is applied automatically via `spark-config.sh`
+- Training output is teed to both terminal and `~/dgx-toolbox/demo-training.log`
+- A cycle monitor stops training after the configured number of cycles
+
+Expected output: autoresearch training progress showing cycle number, loss, and eval metrics.
+
+**Stage 4: Safety Eval**
+
+Automatically runs `scripts/eval-checkpoint.sh` after training completes. Starts a temporary vLLM container, runs the 40-case safety replay dataset against the checkpoint, and writes results to `safety-eval.json`.
+
+```bash
+# Run eval manually against any existing checkpoint
+scripts/eval-checkpoint.sh ~/autoresearch/experiments/<experiment>/checkpoint
+```
+
+Expected output: `"PASS: Safety eval passed (F1=X.XXX >= 0.800). Model registered as: autoresearch/<name>"` or `"WARNING: Safety eval FAILED"`.
+
+Passing checkpoints are auto-registered in `~/.litellm/config.yaml` for immediate inference.
+
+**Stage 5: Query the Model**
+
+If safety eval passed, the demo summary prints a copy-pasteable curl command:
+
+```bash
+curl -s -X POST http://localhost:5000/v1/chat/completions \
+  -H "Authorization: Bearer sk-devteam-test" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "autoresearch/<experiment-name>", "messages": [{"role": "user", "content": "Hello"}]}'
+```
+
+#### Manual Pipeline
+
+Run each stage individually for more control:
+
+```bash
+# 1. Launch autoresearch interactively
+autoresearch
+
+# 2. Screen data (optional, requires harness on :5000)
+scripts/screen-data.sh ~/data/my-dataset/train.jsonl
+
+# 3. After training, evaluate the checkpoint
+scripts/eval-checkpoint.sh ~/autoresearch/experiments/<experiment>/checkpoint
+
+# 4. If eval fails, check why
+cat ~/autoresearch/experiments/<experiment>/checkpoint/safety-eval.json
+
+# 5. Deregister a model when no longer needed
+scripts/autoresearch-deregister.sh autoresearch/<experiment-name>
+```
+
+#### Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| "Harness not reachable" | Start harness: `harness` (port 5000) |
+| Training OOM | Reduce batch size in `spark-config.sh` or set `AUTORESEARCH_SKIP_TUNE=1` |
+| Safety eval FAIL | Checkpoint is preserved — review `safety-eval.json`, adjust constitution or thresholds |
+| "No checkpoint found" | Check `~/autoresearch/experiments/` for the latest experiment directory |
+| Model not queryable after registration | Run `docker restart litellm` to reload config |
+
+#### Without a GPU
+
+Without a GPU, you can skip training and test the eval and registration pipeline with any existing HF-format checkpoint:
+
+```bash
+scripts/eval-checkpoint.sh /path/to/checkpoint
+```
+
 ## Safety Harness
 
 A model-agnostic safety layer that sits between clients and LiteLLM. All requests are screened through guardrails, constitutional AI critique, and full trace logging before reaching the model — and all outputs are screened before delivery.

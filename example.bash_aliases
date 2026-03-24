@@ -20,6 +20,7 @@ alias unsloth-stop='docker stop unsloth-studio'                   # Stop Unsloth
 # --- Autonomous Research ---
 alias autoresearch='~/dgx-toolbox/karpathy-autoresearch/launch-autoresearch.sh'   # Karpathy autoresearch agent (:local)
 alias autoresearch-stop='pkill -f "uv run train.py" 2>/dev/null && echo "Stopped" || echo "Not running"'  # Stop running experiment
+alias demo-autoresearch='~/dgx-toolbox/scripts/demo-autoresearch.sh'                  # Full pipeline demo (data -> train -> eval -> inference)
 
 # --- GPU Containers ---
 alias ngc-pytorch='~/dgx-toolbox/containers/ngc-pytorch.sh'                 # Interactive PyTorch shell (GPU)
