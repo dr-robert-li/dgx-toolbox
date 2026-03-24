@@ -137,8 +137,8 @@ while true; do
       "Local directory")
         DATA_SOURCE_LABEL="local"
         echo ""
-        read -rp "Path to local data directory (or 'back'): " LOCAL_DATA_PATH
-        if [ "$LOCAL_DATA_PATH" = "back" ]; then echo ""; break; fi
+        read -rp "Path to local data directory (Enter to go back): " LOCAL_DATA_PATH
+        if [ -z "$LOCAL_DATA_PATH" ]; then echo ""; break; fi
         if [ ! -d "$LOCAL_DATA_PATH" ]; then
           echo "ERROR: Directory not found: $LOCAL_DATA_PATH"
           echo ""
@@ -156,13 +156,8 @@ while true; do
       "Hugging Face dataset")
         DATA_SOURCE_LABEL="huggingface"
         echo ""
-        read -rp "Hugging Face dataset name (or 'back'): " HF_DATASET
-        if [ "$HF_DATASET" = "back" ]; then echo ""; break; fi
-        if [ -z "$HF_DATASET" ]; then
-          echo "ERROR: Dataset name cannot be empty."
-          echo ""
-          break
-        fi
+        read -rp "Hugging Face dataset name (Enter to go back): " HF_DATASET
+        if [ -z "$HF_DATASET" ]; then echo ""; break; fi
         export AUTORESEARCH_HF_DATASET="$HF_DATASET"
         echo "Attempting prepare.py with AUTORESEARCH_HF_DATASET=$HF_DATASET..."
         if ! uv run prepare.py 2>&1 | grep -qi "error\|traceback"; then
@@ -182,13 +177,8 @@ while true; do
       "GitHub repo")
         DATA_SOURCE_LABEL="github"
         echo ""
-        read -rp "GitHub repo URL (or 'back'): " GITHUB_URL
-        if [ "$GITHUB_URL" = "back" ]; then echo ""; break; fi
-        if [ -z "$GITHUB_URL" ]; then
-          echo "ERROR: Repo URL cannot be empty."
-          echo ""
-          break
-        fi
+        read -rp "GitHub repo URL (Enter to go back): " GITHUB_URL
+        if [ -z "$GITHUB_URL" ]; then echo ""; break; fi
         GITHUB_TMP="$(mktemp -d)"
         echo "Cloning $GITHUB_URL into temp dir..."
         git clone --depth=1 "$GITHUB_URL" "$GITHUB_TMP/repo"
@@ -213,13 +203,8 @@ while true; do
           echo ""
           break
         fi
-        read -rp "Kaggle dataset identifier (or 'back'): " KAGGLE_ID
-        if [ "$KAGGLE_ID" = "back" ]; then echo ""; break; fi
-        if [ -z "$KAGGLE_ID" ]; then
-          echo "ERROR: Dataset identifier cannot be empty."
-          echo ""
-          break
-        fi
+        read -rp "Kaggle dataset identifier (Enter to go back): " KAGGLE_ID
+        if [ -z "$KAGGLE_ID" ]; then echo ""; break; fi
         mkdir -p "$AUTORESEARCH_DIR/data"
         echo "Downloading Kaggle dataset $KAGGLE_ID..."
         kaggle datasets download -d "$KAGGLE_ID" -p "$AUTORESEARCH_DIR/data/" --unzip
