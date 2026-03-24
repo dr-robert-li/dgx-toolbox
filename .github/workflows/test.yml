@@ -44,3 +44,83 @@ jobs:
         run: |
           find . -name '*.sh' -not -path './.git/*' -print0 | \
             xargs -0 -I{} bash -n {} && echo "All scripts parse OK"
+
+  secrets-scan:
+    name: Secret leak check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Scan for secrets
+        run: |
+          echo "Scanning for leaked secrets..."
+          FOUND=0
+
+          # API keys and tokens (real values, not placeholders)
+          # Patterns: Kaggle KGAT_, Anthropic sk-ant-, OpenAI sk-proj-, Google AIza,
+          # GitHub ghp_/gho_, AWS AKIA, HuggingFace hf_
+          PATTERNS='KGAT_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9]{20,}|sk-proj-[A-Za-z0-9]{20,}|AIza[A-Za-z0-9_-]{30,}|ghp_[A-Za-z0-9]{36,}|gho_[A-Za-z0-9]{36,}|AKIA[A-Z0-9]{16}|hf_[A-Za-z0-9]{20,}'
+
+          # Search tracked files (exclude .git, .planning, binary files)
+          HITS=$(grep -rEn "$PATTERNS" \
+            --include='*.sh' --include='*.py' --include='*.yaml' --include='*.yml' \
+            --include='*.json' --include='*.toml' --include='*.md' --include='*.txt' \
+            . 2>/dev/null \
+            | grep -v '\.git/' \
+            | grep -v '\.planning/' \
+            | grep -v 'YOUR_' \
+            | grep -v 'your_key' \
+            | grep -v 'sk-ant-\.\.\.' \
+            | grep -v 'example\.com' \
+            || true)
+
+          if [ -n "$HITS" ]; then
+            echo "::error::Potential secrets found in tracked files:"
+            echo "$HITS"
+            FOUND=1
+          fi
+
+          # Check .env files aren't tracked
+          ENV_FILES=$(git ls-files '*.env' '.env*' '**/.env' 2>/dev/null || true)
+          if [ -n "$ENV_FILES" ]; then
+            echo "::error::.env files should not be tracked:"
+            echo "$ENV_FILES"
+            FOUND=1
+          fi
+
+          # Check kaggle.json isn't tracked
+          KAGGLE=$(git ls-files '*kaggle.json' 2>/dev/null || true)
+          if [ -n "$KAGGLE" ]; then
+            echo "::error::kaggle.json should not be tracked"
+            FOUND=1
+          fi
+
+          if [ "$FOUND" -eq 1 ]; then
+            echo ""
+            echo "FAILED: Secrets detected. Remove them before pushing."
+            exit 1
+          fi
+
+          echo "No secrets found. OK."
+
+  vulnerability-scan:
+    name: Dependency vulnerabilities
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install pip-audit
+        run: pip install pip-audit --quiet
+      - name: Install harness dependencies
+        run: |
+          cd harness
+          pip install -e . --quiet 2>/dev/null || true
+      - name: Audit for high/critical vulnerabilities
+        run: |
+          pip-audit --severity high --desc --fix --dry-run 2>&1 || {
+            echo "::warning::Vulnerability scan found issues (see above)"
+            exit 1
+          }
