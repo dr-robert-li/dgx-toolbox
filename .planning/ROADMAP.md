@@ -209,7 +209,11 @@ Plans:
   3. After each autoresearch experiment completes, the post-training hook runs the harness replay eval dataset against the checkpoint and writes pass/fail results alongside the experiment log — a failing checkpoint is flagged but the checkpoint files are not deleted
   4. A checkpoint that passes safety eval is registered in `~/.litellm/config.yaml` as a new model entry pointing to its vLLM serving path, and the model is immediately reachable via POST /v1/chat/completions through the safety harness
   5. Running `autoresearch-register --remove <model-id>` removes the model entry from LiteLLM config and the model is no longer reachable through the gateway
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 11-01-PLAN.md — Launcher option 6 (local datasets), HF model selection, screen-data.sh
+- [ ] 11-02-PLAN.md — eval-checkpoint.sh (post-training safety eval), LiteLLM registration, deregistration
 
 ### Phase 12: Demo and Documentation
 **Goal**: A new user can follow the README walkthrough to run the full data-to-inference pipeline end-to-end using a provided sample dataset, and understand every step without needing to read source code
@@ -218,7 +222,11 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. Running `scripts/demo-autoresearch.sh` with no arguments completes the full pipeline — data discovery, optional screening, autoresearch training on a sample dataset, safety eval of the resulting checkpoint, and LiteLLM registration — printing a final summary of pass/fail and the registered model endpoint
   2. The README walkthrough covers each pipeline stage with a command to run, the expected output to observe, and what to do if a stage fails — a user who has never seen the codebase can reach a registered, queryable model from a standing start
-**Plans**: TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 11-01-PLAN.md — Launcher option 6 (local datasets), HF model selection, screen-data.sh
+- [ ] 11-02-PLAN.md — eval-checkpoint.sh (post-training safety eval), LiteLLM registration, deregistration
 
 ## Progress
 
@@ -237,5 +245,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Eval Harness and CI Gate | 2/2 | Complete | 2026-03-23 |
 | 9. Red Teaming | 2/2 | Complete | 2026-03-23 |
 | 10. HITL Dashboard | 3/3 | Complete | 2026-03-23 |
-| 11. Pipeline Wiring | 0/TBD | Not started | - |
+| 11. Pipeline Wiring | 0/2 | Not started | - |
 | 12. Demo and Documentation | 0/TBD | Not started | - |
