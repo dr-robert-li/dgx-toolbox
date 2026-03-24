@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Safety Harness
 status: "Roadmap created, ready for `/gsd:plan-phase 11`"
-stopped_at: Completed 11-01-PLAN.md
-last_updated: "2026-03-24T01:15:36.115Z"
+stopped_at: Completed 11-pipeline-wiring-11-02-PLAN.md
+last_updated: "2026-03-24T01:16:33.437Z"
 last_activity: 2026-03-24 — v1.2 roadmap created
 progress:
   total_phases: 12
-  completed_phases: 10
+  completed_phases: 11
   total_plans: 26
-  completed_plans: 25
+  completed_plans: 26
   percent: 0
 ---
 
@@ -112,6 +112,9 @@ Recent decisions affecting current work:
 - [Phase 11-01]: mapfile used to capture _discover_local_datasets output into array for nested select menu inside option 6 case
 - [Phase 11-01]: HARNESS_API_KEY validated non-empty before health check with explicit warning against ci-runner key (bypass=true)
 - [Phase 11-01]: screen-data.sh uses python3 json.dumps for safe JSON escaping of record content — not bash string manipulation
+- [Phase 11-pipeline-wiring]: eval-checkpoint.sh points --gateway directly at temp vLLM on :8021 to measure raw model safety, not harness+model stack
+- [Phase 11-pipeline-wiring]: String-append for LiteLLM config registration preserves comments; pyyaml round-trip for deregistration with timestamped backup
+- [Phase 11-pipeline-wiring]: set +e/-e guards around subprocess calls when exit code capture is needed inside set -euo pipefail test scripts
 
 ### v1.1 Architecture Decisions (Pre-Phase 5)
 
@@ -159,7 +162,7 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-24T01:15:36.112Z
-Stopped at: Completed 11-01-PLAN.md
+Last session: 2026-03-24T01:16:33.435Z
+Stopped at: Completed 11-pipeline-wiring-11-02-PLAN.md
 Resume file: None
 Next action: `/gsd:plan-phase 11`

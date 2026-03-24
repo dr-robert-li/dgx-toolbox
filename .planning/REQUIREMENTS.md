@@ -146,15 +146,15 @@ Requirements for the autoresearch end-to-end pipeline milestone. Each maps to ro
 
 ### Training Safety
 
-- [ ] **TRSF-01**: A post-training hook runs the harness safety replay dataset against each trained checkpoint and logs pass/fail
-- [ ] **TRSF-02**: Checkpoints that fail safety eval are flagged with a warning but not deleted (non-destructive)
-- [ ] **TRSF-03**: Safety eval results are stored alongside the autoresearch experiment log for review
+- [x] **TRSF-01**: A post-training hook runs the harness safety replay dataset against each trained checkpoint and logs pass/fail
+- [x] **TRSF-02**: Checkpoints that fail safety eval are flagged with a warning but not deleted (non-destructive)
+- [x] **TRSF-03**: Safety eval results are stored alongside the autoresearch experiment log for review
 
 ### Model Registration
 
-- [ ] **MREG-01**: Passing checkpoints are auto-registered in LiteLLM config so they're immediately available for inference behind the harness
-- [ ] **MREG-02**: Registered models are servable via vLLM and accessible through the safety harness gateway on :5000
-- [ ] **MREG-03**: A deregistration command removes a trained model from LiteLLM config
+- [x] **MREG-01**: Passing checkpoints are auto-registered in LiteLLM config so they're immediately available for inference behind the harness
+- [x] **MREG-02**: Registered models are servable via vLLM and accessible through the safety harness gateway on :5000
+- [x] **MREG-03**: A deregistration command removes a trained model from LiteLLM config
 
 ### Demo & Documentation
 
@@ -273,12 +273,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DATA-01 | Phase 11 | Complete |
 | DATA-02 | Phase 11 | Complete |
 | DATA-03 | Phase 11 | Complete |
-| TRSF-01 | Phase 11 | Pending |
-| TRSF-02 | Phase 11 | Pending |
-| TRSF-03 | Phase 11 | Pending |
-| MREG-01 | Phase 11 | Pending |
-| MREG-02 | Phase 11 | Pending |
-| MREG-03 | Phase 11 | Pending |
+| TRSF-01 | Phase 11 | Complete |
+| TRSF-02 | Phase 11 | Complete |
+| TRSF-03 | Phase 11 | Complete |
+| MREG-01 | Phase 11 | Complete |
+| MREG-02 | Phase 11 | Complete |
+| MREG-03 | Phase 11 | Complete |
 | DEMO-01 | Phase 12 | Pending |
 | DEMO-02 | Phase 12 | Pending |
 

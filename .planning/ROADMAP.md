@@ -34,7 +34,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 ### v1.2 Autoresearch Integration
 
-- [ ] **Phase 11: Pipeline Wiring** - Autoresearch config and glue scripts connecting local datasets, HF cache models, post-training safety eval hook, and LiteLLM model registration
+- [x] **Phase 11: Pipeline Wiring** - Autoresearch config and glue scripts connecting local datasets, HF cache models, post-training safety eval hook, and LiteLLM model registration (completed 2026-03-24)
 - [ ] **Phase 12: Demo and Documentation** - Runnable end-to-end demo script with a sample dataset and step-by-step README walkthrough
 
 ## Phase Details
@@ -209,7 +209,7 @@ Plans:
   3. After each autoresearch experiment completes, the post-training hook runs the harness replay eval dataset against the checkpoint and writes pass/fail results alongside the experiment log — a failing checkpoint is flagged but the checkpoint files are not deleted
   4. A checkpoint that passes safety eval is registered in `~/.litellm/config.yaml` as a new model entry pointing to its vLLM serving path, and the model is immediately reachable via POST /v1/chat/completions through the safety harness
   5. Running `autoresearch-register --remove <model-id>` removes the model entry from LiteLLM config and the model is no longer reachable through the gateway
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 11-01-PLAN.md — Launcher option 6 (local datasets), HF model selection, screen-data.sh
@@ -245,5 +245,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Eval Harness and CI Gate | 2/2 | Complete | 2026-03-23 |
 | 9. Red Teaming | 2/2 | Complete | 2026-03-23 |
 | 10. HITL Dashboard | 3/3 | Complete | 2026-03-23 |
-| 11. Pipeline Wiring | 1/2 | In Progress|  |
+| 11. Pipeline Wiring | 2/2 | Complete   | 2026-03-24 |
 | 12. Demo and Documentation | 0/TBD | Not started | - |
