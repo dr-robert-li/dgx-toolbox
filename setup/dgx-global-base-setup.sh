@@ -139,5 +139,14 @@ if [ -f "$ALIASES_SRC" ]; then
   echo "=== Bash aliases updated from example.bash_aliases ==="
 fi
 
-echo "=== Base global setup complete (idempotent, no global pip). ==="
-echo "Open a new shell or 'source ~/.bashrc' to use conda/pyenv."
+echo ""
+echo "=== Base global setup complete ==="
+echo ""
+echo "Next steps:"
+echo "  1. source ~/.bashrc"
+echo "  2. (Optional) Configure Kaggle API for dataset downloads:"
+echo "     mkdir -p ~/.kaggle && chmod 700 ~/.kaggle"
+echo "     echo '{\"username\":\"YOUR_USERNAME\",\"key\":\"YOUR_KEY\"}' > ~/.kaggle/kaggle.json"
+echo "     chmod 600 ~/.kaggle/kaggle.json"
+echo "     Get your token: https://www.kaggle.com/settings → API → Create New Token"
+echo ""

@@ -18,9 +18,15 @@ git clone <repo-url> ~/dgx-toolbox
 # Copy aliases
 cp ~/dgx-toolbox/example.bash_aliases ~/.bash_aliases && source ~/.bash_aliases
 
-# One-time system setup (Python, Miniconda, pyenv)
+# One-time system setup (Python, Miniconda, pyenv, harness, kaggle)
 bash ~/dgx-toolbox/setup/dgx-global-base-setup.sh
 source ~/.bashrc
+
+# Optional: configure Kaggle API (for downloading Kaggle datasets)
+# Get your token from https://www.kaggle.com/settings → API → Create New Token
+mkdir -p ~/.kaggle && chmod 700 ~/.kaggle
+echo '{"username":"YOUR_KAGGLE_USERNAME","key":"YOUR_KAGGLE_KEY"}' > ~/.kaggle/kaggle.json
+chmod 600 ~/.kaggle/kaggle.json
 
 # Build all toolbox images (base → eval + data)
 build-all
