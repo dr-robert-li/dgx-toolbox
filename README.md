@@ -1,5 +1,11 @@
 # DGX Toolbox
 
+![Version](https://img.shields.io/badge/version-1.2-blue)
+![Platform](https://img.shields.io/badge/platform-DGX%20Spark%20(aarch64)-green)
+![License](https://img.shields.io/badge/license-MIT-lightgrey)
+
+**Author:** Dr. Robert Li
+
 Battle-tested scripts for spinning up ML/AI tools on the **NVIDIA DGX Spark**, designed for both local use and remote access via [NVIDIA Sync](https://docs.nvidia.com/dgx/dgx-spark/nvidia-sync.html#spark-nvidia-sync).
 
 ## Prerequisites
