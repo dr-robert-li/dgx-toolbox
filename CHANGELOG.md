@@ -1,16 +1,21 @@
 # Changelog
 
-## 2026-03-24 — Autoresearch Integration (v1.2)
+## 2026-03-25 — Autoresearch Integration (v1.2)
 
 ### Added
 
-- **Autoresearch pipeline** — End-to-end demo script (`scripts/demo-autoresearch.sh`) that runs data selection, optional safety screening, 3-cycle autoresearch training, post-training safety eval, and LiteLLM model registration with a final summary and curl command
-- **Training data screening** — `scripts/screen-data.sh` pre-screens training data through harness guardrails (PII, toxicity) before feeding to autoresearch
-- **Post-training safety eval** — `scripts/eval-checkpoint.sh` starts a temp vLLM container, runs the 40-case safety replay dataset against the checkpoint, writes pass/fail results, and auto-registers passing models in LiteLLM
-- **Model registration** — Passing checkpoints auto-registered in `~/.litellm/config.yaml` for immediate inference behind the safety harness
-- **Model deregistration** — `scripts/autoresearch-deregister.sh` removes trained models from LiteLLM config
-- **Autoresearch launcher** — Interactive data source menu (built-in, local dir, HuggingFace, GitHub, Kaggle, auto-discovered local datasets) with HF cache model selection and DGX Spark GPU tuning
-- **README walkthrough** — Step-by-step Autoresearch Pipeline section covering data prep through inference
+- **Autoresearch pipeline** — End-to-end demo script (`scripts/demo-autoresearch.sh`) with data selection, optional safety screening, training, post-training eval, and model registration
+- **Training data screening** — `scripts/screen-data.sh` pre-screens training data through harness guardrails (PII, toxicity)
+- **Post-training safety eval** — `scripts/eval-checkpoint.sh` supports HuggingFace checkpoints (temp vLLM + replay eval) and PyTorch raw checkpoints (training metrics extraction)
+- **Smart checkpoint saving** — Only saves when `val_bpb` improves (prevents disk buildup in autonomous mode). Epoch-timestamped filenames with `model.pt` symlink to latest best. Tracks best score in `best.json`
+- **DGX Spark compatibility** — `spark-config.sh` disables torch.compile and flash-attn3 (GB10 CUDA 12.1), replaces with PyTorch SDPA, fixes batch size math, injects checkpoint saving
+- **HuggingFace token caching** — Demo prompts for HF_TOKEN on first run, caches at `~/.cache/huggingface/token`, offers release option on subsequent runs
+- **Data source navigation** — Press Enter at any input prompt to go back to the main menu; option 6 sub-menu has Back option
+- **Autonomous Agent Mode** — README section documenting how to run the full LLM agent loop with `claude "Read program.md"`, including `program.md` DGX Spark constraints patch
+- **Model registration/deregistration** — Auto-register in LiteLLM on pass, `autoresearch-deregister.sh` for cleanup
+- **Kaggle CLI** — Pre-installed in base setup script with API token setup instructions
+- **CI security** — Secret leak detection and dependency vulnerability scanning in GitHub Actions
+- **README** — Walkthrough, autonomous mode, Ollama local model tip, version/author/badges
 
 ## 2026-03-24 — Safety Harness Fixes & Polish
 

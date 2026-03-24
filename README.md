@@ -574,9 +574,11 @@ If harness is not running, the demo skips screening with a warning and continues
 
 Runs for `DEMO_CYCLES` cycles (default 1 baseline, ~8 min each on DGX Spark).
 
-- DGX Spark tuning is applied automatically via `spark-config.sh` (batch sizes, seq length, torch.compile disabled for GB10)
-- Training output is teed to both terminal and `~/dgx-toolbox/demo-training.log`
-- A cycle monitor stops training after the configured number of cycles
+- DGX Spark tuning applied automatically: batch sizes, seq length, torch.compile disabled, flash-attn3 replaced with SDPA (GB10 CUDA 12.1 compatibility)
+- Checkpoints saved only on `val_bpb` improvement (no disk buildup in autonomous mode) to `~/autoresearch/checkpoint/model_<epoch>.pt` with `model.pt` symlink to latest best
+- HuggingFace token prompt on first run (cached for future sessions)
+- Training output teed to both terminal and `~/dgx-toolbox/demo-training.log`
+- Press Enter at any input prompt to go back to the data source menu
 
 Expected output: autoresearch training progress showing loss and eval metrics.
 
@@ -584,16 +586,17 @@ Expected output: autoresearch training progress showing loss and eval metrics.
 
 **Stage 4: Safety Eval**
 
-Automatically runs `scripts/eval-checkpoint.sh` after training completes. Starts a temporary vLLM container, runs the 40-case safety replay dataset against the checkpoint, and writes results to `safety-eval.json`.
+Automatically runs `scripts/eval-checkpoint.sh` after training completes. Supports two checkpoint formats:
+
+- **HuggingFace format** (has `config.json`): Starts a temp vLLM container, runs the 40-case safety replay, auto-registers passing models in LiteLLM
+- **PyTorch raw** (has `model.pt`): Extracts training metrics (val_bpb, steps, tokens), writes `safety-eval.json` — custom architectures can't be served via vLLM
 
 ```bash
-# Run eval manually against any existing checkpoint
-scripts/eval-checkpoint.sh ~/autoresearch/experiments/<experiment>/checkpoint
+# Run eval manually against any checkpoint
+scripts/eval-checkpoint.sh ~/autoresearch/checkpoint
 ```
 
-Expected output: `"PASS: Safety eval passed (F1=X.XXX >= 0.800). Model registered as: autoresearch/<name>"` or `"WARNING: Safety eval FAILED"`.
-
-Passing checkpoints are auto-registered in `~/.litellm/config.yaml` for immediate inference.
+Expected output: `"NEW BEST: 0.95 < 0.99"` for improved checkpoints, or `"skipped"` if no improvement.
 
 **Stage 5: Query the Model**
 
