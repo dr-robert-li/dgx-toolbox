@@ -675,6 +675,8 @@ curl -s -X POST http://localhost:5000/v1/chat/completions \
 
 **LLM API for the agent:** The agent needs an LLM API. Claude Code uses your Anthropic API key directly. Alternatively, point it at LiteLLM (`http://localhost:4000`) to use any configured model (local or cloud).
 
+> **Tip:** To run the autonomous agent entirely on local models (no cloud API costs), connect Claude Code to Ollama first. Run `ollama pull llama3.1` (or any capable model), then configure Claude Code to use `http://localhost:11434` as its model provider. The agent loop works with any model that can read code and suggest edits — larger models (70B+) produce better experiments.
+
 #### Without a GPU
 
 Without a GPU, you can skip training and test the eval and registration pipeline with any existing HF-format checkpoint:
