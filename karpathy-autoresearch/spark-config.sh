@@ -82,15 +82,24 @@ apply_spark_config() {
 
   # Disable torch.compile — GB10 (CUDA 12.1) exceeds PyTorch's max support (12.0)
   # and flash-attn3 kernels crash under torch.compile's fake tensor tracing.
-  # Replace torch.compile(model, ...) with identity (model stays eager).
   if grep -qE "^model\s*=\s*torch\.compile" "$train_py"; then
     sed -i 's/^model\s*=\s*torch\.compile(.*/model = model  # DGX Spark: torch.compile disabled (GB10 CUDA 12.1 incompatible)/' "$train_py"
     echo "  torch.compile(model): disabled (GB10 CUDA 12.1 > PyTorch max 12.0)"
   fi
-  # Comment out @torch.compile decorators
   if grep -qE "^@torch\.compile" "$train_py"; then
     sed -i 's/^@torch\.compile/# @torch.compile  # DGX Spark: disabled/' "$train_py"
     echo "  @torch.compile decorators: disabled"
+  fi
+
+  # Disable flash-attn3 — no pre-built CUDA 12.1 kernel available for GB10.
+  # Falls back to PyTorch native scaled_dot_product_attention (SDPA).
+  if grep -qE "^fa3\s*=\s*get_kernel" "$train_py"; then
+    sed -i 's|^fa3\s*=\s*get_kernel.*|# fa3 = get_kernel(repo).flash_attn_interface  # DGX Spark: disabled (no CUDA 12.1 kernel)|' "$train_py"
+    echo "  flash-attn3: disabled (no CUDA 12.1 kernel binary)"
+  fi
+  if grep -q "fa3\.flash_attn_func" "$train_py"; then
+    sed -i 's|y = fa3\.flash_attn_func(q, k, v, causal=True, window_size=window_size)|y = torch.nn.functional.scaled_dot_product_attention(q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2), is_causal=True).transpose(1, 2)  # DGX Spark: SDPA fallback|' "$train_py"
+    echo "  flash_attn_func: replaced with torch SDPA"
   fi
 
   # Patch gradient accumulation if present
