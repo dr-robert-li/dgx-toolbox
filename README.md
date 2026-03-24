@@ -1,4 +1,4 @@
-# DGX Toolbox
+# DGX Spark Toolbox
 
 ![Version](https://img.shields.io/badge/version-1.2-blue)
 ![Platform](https://img.shields.io/badge/platform-DGX%20Spark%20(aarch64)-green)
