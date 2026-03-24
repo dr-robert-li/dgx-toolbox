@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Safety Harness
 status: "Roadmap created, ready for `/gsd:plan-phase 11`"
-stopped_at: Phase 12 context gathered
-last_updated: "2026-03-24T03:47:08.370Z"
+stopped_at: Completed 12-01-PLAN.md
+last_updated: "2026-03-24T05:03:35.639Z"
 last_activity: 2026-03-24 — v1.2 roadmap created
 progress:
   total_phases: 12
-  completed_phases: 11
-  total_plans: 26
-  completed_plans: 26
+  completed_phases: 12
+  total_plans: 27
+  completed_plans: 27
   percent: 0
 ---
 
@@ -115,6 +115,7 @@ Recent decisions affecting current work:
 - [Phase 11-pipeline-wiring]: eval-checkpoint.sh points --gateway directly at temp vLLM on :8021 to measure raw model safety, not harness+model stack
 - [Phase 11-pipeline-wiring]: String-append for LiteLLM config registration preserves comments; pyyaml round-trip for deregistration with timestamped backup
 - [Phase 11-pipeline-wiring]: set +e/-e guards around subprocess calls when exit code capture is needed inside set -euo pipefail test scripts
+- [Phase 12-demo-and-documentation]: Cycle-limiting via background log monitor plus time-based fallback avoids patching autoresearch train.py
 
 ### v1.1 Architecture Decisions (Pre-Phase 5)
 
@@ -162,7 +163,7 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-24T03:47:08.367Z
-Stopped at: Phase 12 context gathered
-Resume file: .planning/phases/12-demo-and-documentation/12-CONTEXT.md
+Last session: 2026-03-24T05:03:35.636Z
+Stopped at: Completed 12-01-PLAN.md
+Resume file: None
 Next action: `/gsd:plan-phase 11`

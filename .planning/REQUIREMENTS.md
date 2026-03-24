@@ -158,8 +158,8 @@ Requirements for the autoresearch end-to-end pipeline milestone. Each maps to ro
 
 ### Demo & Documentation
 
-- [ ] **DEMO-01**: A runnable demo script executes the full pipeline with a small sample dataset end-to-end
-- [ ] **DEMO-02**: Step-by-step documentation walkthrough in README covering data prep → training → safety eval → inference
+- [x] **DEMO-01**: A runnable demo script executes the full pipeline with a small sample dataset end-to-end
+- [x] **DEMO-02**: Step-by-step documentation walkthrough in README covering data prep → training → safety eval → inference
 
 ## v2 Requirements
 
@@ -279,8 +279,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MREG-01 | Phase 11 | Complete |
 | MREG-02 | Phase 11 | Complete |
 | MREG-03 | Phase 11 | Complete |
-| DEMO-01 | Phase 12 | Pending |
-| DEMO-02 | Phase 12 | Pending |
+| DEMO-01 | Phase 12 | Complete |
+| DEMO-02 | Phase 12 | Complete |
 
 **Coverage:**
 - v1.0 requirements: 38 total (38 complete)
