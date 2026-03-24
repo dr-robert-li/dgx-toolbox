@@ -300,8 +300,9 @@ while true; do
         break
       fi
       printf '  Available datasets in ~/data/:\n'
+      local _back=0
       select dataset_entry in "${DATASET_NAMES[@]}" "Back"; do
-        if [ "$dataset_entry" = "Back" ]; then printf '\n'; break; fi
+        if [ "$dataset_entry" = "Back" ]; then _back=1; printf '\n'; break; fi
         if [ -n "$dataset_entry" ]; then
           CHOSEN_DATASET="${dataset_entry%% (*}"
           LOCAL_DATASET_PATH="${HOME}/data/${CHOSEN_DATASET}"
@@ -313,9 +314,10 @@ while true; do
             -exec cp {} "$AUTORESEARCH_DIR/data/" \;
           cd "$AUTORESEARCH_DIR"
           uv run prepare.py
-          break 2
+          break 3
         fi
       done
+      if [ "$_back" = "1" ]; then break; fi
       ;;
 
     *)

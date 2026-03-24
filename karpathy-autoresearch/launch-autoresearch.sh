@@ -224,8 +224,9 @@ while true; do
         break
       fi
       echo "Available datasets in ~/data/:"
+      local _back=0
       select dataset_entry in "${DATASET_NAMES[@]}" "Back"; do
-        if [ "$dataset_entry" = "Back" ]; then echo ""; break; fi
+        if [ "$dataset_entry" = "Back" ]; then _back=1; echo ""; break; fi
         if [ -n "$dataset_entry" ]; then
           # Extract just the dirname (before the space and parenthesis)
           CHOSEN_DATASET="${dataset_entry%% (*}"
@@ -238,10 +239,10 @@ while true; do
             -exec cp {} "$AUTORESEARCH_DIR/data/" \;
           echo "Running prepare.py..."
           uv run prepare.py
-          break 2
+          break 3
         fi
       done
-      # If we got here via "Back" from the inner select, continue outer while loop
+      if [ "$_back" = "1" ]; then break; fi
       ;;
 
     *)
