@@ -198,116 +198,110 @@ printf '[2/7] Select training data source:\n\n'
 
 DATA_SOURCE_LABEL=""
 
-select src in \
-  "Default (autoresearch built-in)" \
-  "Local directory" \
-  "Hugging Face dataset" \
-  "GitHub repo" \
-  "Kaggle dataset" \
-  "Local datasets (auto-discovered)"; do
-  case "$src" in
-    "Default (autoresearch built-in)")
-      DATA_SOURCE_LABEL="default"
-      printf '\n  Using autoresearch built-in dataset...\n'
-      cd "$AUTORESEARCH_DIR"
-      uv run prepare.py
-      break
-      ;;
-
-    "Local directory")
-      DATA_SOURCE_LABEL="local"
-      printf '\n'
-      read -rp "  Path to local data directory: " LOCAL_DATA_PATH
-      if [ ! -d "$LOCAL_DATA_PATH" ]; then
-        printf 'ERROR: Directory not found: %s\n' "$LOCAL_DATA_PATH" >&2
-        exit 1
-      fi
-      printf '  Copying .txt and .parquet files into data/...\n'
-      mkdir -p "$AUTORESEARCH_DIR/data"
-      find "$LOCAL_DATA_PATH" -maxdepth 2 \( -name "*.txt" -o -name "*.parquet" \) \
-        -exec cp {} "$AUTORESEARCH_DIR/data/" \;
-      cd "$AUTORESEARCH_DIR"
-      uv run prepare.py
-      break
-      ;;
-
-    "Hugging Face dataset")
-      DATA_SOURCE_LABEL="huggingface"
-      printf '\n'
-      read -rp "  HuggingFace dataset name (e.g. karpathy/climbmix-400b-shuffle): " HF_DATASET
-      if [ -z "$HF_DATASET" ]; then
-        printf 'ERROR: Dataset name cannot be empty.\n' >&2
-        exit 1
-      fi
-      export AUTORESEARCH_HF_DATASET="$HF_DATASET"
-      DATA_SOURCE_LABEL="huggingface:${HF_DATASET}"
-      cd "$AUTORESEARCH_DIR"
-      printf '  Attempting prepare.py with AUTORESEARCH_HF_DATASET=%s...\n' "$HF_DATASET"
-      if ! uv run prepare.py 2>&1 | grep -qi "error\|traceback"; then
-        printf '  prepare.py completed using HF dataset.\n'
-      else
-        printf '  Downloading via huggingface-cli into data/...\n'
-        mkdir -p "$AUTORESEARCH_DIR/data"
-        uv run -- huggingface-cli download "$HF_DATASET" \
-          --local-dir "$AUTORESEARCH_DIR/data/" \
-          --repo-type dataset
+while true; do
+  select src in \
+    "Default (autoresearch built-in)" \
+    "Local directory" \
+    "Hugging Face dataset" \
+    "GitHub repo" \
+    "Kaggle dataset" \
+    "Local datasets (auto-discovered)"; do
+    case "$src" in
+      "Default (autoresearch built-in)")
+        DATA_SOURCE_LABEL="default"
+        printf '\n  Using autoresearch built-in dataset...\n'
+        cd "$AUTORESEARCH_DIR"
         uv run prepare.py
-      fi
-      break
-      ;;
+        break 2
+        ;;
 
-    "GitHub repo")
-      DATA_SOURCE_LABEL="github"
-      printf '\n'
-      read -rp "  GitHub repo URL (e.g. https://github.com/user/repo): " GITHUB_URL
-      if [ -z "$GITHUB_URL" ]; then
-        printf 'ERROR: Repo URL cannot be empty.\n' >&2
-        exit 1
-      fi
-      GITHUB_TMP="$(mktemp -d)"
-      printf '  Cloning %s...\n' "$GITHUB_URL"
-      git clone --depth=1 "$GITHUB_URL" "$GITHUB_TMP/repo"
-      printf '  Copying .txt and .parquet files into data/...\n'
-      mkdir -p "$AUTORESEARCH_DIR/data"
-      find "$GITHUB_TMP/repo" -maxdepth 4 \( -name "*.txt" -o -name "*.parquet" \) \
-        -exec cp {} "$AUTORESEARCH_DIR/data/" \;
-      rm -rf "$GITHUB_TMP"
-      DATA_SOURCE_LABEL="github:${GITHUB_URL}"
-      cd "$AUTORESEARCH_DIR"
-      uv run prepare.py
-      break
-      ;;
+      "Local directory")
+        DATA_SOURCE_LABEL="local"
+        printf '\n'
+        read -rp "  Path to local data directory (Enter to go back): " LOCAL_DATA_PATH
+        if [ -z "$LOCAL_DATA_PATH" ]; then printf '\n'; break; fi
+        if [ ! -d "$LOCAL_DATA_PATH" ]; then
+          printf '  Directory not found: %s\n\n' "$LOCAL_DATA_PATH"
+          break
+        fi
+        printf '  Copying .txt and .parquet files into data/...\n'
+        mkdir -p "$AUTORESEARCH_DIR/data"
+        find "$LOCAL_DATA_PATH" -maxdepth 2 \( -name "*.txt" -o -name "*.parquet" \) \
+          -exec cp {} "$AUTORESEARCH_DIR/data/" \;
+        cd "$AUTORESEARCH_DIR"
+        uv run prepare.py
+        break 2
+        ;;
 
-    "Kaggle dataset")
-      DATA_SOURCE_LABEL="kaggle"
-      printf '\n'
-      if ! command -v kaggle &>/dev/null; then
-        printf 'ERROR: kaggle CLI not installed. Install with: pip install kaggle\n' >&2
-        exit 1
-      fi
-      read -rp "  Kaggle dataset identifier (e.g. user/dataset-name): " KAGGLE_ID
-      if [ -z "$KAGGLE_ID" ]; then
-        printf 'ERROR: Dataset identifier cannot be empty.\n' >&2
-        exit 1
-      fi
-      mkdir -p "$AUTORESEARCH_DIR/data"
-      kaggle datasets download -d "$KAGGLE_ID" -p "$AUTORESEARCH_DIR/data/" --unzip
-      DATA_SOURCE_LABEL="kaggle:${KAGGLE_ID}"
-      cd "$AUTORESEARCH_DIR"
-      uv run prepare.py
-      break
-      ;;
+      "Hugging Face dataset")
+        DATA_SOURCE_LABEL="huggingface"
+        printf '\n'
+        read -rp "  HuggingFace dataset name (Enter to go back): " HF_DATASET
+        if [ -z "$HF_DATASET" ]; then printf '\n'; break; fi
+        export AUTORESEARCH_HF_DATASET="$HF_DATASET"
+        DATA_SOURCE_LABEL="huggingface:${HF_DATASET}"
+        cd "$AUTORESEARCH_DIR"
+        printf '  Attempting prepare.py with AUTORESEARCH_HF_DATASET=%s...\n' "$HF_DATASET"
+        if ! uv run prepare.py 2>&1 | grep -qi "error\|traceback"; then
+          printf '  prepare.py completed using HF dataset.\n'
+        else
+          printf '  Downloading via huggingface-cli into data/...\n'
+          mkdir -p "$AUTORESEARCH_DIR/data"
+          uv run -- huggingface-cli download "$HF_DATASET" \
+            --local-dir "$AUTORESEARCH_DIR/data/" \
+            --repo-type dataset
+          uv run prepare.py
+        fi
+        break 2
+        ;;
+
+      "GitHub repo")
+        DATA_SOURCE_LABEL="github"
+        printf '\n'
+        read -rp "  GitHub repo URL (Enter to go back): " GITHUB_URL
+        if [ -z "$GITHUB_URL" ]; then printf '\n'; break; fi
+        GITHUB_TMP="$(mktemp -d)"
+        printf '  Cloning %s...\n' "$GITHUB_URL"
+        git clone --depth=1 "$GITHUB_URL" "$GITHUB_TMP/repo"
+        printf '  Copying .txt and .parquet files into data/...\n'
+        mkdir -p "$AUTORESEARCH_DIR/data"
+        find "$GITHUB_TMP/repo" -maxdepth 4 \( -name "*.txt" -o -name "*.parquet" \) \
+          -exec cp {} "$AUTORESEARCH_DIR/data/" \;
+        rm -rf "$GITHUB_TMP"
+        DATA_SOURCE_LABEL="github:${GITHUB_URL}"
+        cd "$AUTORESEARCH_DIR"
+        uv run prepare.py
+        break 2
+        ;;
+
+      "Kaggle dataset")
+        DATA_SOURCE_LABEL="kaggle"
+        printf '\n'
+        if ! command -v kaggle &>/dev/null; then
+          printf '  kaggle CLI not installed. Install with: pip install kaggle\n\n'
+          break
+        fi
+        read -rp "  Kaggle dataset identifier (Enter to go back): " KAGGLE_ID
+        if [ -z "$KAGGLE_ID" ]; then printf '\n'; break; fi
+        mkdir -p "$AUTORESEARCH_DIR/data"
+        kaggle datasets download -d "$KAGGLE_ID" -p "$AUTORESEARCH_DIR/data/" --unzip
+        DATA_SOURCE_LABEL="kaggle:${KAGGLE_ID}"
+        cd "$AUTORESEARCH_DIR"
+        uv run prepare.py
+        break 2
+        ;;
 
     "Local datasets (auto-discovered)")
       DATA_SOURCE_LABEL="local-datasets"
       printf '\n'
       mapfile -t DATASET_NAMES < <(_discover_local_datasets 2>/dev/null)
       if [ ${#DATASET_NAMES[@]} -eq 0 ]; then
-        printf 'ERROR: No datasets found in ~/data/\n' >&2
-        exit 1
+        printf '  No datasets found in ~/data/. Returning to menu.\n\n'
+        break
       fi
       printf '  Available datasets in ~/data/:\n'
-      select dataset_entry in "${DATASET_NAMES[@]}"; do
+      select dataset_entry in "${DATASET_NAMES[@]}" "Back"; do
+        if [ "$dataset_entry" = "Back" ]; then printf '\n'; break; fi
         if [ -n "$dataset_entry" ]; then
           CHOSEN_DATASET="${dataset_entry%% (*}"
           LOCAL_DATASET_PATH="${HOME}/data/${CHOSEN_DATASET}"
@@ -319,16 +313,16 @@ select src in \
             -exec cp {} "$AUTORESEARCH_DIR/data/" \;
           cd "$AUTORESEARCH_DIR"
           uv run prepare.py
-          break
+          break 2
         fi
       done
-      break
       ;;
 
     *)
       printf '  Invalid option — enter a number between 1 and 6.\n'
       ;;
-  esac
+    esac
+  done
 done
 
 SUMMARY_DATASET="$DATA_SOURCE_LABEL"
