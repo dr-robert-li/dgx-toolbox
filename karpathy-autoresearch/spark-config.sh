@@ -80,6 +80,19 @@ apply_spark_config() {
     echo "  DEVICE_BATCH_SIZE: not found in train.py (skipped)"
   fi
 
+  # Disable torch.compile — GB10 (CUDA 12.1) exceeds PyTorch's max support (12.0)
+  # and flash-attn3 kernels crash under torch.compile's fake tensor tracing.
+  # Replace torch.compile(model, ...) with identity (model stays eager).
+  if grep -qE "^model\s*=\s*torch\.compile" "$train_py"; then
+    sed -i 's/^model\s*=\s*torch\.compile(.*/model = model  # DGX Spark: torch.compile disabled (GB10 CUDA 12.1 incompatible)/' "$train_py"
+    echo "  torch.compile(model): disabled (GB10 CUDA 12.1 > PyTorch max 12.0)"
+  fi
+  # Comment out @torch.compile decorators
+  if grep -qE "^@torch\.compile" "$train_py"; then
+    sed -i 's/^@torch\.compile/# @torch.compile  # DGX Spark: disabled/' "$train_py"
+    echo "  @torch.compile decorators: disabled"
+  fi
+
   # Patch gradient accumulation if present
   if grep -qE "^GRAD_ACCUM\s*=" "$train_py"; then
     local old_ga
