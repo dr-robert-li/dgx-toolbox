@@ -106,10 +106,12 @@ apply_spark_config() {
   if ! grep -q "DGX Spark: save checkpoint" "$train_py"; then
     cat >> "$train_py" << 'SAVE_EOF'
 
-# DGX Spark: save checkpoint after training
-import os as _os
+# DGX Spark: save checkpoint after training (epoch-timestamped to avoid overwrites)
+import os as _os, time as _time
 _ckpt_dir = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "checkpoint")
 _os.makedirs(_ckpt_dir, exist_ok=True)
+_ckpt_name = f"model_{int(_time.time())}.pt"
+_ckpt_path = _os.path.join(_ckpt_dir, _ckpt_name)
 torch.save({
     "model_state_dict": model.state_dict(),
     "step": step,
@@ -117,8 +119,13 @@ torch.save({
     "config": config._asdict() if hasattr(config, '_asdict') else vars(config) if hasattr(config, '__dict__') else str(config),
     "total_tokens": total_tokens,
     "peak_vram_mb": peak_vram_mb,
-}, _os.path.join(_ckpt_dir, "model.pt"))
-print(f"checkpoint:       {_ckpt_dir}/model.pt")
+}, _ckpt_path)
+# Also save as model.pt symlink for easy "latest" access
+_latest = _os.path.join(_ckpt_dir, "model.pt")
+if _os.path.islink(_latest) or _os.path.exists(_latest):
+    _os.remove(_latest)
+_os.symlink(_ckpt_name, _latest)
+print(f"checkpoint:       {_ckpt_path}")
 SAVE_EOF
     echo "  checkpoint save: injected at end of training"
   else
