@@ -140,9 +140,9 @@ Requirements for the autoresearch end-to-end pipeline milestone. Each maps to ro
 
 ### Data Integration
 
-- [ ] **DATA-01**: Autoresearch launcher auto-discovers datasets in `~/data/` subdirectories and presents them as data source options
-- [ ] **DATA-02**: Autoresearch launcher can use a local HF cache model as the base model for training (auto-detected from `~/.cache/huggingface/hub/`)
-- [ ] **DATA-03**: Training data is optionally screened through harness input guardrails (PII, toxicity) before feeding to autoresearch
+- [x] **DATA-01**: Autoresearch launcher auto-discovers datasets in `~/data/` subdirectories and presents them as data source options
+- [x] **DATA-02**: Autoresearch launcher can use a local HF cache model as the base model for training (auto-detected from `~/.cache/huggingface/hub/`)
+- [x] **DATA-03**: Training data is optionally screened through harness input guardrails (PII, toxicity) before feeding to autoresearch
 
 ### Training Safety
 
@@ -270,9 +270,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | HITL-02 | Phase 10 | Complete |
 | HITL-03 | Phase 10 | Complete |
 | HITL-04 | Phase 10 | Complete |
-| DATA-01 | Phase 11 | Pending |
-| DATA-02 | Phase 11 | Pending |
-| DATA-03 | Phase 11 | Pending |
+| DATA-01 | Phase 11 | Complete |
+| DATA-02 | Phase 11 | Complete |
+| DATA-03 | Phase 11 | Complete |
 | TRSF-01 | Phase 11 | Pending |
 | TRSF-02 | Phase 11 | Pending |
 | TRSF-03 | Phase 11 | Pending |

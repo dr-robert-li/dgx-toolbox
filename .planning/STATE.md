@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Safety Harness
 status: "Roadmap created, ready for `/gsd:plan-phase 11`"
-stopped_at: Phase 11 context gathered
-last_updated: "2026-03-24T00:34:44.328Z"
+stopped_at: Completed 11-01-PLAN.md
+last_updated: "2026-03-24T01:15:36.115Z"
 last_activity: 2026-03-24 — v1.2 roadmap created
 progress:
   total_phases: 12
   completed_phases: 10
-  total_plans: 24
-  completed_plans: 24
+  total_plans: 26
+  completed_plans: 25
   percent: 0
 ---
 
@@ -109,6 +109,9 @@ Recent decisions affecting current work:
 - [Phase 10-02]: export_jsonl edit action uses PII-redacted edited_response; falls back to cai_critique.revised_output then trace.response
 - [Phase 10-02]: CLI __main__.py rewritten to match eval/__main__.py pattern: subparsers variable, _resolve_db_path, asyncio.run() for async commands
 - [Phase 10-hitl-dashboard]: Gradio UI defaults to port 8501; sync httpx.Client used in callbacks; build_ui() returns Blocks without .launch()
+- [Phase 11-01]: mapfile used to capture _discover_local_datasets output into array for nested select menu inside option 6 case
+- [Phase 11-01]: HARNESS_API_KEY validated non-empty before health check with explicit warning against ci-runner key (bypass=true)
+- [Phase 11-01]: screen-data.sh uses python3 json.dumps for safe JSON escaping of record content — not bash string manipulation
 
 ### v1.1 Architecture Decisions (Pre-Phase 5)
 
@@ -156,7 +159,7 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-24T00:34:44.324Z
-Stopped at: Phase 11 context gathered
-Resume file: .planning/phases/11-pipeline-wiring/11-CONTEXT.md
+Last session: 2026-03-24T01:15:36.112Z
+Stopped at: Completed 11-01-PLAN.md
+Resume file: None
 Next action: `/gsd:plan-phase 11`
