@@ -300,7 +300,7 @@ while true; do
         break
       fi
       printf '  Available datasets in ~/data/:\n'
-      local _back=0
+      _back=0
       select dataset_entry in "${DATASET_NAMES[@]}" "Back"; do
         if [ "$dataset_entry" = "Back" ]; then _back=1; printf '\n'; break; fi
         if [ -n "$dataset_entry" ]; then
