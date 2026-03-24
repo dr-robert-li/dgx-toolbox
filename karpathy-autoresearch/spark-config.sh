@@ -151,6 +151,61 @@ apply_spark_config() {
   echo ""
 }
 
+# Patch program.md with DGX Spark hardware constraints so the LLM agent
+# knows what it can and cannot do on this hardware.
+# Usage: apply_spark_program <autoresearch_dir>
+apply_spark_program() {
+  local program_md="$1/program.md"
+
+  if [ ! -f "$program_md" ]; then
+    echo "  program.md not found (skipped)"
+    return 0
+  fi
+
+  # Only patch once — check for our marker
+  if grep -q "DGX Spark Hardware Constraints" "$program_md"; then
+    echo "  program.md: DGX Spark constraints already present"
+    return 0
+  fi
+
+  echo "--- Patching program.md with DGX Spark constraints ---"
+
+  # Insert after the "What you CANNOT do" section
+  cat >> "$program_md" << 'SPARK_EOF'
+
+## DGX Spark Hardware Constraints
+
+This experiment is running on an **NVIDIA DGX Spark** with a Blackwell GB10 GPU. You MUST respect these constraints when modifying `train.py`:
+
+**CUDA compatibility (CRITICAL):**
+- The GB10 is CUDA compute capability **12.1**, which exceeds PyTorch's current max support (12.0)
+- **DO NOT** use `torch.compile()` — it crashes with fake tensor tracing errors on this GPU
+- **DO NOT** use flash-attn3 (`fa3.flash_attn_func`) — no pre-built kernel exists for CUDA 12.1
+- **USE** `torch.nn.functional.scaled_dot_product_attention()` (PyTorch native SDPA) instead of flash-attn
+- Keep `model = model` (no torch.compile wrapping) — the line must remain as-is
+
+**Batch size math (CRITICAL):**
+- `TOTAL_BATCH_SIZE` must be divisible by `DEVICE_BATCH_SIZE * MAX_SEQ_LEN`
+- Current values: `TOTAL_BATCH_SIZE=16384`, `DEVICE_BATCH_SIZE=4`, `MAX_SEQ_LEN=512` → `tokens_per_fwdbwd=2048`, `grad_accum_steps=8`
+- If you change DEVICE_BATCH_SIZE, you MUST update TOTAL_BATCH_SIZE to maintain divisibility
+
+**Hardware specs:**
+- GPU: NVIDIA GB10 (Blackwell), 6,144 CUDA cores, 192 Tensor Cores
+- Memory: 128 GB unified LPDDR5x (shared CPU+GPU)
+- Compute: ~36% of an H100 — expect ~36% of H100 throughput
+- MFU target: 20-40% (lower than H100 due to memory bandwidth)
+
+**What works well on this hardware:**
+- Moderate model sizes (50-200M params)
+- Sequence lengths 256-1024
+- Device batch sizes 2-8
+- PyTorch native SDPA attention
+- Eager mode execution (no torch.compile)
+SPARK_EOF
+
+  echo "  program.md: DGX Spark constraints appended"
+}
+
 # Apply the 5-minute wall-clock timer override in train.py
 # Replaces the hardcoded duration (e.g. 5 * 60) with SPARK_TRAIN_MINUTES * 60
 # Usage: apply_spark_timing <train_py_path>

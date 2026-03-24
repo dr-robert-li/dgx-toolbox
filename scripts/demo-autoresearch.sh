@@ -401,6 +401,7 @@ cd "$AUTORESEARCH_DIR"
 if [ -f "$AUTORESEARCH_DIR/train.py" ]; then
   apply_spark_config "$AUTORESEARCH_DIR/train.py"
   apply_spark_timing "$AUTORESEARCH_DIR/train.py"
+  apply_spark_program "$AUTORESEARCH_DIR"
   printf '  Spark tuning applied.\n'
 else
   printf '  %s: train.py not found at %s — skipping tuning\n' "$(_yellow "WARNING")" "$AUTORESEARCH_DIR/train.py"

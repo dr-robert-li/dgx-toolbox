@@ -293,6 +293,7 @@ echo ""
 echo "Applying DGX Spark tuning overrides..."
 apply_spark_config "$AUTORESEARCH_DIR/train.py"
 apply_spark_timing "$AUTORESEARCH_DIR/train.py"
+apply_spark_program "$AUTORESEARCH_DIR"
 
 # ============================================================
 # 6. Print launch banner
