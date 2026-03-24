@@ -222,11 +222,10 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. Running `scripts/demo-autoresearch.sh` with no arguments completes the full pipeline — data discovery, optional screening, autoresearch training on a sample dataset, safety eval of the resulting checkpoint, and LiteLLM registration — printing a final summary of pass/fail and the registered model endpoint
   2. The README walkthrough covers each pipeline stage with a command to run, the expected output to observe, and what to do if a stage fails — a user who has never seen the codebase can reach a registered, queryable model from a standing start
-**Plans:** 2 plans
+**Plans:** 1 plan
 
 Plans:
-- [ ] 11-01-PLAN.md — Launcher option 6 (local datasets), HF model selection, screen-data.sh
-- [ ] 11-02-PLAN.md — eval-checkpoint.sh (post-training safety eval), LiteLLM registration, deregistration
+- [ ] 12-01-PLAN.md — End-to-end demo script and README walkthrough with CHANGELOG v1.2 entry
 
 ## Progress
 
@@ -245,5 +244,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 8. Eval Harness and CI Gate | 2/2 | Complete | 2026-03-23 |
 | 9. Red Teaming | 2/2 | Complete | 2026-03-23 |
 | 10. HITL Dashboard | 3/3 | Complete | 2026-03-23 |
-| 11. Pipeline Wiring | 2/2 | Complete   | 2026-03-24 |
-| 12. Demo and Documentation | 0/TBD | Not started | - |
+| 11. Pipeline Wiring | 2/2 | Complete    | 2026-03-24 |
+| 12. Demo and Documentation | 0/1 | Not started | - |
