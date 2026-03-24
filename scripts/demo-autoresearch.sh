@@ -96,6 +96,21 @@ printf '\n'
 # ---------------------------------------------------------------------------
 printf '[1/7] Checking prerequisites...\n'
 
+# Prompt for HF_TOKEN if not set (enables higher rate limits and faster downloads)
+if [ -z "${HF_TOKEN:-}" ]; then
+  printf '  HuggingFace token not set. Set HF_TOKEN for faster downloads and private model access.\n'
+  printf '  Get one at: https://huggingface.co/settings/tokens\n'
+  read -rp "  Enter HF_TOKEN (or press Enter to skip): " _hf_token
+  if [ -n "$_hf_token" ]; then
+    export HF_TOKEN="$_hf_token"
+    printf '  HF_TOKEN set for this session.\n'
+  else
+    printf '  Continuing without HF_TOKEN (public models only, slower downloads).\n'
+  fi
+else
+  printf '  HF_TOKEN: set\n'
+fi
+
 # Fix HF cache permissions (Docker containers often create dirs as root)
 HF_CACHE="${HOME}/.cache/huggingface"
 if [ -d "$HF_CACHE" ]; then

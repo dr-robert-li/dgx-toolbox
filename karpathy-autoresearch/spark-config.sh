@@ -16,7 +16,7 @@
 
 # --- Model Architecture ---
 SPARK_DEPTH=8              # Keep default depth — 128 GB unified memory can hold full model
-SPARK_TOTAL_BATCH_SIZE=16  # Reduced from default — 36% CUDA cores means less parallel throughput
+SPARK_TOTAL_BATCH_SIZE=16384  # In tokens (must be divisible by DEVICE_BATCH_SIZE * MAX_SEQ_LEN * num_gpus)
 SPARK_DEVICE_BATCH_SIZE=4  # 128 GB unified memory supports reasonable micro-batches
 
 # --- Sequence Length ---
