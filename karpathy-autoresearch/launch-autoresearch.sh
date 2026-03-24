@@ -13,6 +13,69 @@ AUTORESEARCH_DIR="${HOME}/autoresearch"
 AUTORESEARCH_REPO="https://github.com/karpathy/autoresearch.git"
 
 # ============================================================
+# Helper: discover local datasets in ~/data/ subdirectories
+# Prints "dirname (N files)" for each subdir found.
+# Returns 1 if no subdirs found.
+# ============================================================
+_discover_local_datasets() {
+  local found=0
+  while IFS= read -r -d '' subdir; do
+    local name
+    name=$(basename "$subdir")
+    local count
+    count=$(find "$subdir" -maxdepth 1 \( -name "*.txt" -o -name "*.parquet" -o -name "*.jsonl" \) | wc -l)
+    echo "${name} (${count} files)"
+    found=1
+  done < <(find "${HOME}/data" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null | sort -z)
+  if [ "$found" -eq 0 ]; then
+    return 1
+  fi
+}
+
+# ============================================================
+# Helper: select a base model from HF cache
+# Scans ~/.cache/huggingface/hub/ for models--* dirs,
+# presents a select menu, exports AUTORESEARCH_BASE_MODEL.
+# ============================================================
+_select_hf_model() {
+  local hf_hub="${HOME}/.cache/huggingface/hub"
+  local model_dirs=()
+  local model_names=()
+
+  while IFS= read -r -d '' dir; do
+    local bn
+    bn=$(basename "$dir")
+    # Convert models--org--name -> org/name
+    local model_name="${bn#models--}"
+    model_name="${model_name/--//}"
+    local size
+    size=$(du -sh "$dir" 2>/dev/null | cut -f1)
+    model_dirs+=("$dir")
+    model_names+=("${model_name} [${size}]")
+  done < <(find "$hf_hub" -mindepth 1 -maxdepth 1 -type d -name 'models--*' -print0 2>/dev/null | sort -z)
+
+  if [ ${#model_names[@]} -eq 0 ]; then
+    echo "No models found in HF cache. Continuing with autoresearch default."
+    return
+  fi
+
+  echo ""
+  echo "Select base model for training (HF cache):"
+  select choice in "${model_names[@]}" "Skip (use autoresearch default)"; do
+    if [[ "$REPLY" -gt 0 && "$REPLY" -le ${#model_names[@]} ]]; then
+      local snapshot_path
+      snapshot_path=$(ls -td "${model_dirs[$((REPLY-1))]}/snapshots/"* 2>/dev/null | head -1)
+      echo "Base model: ${model_names[$((REPLY-1))]}"
+      export AUTORESEARCH_BASE_MODEL="$snapshot_path"
+      break
+    elif [[ "$REPLY" -eq $((${#model_names[@]}+1)) ]]; then
+      echo "Skipping HF model selection."
+      break
+    fi
+  done
+}
+
+# ============================================================
 # 1. Clone or pull latest autoresearch master
 # ============================================================
 echo ""
@@ -59,7 +122,8 @@ select src in \
   "Local directory" \
   "Hugging Face dataset" \
   "GitHub repo" \
-  "Kaggle dataset"; do
+  "Kaggle dataset" \
+  "Local datasets (auto-discovered)"; do
   case "$src" in
     "Default (autoresearch built-in)")
       DATA_SOURCE_LABEL="default"
@@ -155,11 +219,45 @@ select src in \
       break
       ;;
 
+    "Local datasets (auto-discovered)")
+      DATA_SOURCE_LABEL="local-datasets"
+      echo ""
+      # Discover ~/data/ subdirectories
+      mapfile -t DATASET_NAMES < <(_discover_local_datasets 2>/dev/null)
+      if [ ${#DATASET_NAMES[@]} -eq 0 ]; then
+        echo "No datasets found in ~/data/" >&2
+        exit 1
+      fi
+      echo "Available datasets in ~/data/:"
+      select dataset_entry in "${DATASET_NAMES[@]}"; do
+        if [ -n "$dataset_entry" ]; then
+          # Extract just the dirname (before the space and parenthesis)
+          CHOSEN_DATASET="${dataset_entry%% (*}"
+          LOCAL_DATASET_PATH="${HOME}/data/${CHOSEN_DATASET}"
+          echo "Selected: $CHOSEN_DATASET"
+          mkdir -p "$AUTORESEARCH_DIR/data"
+          echo "Copying .txt, .parquet, .jsonl files from $LOCAL_DATASET_PATH into data/..."
+          find "$LOCAL_DATASET_PATH" -maxdepth 1 \
+            \( -name "*.txt" -o -name "*.parquet" -o -name "*.jsonl" \) \
+            -exec cp {} "$AUTORESEARCH_DIR/data/" \;
+          echo "Running prepare.py..."
+          uv run prepare.py
+          break
+        fi
+      done
+      break
+      ;;
+
     *)
-      echo "Invalid option — please enter a number between 1 and 5."
+      echo "Invalid option — please enter a number between 1 and 6."
       ;;
   esac
 done
+
+# ============================================================
+# 3b. HF cache model selection (optional, runs after data source)
+# ============================================================
+_select_hf_model
 
 # ============================================================
 # 4. Validate tokenizer output exists before continuing
@@ -215,6 +313,10 @@ echo "    - EVAL_TOKENS     = $SPARK_EVAL_TOKENS"
 echo ""
 echo "  Estimated per-experiment duration: ~${SPARK_TRAIN_MINUTES} min (training) + eval"
 echo ""
+if [ -n "${AUTORESEARCH_BASE_MODEL:-}" ]; then
+  echo "  Base model: $AUTORESEARCH_BASE_MODEL"
+  echo ""
+fi
 echo "========================================"
 echo ""
 echo "Point your AI agent at:"

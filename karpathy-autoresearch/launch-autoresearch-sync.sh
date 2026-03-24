@@ -5,14 +5,21 @@ set -euo pipefail
 # No interactive prompts — all configuration via environment variables.
 #
 # Environment variables:
-#   AUTORESEARCH_DATA_SOURCE  — one of: default, local, huggingface, github, kaggle
+#   AUTORESEARCH_DATA_SOURCE  — one of: default, local, huggingface, github, kaggle, local-datasets
 #   AUTORESEARCH_DATA_PATH    — path/name/URL for the selected source
+#                               For local-datasets: the subdir name within ~/data/ (not a full path)
+#   AUTORESEARCH_BASE_MODEL   — (optional) path to HF model snapshot dir to use as base model
 #   AUTORESEARCH_SKIP_TUNE    — set to "1" to skip DGX Spark parameter tuning
 #   AUTORESEARCH_RUN_TEST     — set to "1" to run one test experiment after setup
 #
 # Example (HuggingFace):
 #   AUTORESEARCH_DATA_SOURCE=huggingface \
 #   AUTORESEARCH_DATA_PATH=karpathy/climbmix-400b-shuffle \
+#   ~/dgx-toolbox/karpathy-autoresearch/launch-autoresearch-sync.sh
+#
+# Example (local-datasets — uses ~/data/curated/ subdir):
+#   AUTORESEARCH_DATA_SOURCE=local-datasets \
+#   AUTORESEARCH_DATA_PATH=curated \
 #   ~/dgx-toolbox/karpathy-autoresearch/launch-autoresearch-sync.sh
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -135,12 +142,41 @@ case "$AUTORESEARCH_DATA_SOURCE" in
     uv run prepare.py
     ;;
 
+  local-datasets)
+    if [ -z "$AUTORESEARCH_DATA_PATH" ]; then
+      echo "[sync] ERROR: AUTORESEARCH_DATA_PATH must be set for source=local-datasets" >&2
+      echo "[sync]   Set it to the subdir name within ~/data/ (e.g. curated, processed)" >&2
+      exit 1
+    fi
+    LOCAL_DATASET_DIR="${HOME}/data/${AUTORESEARCH_DATA_PATH}"
+    if [ ! -d "$LOCAL_DATASET_DIR" ]; then
+      echo "[sync] ERROR: Local dataset directory not found: $LOCAL_DATASET_DIR" >&2
+      echo "[sync]   AUTORESEARCH_DATA_PATH should be a subdir name within ~/data/" >&2
+      exit 1
+    fi
+    echo "[sync] Copying .txt, .parquet, .jsonl files from $LOCAL_DATASET_DIR..."
+    mkdir -p "$AUTORESEARCH_DIR/data"
+    find "$LOCAL_DATASET_DIR" -maxdepth 1 \
+      \( -name "*.txt" -o -name "*.parquet" -o -name "*.jsonl" \) \
+      -exec cp {} "$AUTORESEARCH_DIR/data/" \;
+    echo "[sync] Running prepare.py..."
+    uv run prepare.py
+    ;;
+
   *)
     echo "[sync] ERROR: Unknown AUTORESEARCH_DATA_SOURCE='$AUTORESEARCH_DATA_SOURCE'" >&2
-    echo "[sync] Valid values: default, local, huggingface, github, kaggle" >&2
+    echo "[sync] Valid values: default, local, huggingface, github, kaggle, local-datasets" >&2
     exit 1
     ;;
 esac
+
+# ============================================================
+# 3b. Optional base model override (AUTORESEARCH_BASE_MODEL)
+# ============================================================
+if [ -n "${AUTORESEARCH_BASE_MODEL:-}" ]; then
+  echo "[sync] Base model: $AUTORESEARCH_BASE_MODEL"
+  export AUTORESEARCH_BASE_MODEL
+fi
 
 # ============================================================
 # 4. Apply DGX Spark tuning (unless skipped)
