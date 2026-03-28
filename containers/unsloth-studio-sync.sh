@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+source "$(dirname "$0")/../lib.sh"
 # Launcher for NVIDIA Sync — starts container, returns immediately
 # Sync handles auto-open via port config
 PORT=8000
@@ -19,6 +20,7 @@ docker run -d \
   -p 0.0.0.0:${PORT}:${PORT} \
   -v "$HOME/.cache/huggingface:/root/.cache/huggingface" \
   -v "$HOME/unsloth-data:/workspace/work" \
+  $(build_extra_mounts) \
   --restart unless-stopped \
   nvcr.io/nvidia/pytorch:25.11-py3 \
   bash -c '\

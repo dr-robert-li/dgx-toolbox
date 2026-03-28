@@ -87,3 +87,24 @@ sync_exit() {
 ensure_dirs() {
   mkdir -p "$@"
 }
+
+# Build extra -v flags from EXTRA_MOUNTS env var
+# Format: EXTRA_MOUNTS="/host/a:/container/a,/host/b:/container/b"
+# Comma-separated mount specs, each spec is host_path:container_path
+# Invalid specs (no colon, empty segments) are skipped with warning to stderr
+# Returns: string of "-v /host/a:/container/a -v /host/b:/container/b" or empty
+build_extra_mounts() {
+  [ -z "${EXTRA_MOUNTS:-}" ] && return 0
+  local mounts=()
+  local IFS=','
+  for spec in $EXTRA_MOUNTS; do
+    # Reset IFS for subshell trim
+    spec=$(IFS=' ' ; echo "$spec" | xargs)  # trim whitespace
+    if [[ "$spec" != *:* ]] || [[ -z "${spec%%:*}" ]] || [[ -z "${spec#*:}" ]]; then
+      echo "Warning: skipping invalid mount spec: '$spec'" >&2
+      continue
+    fi
+    mounts+=("-v" "$spec")
+  done
+  IFS=' ' ; echo "${mounts[*]}"
+}

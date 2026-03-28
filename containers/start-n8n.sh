@@ -11,6 +11,7 @@ create_n8n() {
     --name "$CONTAINER_NAME" \
     -p 0.0.0.0:${PORT}:${PORT} \
     -v ~/.n8n:/home/node/.n8n \
+    $(build_extra_mounts) \
     --restart unless-stopped \
     n8nio/n8n
 }
