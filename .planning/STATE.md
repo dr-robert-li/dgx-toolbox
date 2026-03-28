@@ -4,7 +4,7 @@ milestone: v1.1
 milestone_name: Safety Harness
 status: "Roadmap created, ready for `/gsd:plan-phase 11`"
 stopped_at: Completed 12-01-PLAN.md
-last_updated: "2026-03-24T05:03:35.639Z"
+last_updated: "2026-03-24T05:06:29.841Z"
 last_activity: 2026-03-24 — v1.2 roadmap created
 progress:
   total_phases: 12
@@ -150,6 +150,7 @@ Recent decisions affecting current work:
 | # | Description | Date | Commit | Status | Directory |
 |---|-------------|------|--------|--------|-----------|
 | 260322-m8z | autoresearch launcher with DGX Spark tuning and data source selection | 2026-03-22 | 5a8bb7e | Verified | [260322-m8z-autoresearch-launcher-with-dgx-spark-tun](./quick/260322-m8z-autoresearch-launcher-with-dgx-spark-tun/) |
+| 260328-fkw | flexible extra bind mount support via EXTRA_MOUNTS env var in all container scripts | 2026-03-28 | 523ff20 | Verified | [260328-fkw-add-flexible-extra-bind-mount-support-to](./quick/260328-fkw-add-flexible-extra-bind-mount-support-to/) |
 
 ### Blockers/Concerns
 
