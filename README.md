@@ -1,6 +1,6 @@
 # DGX Spark Toolbox
 
-![Version](https://img.shields.io/badge/version-1.2.1-blue)
+![Version](https://img.shields.io/badge/version-1.2.2-blue)
 ![Tests](https://github.com/dr-robert-li/dgx-toolbox/actions/workflows/test.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![Bash](https://img.shields.io/badge/bash-5.0%2B-4EAA25?logo=gnubash&logoColor=white)
@@ -1111,6 +1111,30 @@ Key aliases:
 | `harness` / `harness-stop` | Start/stop safety harness gateway |
 | `hitl` | Launch HITL review dashboard |
 | `docker-stop-all` | Stop all running containers |
+
+## Using DGX Toolbox from External Projects
+
+The `examples/` directory contains drop-in files for integrating DGX Toolbox into your own projects:
+
+| File | Purpose |
+|------|---------|
+| `examples/dgx_toolbox.py` | Python execution engine — resolves config, validates preconditions, launches containers, executes commands |
+| `examples/dgx_toolbox.yaml` | Sample YAML config — maps component names to container scripts, workdirs, pinned deps, and validation paths |
+
+```bash
+# Copy into your project
+cp ~/dgx-toolbox/examples/dgx_toolbox.py  your-project/scripts/dgx_toolbox.py
+cp ~/dgx-toolbox/examples/dgx_toolbox.yaml your-project/config/dgx_toolbox.yaml
+
+# Use from Python
+from scripts.dgx_toolbox import get_toolbox
+
+dgx = get_toolbox()
+dgx.ensure_ready("training")
+dgx.execute("training", "python", "train.py")
+```
+
+Edit the YAML to point at your container names, workdirs, and validation paths. The `dgx_toolbox_path` setting (or `DGX_TOOLBOX_PATH` env var) tells the engine where your dgx-toolbox clone lives.
 
 ## GPU Requirements File
 

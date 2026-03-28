@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-03-28 — Example Entry Points (v1.2.2)
+
+### Added
+
+- **Example entry points** — `examples/dgx_toolbox.py` (Python execution engine) and `examples/dgx_toolbox.yaml` (sample config) for integrating DGX Toolbox into external projects. Copy both files into your project and customize the YAML to map your containers, workdirs, and pinned deps
+- **README** — New "Using DGX Toolbox from External Projects" section with usage examples
+
 ## 2026-03-28 — Extra Bind Mounts (v1.2.1)
 
 ### Added
