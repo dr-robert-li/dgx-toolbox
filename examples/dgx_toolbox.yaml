@@ -1,0 +1,107 @@
+# DGX Toolbox Configuration — Sample for External Projects
+#
+# Copy this file to your project at: config/dgx_toolbox.yaml
+# Copy dgx_toolbox.py to: scripts/dgx_toolbox.py
+#
+# Then use from your project:
+#     from scripts.dgx_toolbox import get_toolbox
+#     dgx = get_toolbox()
+#     dgx.ensure_ready("training")
+#     dgx.execute("training", "python", "train.py")
+#
+# The dgx_toolbox_path can also be overridden via DGX_TOOLBOX_PATH env var.
+
+dgx_toolbox_path: ~/dgx-toolbox
+
+# ── Component paths (relative to dgx_toolbox_path) ──────────────────────────
+# These map friendly names to container launch scripts in dgx-toolbox.
+# See dgx-toolbox/containers/, inference/, eval/, data/ for available scripts.
+components:
+  # Training containers
+  unsloth_studio: containers/unsloth-studio.sh
+  ngc_pytorch: containers/ngc-pytorch.sh
+
+  # Inference services
+  vllm: inference/start-vllm.sh
+  litellm: inference/start-litellm.sh
+
+  # Evaluation
+  eval_toolbox: eval/eval-toolbox.sh
+
+  # Data processing
+  data_toolbox: data/data-toolbox.sh
+
+  # Utilities
+  status: status.sh
+  modelstore: modelstore.sh
+
+# ── Ports ────────────────────────────────────────────────────────────────────
+ports:
+  vllm: 8020
+  litellm: 4000
+  open_webui: 12000
+
+# ── Container mapping ───────────────────────────────────────────────────────
+# Maps logical names to Docker container names and workdirs.
+# The workdir is where your project gets mounted inside the container.
+containers:
+  training:
+    container_name: unsloth-studio      # or ngc-pytorch, etc.
+    component: unsloth_studio           # matches key in 'components' above
+    workdir: /workspace/my-project      # where your project is mounted
+    purpose: "Model training and fine-tuning"
+  inference:
+    container_name: vllm
+    component: vllm
+    workdir: null                       # vllm manages its own workspace
+    purpose: "Model serving via vLLM"
+
+# ── Extra bind mounts ───────────────────────────────────────────────────────
+# These are passed to dgx-toolbox via EXTRA_MOUNTS env var.
+# Format: host_path:container_path (comma-separated for multiple).
+# {project_root} is replaced with the project's root directory at runtime.
+extra_mounts:
+  project: "{project_root}:/workspace/my-project"
+
+# ── Pinned dependency versions ───────────────────────────────────────────────
+# Ensures reproducible environments. Installed via pip inside containers.
+# Remove or modify based on your project's requirements.
+pinned_versions:
+  transformers: "4.56.2"
+  datasets: "4.3.0"
+
+# ── Extra pip packages ──────────────────────────────────────────────────────
+# Additional packages to install in containers (beyond pinned_versions).
+extra_deps:
+  - pyyaml
+  - wandb
+
+# ── Validation ───────────────────────────────────────────────────────────────
+# Paths checked by dgx.validate() — relative to your project root.
+validation_paths:
+  training_data: data/train.jsonl
+  config: config/train_config.yaml
+
+# File checked inside container to verify the project mount is working.
+mount_check_file: pyproject.toml
+
+# Python imports to verify in the container (ensures deps are installed).
+required_imports:
+  - torch
+  - numpy
+  - transformers
+
+# ── Status artifacts ─────────────────────────────────────────────────────────
+# Files/dirs checked by dgx.status_report() to track pipeline progress.
+# type: "file" checks existence, type: "glob" counts matching files.
+status_artifacts:
+  training_data_exists:
+    path: data/train.jsonl
+    type: file
+  model_checkpoints:
+    path: outputs/checkpoints
+    type: glob
+    pattern: "checkpoint-*"
+  model_merged:
+    path: outputs/merged/config.json
+    type: file
