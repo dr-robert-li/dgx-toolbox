@@ -5,7 +5,7 @@ milestone_name: Safety Harness
 status: "Roadmap created, ready for `/gsd:plan-phase 11`"
 stopped_at: Completed 12-01-PLAN.md
 last_updated: "2026-03-24T05:06:29.841Z"
-last_activity: 2026-03-24 — v1.2 roadmap created
+last_activity: 2026-03-28 — Completed quick task 260328-fkw: Add flexible extra bind mount support to all container scripts
 progress:
   total_phases: 12
   completed_phases: 12
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-03-24)
 Phase: 11 (Pipeline Wiring) — not started
 Plan: —
 Status: Roadmap created, ready for `/gsd:plan-phase 11`
-Last activity: 2026-03-24 — v1.2 roadmap created
+Last activity: 2026-03-28 — Completed quick task 260328-fkw: flexible extra bind mount support
 
 Progress: [░░░░░░░░░░] 0% (v1.2)
 
