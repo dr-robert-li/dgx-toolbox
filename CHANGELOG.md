@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-03-28 — Extra Bind Mounts (v1.2.1)
+
+### Added
+
+- **Extra bind mounts** — All container scripts now support `EXTRA_MOUNTS` env var for mounting additional host directories (e.g., `EXTRA_MOUNTS="$HOME/projects/myproject:/workspace/myproject"`). Comma-separated for multiple mounts. Invalid specs warn to stderr and are skipped. Implemented via shared `build_extra_mounts()` in `lib.sh`
+
+### Changed
+
+- **Container scripts** — `unsloth-studio.sh`, `unsloth-studio-sync.sh`, `ngc-pytorch.sh`, `ngc-jupyter.sh`, and `start-n8n.sh` all source `lib.sh` and include extra mount support
+
 ## 2026-03-25 — Autoresearch Integration (v1.2)
 
 ### Added

@@ -1,6 +1,6 @@
 # DGX Spark Toolbox
 
-![Version](https://img.shields.io/badge/version-1.2-blue)
+![Version](https://img.shields.io/badge/version-1.2.1-blue)
 ![Tests](https://github.com/dr-robert-li/dgx-toolbox/actions/workflows/test.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![Bash](https://img.shields.io/badge/bash-5.0%2B-4EAA25?logo=gnubash&logoColor=white)
@@ -97,6 +97,20 @@ Shared layers mean `eval-toolbox` and `data-toolbox` rebuild in seconds when onl
 | `build-toolboxes.sh` | Build all Docker images: base → eval + data (alias: `build-all`) |
 | `status.sh` | Show all services, image sizes, and disk usage (alias: `dgx-status`) |
 | `lib.sh` | Shared functions for launcher scripts (sourced, not run directly) |
+
+### Extra Bind Mounts
+
+All container scripts support mounting additional host directories via the `EXTRA_MOUNTS` environment variable. This is useful for mounting project directories into containers without modifying scripts.
+
+```bash
+# Mount a single project directory
+EXTRA_MOUNTS="$HOME/Desktop/projects/wp-finetune:/workspace/wp-finetune" unsloth-studio
+
+# Mount multiple directories (comma-separated)
+EXTRA_MOUNTS="/data/models:/workspace/models,/data/datasets:/workspace/datasets" ngc-pytorch
+```
+
+Docker does not follow host symlinks, so bind-mounting is the correct way to make host directories visible inside containers.
 
 ### Inference Playground
 

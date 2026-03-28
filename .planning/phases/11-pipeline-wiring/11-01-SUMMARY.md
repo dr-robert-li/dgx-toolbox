@@ -113,6 +113,17 @@ For screen-data.sh to work:
 - DATA-01, DATA-02, DATA-03 requirements complete
 - Plan 11-02 (TRSF-01/02/03 + MREG-01/02/03 — eval-checkpoint.sh, autoresearch-deregister.sh) can proceed
 
+## Self-Check: PASSED
+
+All artifacts verified:
+- karpathy-autoresearch/launch-autoresearch.sh — FOUND
+- karpathy-autoresearch/launch-autoresearch-sync.sh — FOUND
+- scripts/screen-data.sh — FOUND
+- scripts/test-data-integration.sh — FOUND
+- .planning/phases/11-pipeline-wiring/11-01-SUMMARY.md — FOUND
+- commit d646160 (Task 1) — FOUND
+- commit 983d852 (Task 2) — FOUND
+
 ---
 *Phase: 11-pipeline-wiring*
 *Completed: 2026-03-24*
