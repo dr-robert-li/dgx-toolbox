@@ -49,6 +49,7 @@ check_service "triton-trtllm" "8010"
 echo ""
 echo "FINE-TUNING"
 check_service "unsloth-studio" "8000"
+check_service "unsloth-headless" ""
 
 echo ""
 echo "DATA ENGINEERING"
