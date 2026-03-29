@@ -130,7 +130,7 @@ dgx-toolbox/
 
 - `data-toolbox/Dockerfile`: Python packages for data engineering (pandas, polars, duckdb, datatrove, distilabel, etc.)
 
-- `eval-toolbox/Dockerfile`: Python packages for evaluation (lm-eval, ragas, torchmetrics, wandb, mlflow, etc.)
+- `eval-toolbox/Dockerfile`: Python packages for evaluation (lm-eval, ragas, torchmetrics, mlflow, etc.)
 
 - `start-litellm.sh`: Proxy initialization, container creation, config mounting, log streaming
 

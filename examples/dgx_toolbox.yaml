@@ -74,7 +74,7 @@ pinned_versions:
 # Additional packages to install in containers (beyond pinned_versions).
 extra_deps:
   - pyyaml
-  - wandb
+  - mlflow
 
 # ── Validation ───────────────────────────────────────────────────────────────
 # Paths checked by dgx.validate() — relative to your project root.

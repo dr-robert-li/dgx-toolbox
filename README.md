@@ -80,7 +80,7 @@ dgx-status
 ```
 nvcr.io/nvidia/pytorch:26.02-py3  (21GB, CUDA + PyTorch)
   └─ base-toolbox                 (shared: pandas, pyarrow, datasets, openai, scikit-learn, typer, rich)
-       ├─ eval-toolbox            (+lm-eval, ragas, torchmetrics, wandb, mlflow, tritonclient)
+       ├─ eval-toolbox            (+lm-eval, ragas, torchmetrics, mlflow, tritonclient)
        └─ data-toolbox            (+polars, duckdb, datatrove, distilabel, cleanlab, trafilatura, pdfplumber)
 ```
 
@@ -439,7 +439,7 @@ A general-purpose evaluation container built on `base-toolbox` with metrics, LLM
 | `eval/eval-toolbox.sh` | Interactive eval shell with GPU access | — |
 | `eval/eval-toolbox-jupyter.sh` | Jupyter Lab with eval stack | 8889 |
 
-**Included libraries:** `lm-eval`, `ragas`, `evaluate`, `datasets`, `torchmetrics`, `pycocotools`, `albumentations`, `scikit-learn`, `pandas`, `scipy`, `wandb`, `mlflow`, `tritonclient[all]`, `openai`, `typer`, `rich`
+**Included libraries:** `lm-eval`, `ragas`, `evaluate`, `datasets`, `torchmetrics`, `pycocotools`, `albumentations`, `scikit-learn`, `pandas`, `scipy`, `mlflow`, `tritonclient[all]`, `openai`, `typer`, `rich`
 
 Data directories are mounted from the host:
 

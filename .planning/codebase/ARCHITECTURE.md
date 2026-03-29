@@ -39,7 +39,7 @@
 **Evaluation Layer:**
 - Purpose: Benchmark models against datasets and compute metrics
 - Location: `eval-toolbox-build.sh` → `eval-toolbox.sh`, `eval-toolbox-jupyter.sh`
-- Contains: lm-eval, ragas, torchmetrics, evaluate, scikit-learn, wandb, mlflow, Triton client, OpenAI client
+- Contains: lm-eval, ragas, torchmetrics, evaluate, scikit-learn, mlflow, Triton client, OpenAI client
 - Depends on: NGC PyTorch base, host eval directories (`~/eval/*`), LiteLLM proxy for model access
 - Used by: ML engineers for benchmarking and evaluation
 
@@ -86,7 +86,7 @@
 1. Fine-tuned models checkpointed to `~/eval/models`
 2. Eval datasets in `~/eval/datasets`
 3. Eval toolbox runs lm-eval/ragas against vLLM or Ollama via LiteLLM proxy
-4. Results logged to `~/eval/runs` (wandb, mlflow)
+4. Results logged to `~/eval/runs` (mlflow)
 5. Triton TRT-LLM can serve optimized engines from `~/triton/engines` for production evaluation
 
 **State Management:**

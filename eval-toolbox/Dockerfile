@@ -6,7 +6,6 @@ RUN pip install --no-cache-dir \
       "torchmetrics" \
       "pycocotools" \
       "albumentations" \
-      "wandb" \
       "mlflow" \
       "lm-eval" \
       "ragas" \

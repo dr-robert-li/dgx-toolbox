@@ -166,7 +166,7 @@
 
 ### Added
 
-- **eval-toolbox/Dockerfile** — NGC PyTorch base + Python-level eval stack (lm-eval, ragas, torchmetrics, pycocotools, wandb, mlflow, tritonclient, etc.)
+- **eval-toolbox/Dockerfile** — NGC PyTorch base + Python-level eval stack (lm-eval, ragas, torchmetrics, pycocotools, mlflow, tritonclient, etc.)
 - **eval-toolbox-build.sh** — Build the eval-toolbox Docker image
 - **eval-toolbox.sh** — Interactive eval container with GPU access and host mounts (`~/eval/`)
 - **eval-toolbox-jupyter.sh** — Jupyter Lab on eval-toolbox image (port 8889)

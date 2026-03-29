@@ -87,7 +87,7 @@
 
 **Error Tracking:**
 - None integrated at infrastructure level
-- Optional: wandb and mlflow available for experiment tracking
+- Optional: mlflow available for experiment tracking (local file store)
 
 **Logs:**
 - Docker logs (via `docker logs -f`)
@@ -97,8 +97,7 @@
 - Unsloth Studio: Container logs via `docker logs unsloth-studio`
 
 **Experiment Tracking:**
-- wandb - Weights & Biases integration (eval toolbox has SDK pre-installed)
-- mlflow - MLflow tracking server client (eval toolbox has SDK pre-installed)
+- mlflow - MLflow experiment tracking (eval toolbox has SDK pre-installed, local file store)
 
 ## CI/CD & Deployment
 
@@ -154,7 +153,7 @@
 **Outgoing:**
 - None configured
 - Distilabel: Can call cloud APIs (OpenAI, Anthropic, etc.) via LiteLLM
-- wandb/mlflow: Log data to respective platforms if configured
+- mlflow: Log data to local file store if configured
 
 ## Service Discovery & Networking
 

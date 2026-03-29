@@ -59,7 +59,7 @@
 - Jupyter Lab - Interactive development environment
 
 **Testing & Monitoring:**
-- wandb - Experiment tracking and model logging
+- mlflow - Experiment tracking and model logging (local file store, no cloud)
 - mlflow - ML model tracking and serving
 - tritonclient - Python client for Triton inference
 
