@@ -1,6 +1,6 @@
 # DGX Spark Toolbox
 
-![Version](https://img.shields.io/badge/version-1.2.2-blue)
+![Version](https://img.shields.io/badge/version-1.2.3-blue)
 ![Tests](https://github.com/dr-robert-li/dgx-toolbox/actions/workflows/test.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![Bash](https://img.shields.io/badge/bash-5.0%2B-4EAA25?logo=gnubash&logoColor=white)

@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-03-31 — Headless Training & MLflow (v1.2.3)
+
+### Added
+
+- **Headless Unsloth container** — `containers/unsloth-headless.sh` and `unsloth-headless-sync.sh` for autonomous training pipelines. Installs Unsloth deps then idles via `sleep infinity`, avoiding Studio UI restart loops on NGC base images
+
+### Changed
+
+- **MLflow replaces W&B** — Switched from Weights & Biases to MLflow with local file store for experiment tracking, eliminating cloud account dependency during training and evaluation
+
+### Fixed
+
+- **Memory fragmentation OOM** — Set `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` in headless containers to prevent caching allocator fragmentation on DGX Spark's unified memory architecture
+
 ## 2026-03-28 — Example Entry Points (v1.2.2)
 
 ### Added
