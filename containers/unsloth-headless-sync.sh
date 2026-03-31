@@ -16,6 +16,7 @@ docker run -d \
   --name "$CONTAINER_NAME" \
   --gpus all \
   --ipc=host \
+  -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
   -v "$HOME/.cache/huggingface:/root/.cache/huggingface" \
   -v "$HOME/unsloth-data:/workspace/work" \
   $(build_extra_mounts) \
