@@ -68,12 +68,15 @@ class GPUSampler:
             No subprocess calls are made at any point.
         """
         if self._mock:
+            # Memory is always read from /proc/meminfo (UMA architecture).
+            # GPU NVML metrics (watts, temp, util) fall back to 0 when
+            # libnvidia-ml.so.1 is absent, but /proc/meminfo is always available.
             return {
                 "watts": 0.0,
                 "temperature_c": 0,
                 "gpu_util_pct": 0,
-                "mem_available_gb": 0.0,
-                "page_cache_gb": 0.0,
+                "mem_available_gb": self._read_meminfo("MemAvailable"),
+                "page_cache_gb": self._read_meminfo("Cached"),
                 "mock": True,
             }
 
