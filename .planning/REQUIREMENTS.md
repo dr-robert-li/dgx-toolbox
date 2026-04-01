@@ -1,6 +1,6 @@
 # Requirements: DGX Toolbox
 
-**Defined:** 2026-03-21 (v1.0), 2026-03-22 (v1.1)
+**Defined:** 2026-03-21 (v1.0), 2026-03-22 (v1.1), 2026-04-01 (v1.3)
 **Core Value:** Models are always accessible regardless of which tier they're on while the hot drive never fills up with stale models.
 
 ## v1.0 Requirements (Complete)
@@ -134,9 +134,9 @@ Requirements for the AI safety harness milestone. Each maps to roadmap phases.
 - [x] **HITL-03**: Reviewer corrections feed back into threshold calibration and fine-tuning data
 - [x] **HITL-04**: Dashboard works headlessly (API-only mode) when no UI is needed
 
-## v1.2 Requirements — Autoresearch Integration
+## v1.2 Requirements — Autoresearch Integration (Complete)
 
-Requirements for the autoresearch end-to-end pipeline milestone. Each maps to roadmap phases.
+Requirements for the autoresearch end-to-end pipeline milestone.
 
 ### Data Integration
 
@@ -160,6 +160,48 @@ Requirements for the autoresearch end-to-end pipeline milestone. Each maps to ro
 
 - [x] **DEMO-01**: A runnable demo script executes the full pipeline with a small sample dataset end-to-end
 - [x] **DEMO-02**: Step-by-step documentation walkthrough in README covering data prep → training → safety eval → inference
+
+## v1.3 Requirements — GPU Telemetry and Adaptive Training Support
+
+Requirements for the telemetry module milestone. Each maps to Phase 13.
+
+### Telemetry Sampling
+
+- [ ] **TELEM-01**: A caller can import `from telemetry.sampler import GPUSampler` when `dgx-toolbox/` is on PYTHONPATH and receive a structured dict with GPU watts, temperature, utilization, memory (with /proc/meminfo fallback for UMA devices), MemAvailable, and page cache without invoking any subprocess
+- [ ] **TELEM-02**: The sampler uses pynvml exclusively for GPU metrics (not `nvidia-smi` subprocess) and falls back to `/proc/meminfo` for memory when `nvmlDeviceGetMemoryInfo` returns N/A (GB10 UMA behavior)
+- [ ] **TELEM-03**: A single `sample()` call returns a complete snapshot dict; an optional `append_jsonl(path)` call appends a newline-delimited JSON record to the specified file
+- [ ] **TELEM-04**: The sampler initializes and runs without GPU hardware present (mock mode) so tests pass in CI without a physical GPU
+
+### UMA Memory Model
+
+- [ ] **TELEM-05**: `uma_model.sample_baseline()` drops page cache before sampling (via `/proc/sys/vm/drop_caches`) and returns a baseline dict with MemAvailable, Cached (page cache), idle GPU watts, and a timestamp
+- [ ] **TELEM-06**: `uma_model.calculate_headroom(baseline, current, tier_headroom_pct, jitter_margin_gb=5)` returns `{safe_threshold, headroom_gb, headroom_pct}` accounting for the 5 GB jitter margin; `pin_memory` is always False for UMA; `prefetch_factor` is capped at 4
+
+### Effective Scale
+
+- [ ] **TELEM-07**: `effective_scale.compute(raw_params, quant_mode, training_framework, gradient_checkpointing_mode, lora_rank, seq_len, optimizer, model_weight_gb)` returns `{effective_params, tier: {batch_cap, min_headroom_pct}}` using the multiplier tables (quant × grad_ckpt × seq_len × lora_rank × optimizer)
+- [ ] **TELEM-08**: The effective scale formula applies the correct tier thresholds: ≤1B → (cap=64, headroom=15%), 1–13B → (cap=16, headroom=20%), 13–30B → (cap=8, headroom=20%), 30B+ → (cap=4, headroom=25%)
+
+### Anchor Store
+
+- [ ] **TELEM-09**: `anchor_store.AnchorStore` persists anchor records to a JSON file, keyed by `config_hash` (SHA-256 of model_id + quant_mode + framework + grad_ckpt + lora_rank + seq_len + optimizer + batch_size + grad_accum), and automatically expires records older than 7 days or with stale config_hash components
+- [ ] **TELEM-10**: The anchor store applies override rules: COMPLETED status raises the ceiling to `max(tier_cap, N + step_size)`; WATCHDOG or OOM status sets a hard cap at `N - step_size`; HANG status logs only and never creates a batch cap
+
+### Probe Protocol
+
+- [ ] **TELEM-11**: `probe.prepare_probe(current_config, proposed_changes)` writes a rollback config and probe config to disk and returns `{rollback_config_path, probe_config_path, results_path}` — the consuming project runs 3–5 training steps and writes telemetry to `results_path`
+- [ ] **TELEM-12**: `probe.evaluate_probe(results_path, baseline, tier_headroom, jitter_margin=5)` reads the results file, compares peak memory against the safe threshold, and returns `{action: "commit"|"revert", reason, anchor_record}` for the consuming project to act on
+
+### Failure Classification
+
+- [ ] **TELEM-13**: `failure_classifier.classify_failure(final_readings, exit_code, training_completed)` classifies the training outcome as one of: `clean` (normal exit), `oom` (GPU idle + MemAvailable < 1 GB), `hang` (GPU util < 10% + CPU > 90% for 60 s + MemAvailable > 10 GB), `thermal` (temp ≥ 85°C sustained), or `pressure` (MemAvailable < 3 GB during training), with supporting evidence dict
+- [ ] **TELEM-14**: HANG classification never produces a batch cap recommendation — it returns `{classification: "hang", evidence: {...}}` with no `batch_cap` field, so callers cannot accidentally apply a backoff on a hang outcome
+
+### Package and Integration
+
+- [ ] **TELEM-15**: The telemetry package has a `pyproject.toml` entry in `dgx-toolbox/telemetry/` and is installable as an editable package (`pip install -e dgx-toolbox/telemetry/`); all modules are Python 3.10+ compatible and aarch64 safe
+- [ ] **TELEM-16**: `dgx_toolbox.py`'s `status_report()` includes a `gpu_telemetry` section with the latest sampler snapshot when pynvml is available, and omits the section gracefully when it is not
+- [ ] **TELEM-17**: `status.sh` displays a GPU TELEMETRY section with current watts, temperature, and utilization when the sampler is installed, falling back to a "sampler not installed" notice otherwise
 
 ## v2 Requirements
 
@@ -281,14 +323,32 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MREG-03 | Phase 11 | Complete |
 | DEMO-01 | Phase 12 | Complete |
 | DEMO-02 | Phase 12 | Complete |
+| TELEM-01 | Phase 13 | Pending |
+| TELEM-02 | Phase 13 | Pending |
+| TELEM-03 | Phase 13 | Pending |
+| TELEM-04 | Phase 13 | Pending |
+| TELEM-05 | Phase 13 | Pending |
+| TELEM-06 | Phase 13 | Pending |
+| TELEM-07 | Phase 13 | Pending |
+| TELEM-08 | Phase 13 | Pending |
+| TELEM-09 | Phase 13 | Pending |
+| TELEM-10 | Phase 13 | Pending |
+| TELEM-11 | Phase 13 | Pending |
+| TELEM-12 | Phase 13 | Pending |
+| TELEM-13 | Phase 13 | Pending |
+| TELEM-14 | Phase 13 | Pending |
+| TELEM-15 | Phase 13 | Pending |
+| TELEM-16 | Phase 13 | Pending |
+| TELEM-17 | Phase 13 | Pending |
 
 **Coverage:**
 - v1.0 requirements: 38 total (38 complete)
 - v1.1 requirements: 39 total (39 complete)
-- v1.2 requirements: 11 total (0 complete, 11 pending)
-- Mapped to phases: 88/88 (100%)
+- v1.2 requirements: 11 total (11 complete)
+- v1.3 requirements: 17 total (0 complete, 17 pending)
+- Mapped to phases: 105/105 (100%)
 - Unmapped: 0
 
 ---
-*Requirements defined: 2026-03-21 (v1.0), 2026-03-22 (v1.1), 2026-03-24 (v1.2)*
-*Last updated: 2026-03-24 after v1.2 roadmap creation*
+*Requirements defined: 2026-03-21 (v1.0), 2026-03-22 (v1.1), 2026-03-24 (v1.2), 2026-04-01 (v1.3)*
+*Last updated: 2026-04-01 after v1.3 requirements definition*
