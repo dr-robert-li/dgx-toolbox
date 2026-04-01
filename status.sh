@@ -83,3 +83,30 @@ for dir in ~/data ~/eval ~/triton ~/unsloth-data ~/.n8n ~/label-studio-data ~/.c
 done
 
 echo ""
+echo "GPU TELEMETRY"
+if python3 -c "from telemetry.sampler import GPUSampler" 2>/dev/null; then
+  # Package importable — try to sample (may fail at runtime)
+  python3 - <<'PYEOF' || echo "  sampling failed"
+try:
+    from telemetry.sampler import GPUSampler
+    s = GPUSampler()
+    d = s.sample()
+    if d.get("mock"):
+        print("  Mode:         mock (no GPU detected)")
+    print(f"  Watts:        {d['watts']!s:>8}")
+    print(f"  Temperature:  {d['temperature_c']!s:>8}")
+    print(f"  Utilization:  {d['gpu_util_pct']!s:>8}")
+    if d['mem_available_gb'] is not None:
+        print(f"  MemAvailable: {d['mem_available_gb']:.1f} GB")
+    else:
+        print("  MemAvailable:     N/A")
+except Exception as e:
+    import sys
+    print(f"  sampling failed: {e}", file=sys.stderr)
+    sys.exit(1)
+PYEOF
+else
+  echo "  sampler not installed"
+fi
+
+echo ""

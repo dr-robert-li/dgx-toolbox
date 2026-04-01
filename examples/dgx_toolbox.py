@@ -544,7 +544,18 @@ class DGXToolbox:
             else:
                 artifacts[name] = full.exists()
 
-        return {
+        # GPU telemetry (optional — package may not be installed, or sampling may fail)
+        # Catches broad Exception (not just ImportError) to handle runtime sampling
+        # failures gracefully. Addresses review concern: ImportError too narrow.
+        gpu_telemetry = None
+        try:
+            from telemetry.sampler import GPUSampler
+            sampler = GPUSampler()
+            gpu_telemetry = sampler.sample()
+        except Exception:
+            pass  # telemetry unavailable or sampling failed — omit section
+
+        result = {
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "dgx_toolbox_path": str(self._base),
             "dgx_toolbox_available": self.available,
@@ -561,6 +572,9 @@ class DGXToolbox:
                 "litellm": self.litellm_endpoint(),
             },
         }
+        if gpu_telemetry is not None:
+            result["gpu_telemetry"] = gpu_telemetry
+        return result
 
     # ── Convenience ──────────────────────────────────────────────────────
 
