@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: Safety Harness
-status: "Roadmap created, ready for `/gsd:plan-phase 11`"
-stopped_at: Completed 12-01-PLAN.md
-last_updated: "2026-03-24T05:06:29.841Z"
-last_activity: 2026-03-28 — Completed quick task 260328-fkw: Add flexible extra bind mount support to all container scripts
+milestone: v1.3
+milestone_name: GPU Telemetry and Adaptive Training Support
+status: "Defining requirements"
+stopped_at: null
+last_updated: "2026-04-01"
+last_activity: 2026-04-01 — Milestone v1.3 started
 progress:
-  total_phases: 12
-  completed_phases: 12
-  total_plans: 27
-  completed_plans: 27
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
   percent: 0
 ---
 
@@ -18,19 +18,19 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-24)
+See: .planning/PROJECT.md (updated 2026-04-01)
 
 **Core value:** Models are always accessible regardless of which tier they're on while the hot drive never fills up with stale models.
-**Current focus:** v1.2 Autoresearch Integration — Phase 11 ready for planning
+**Current focus:** v1.3 GPU Telemetry and Adaptive Training Support — Defining requirements
 
 ## Current Position
 
-Phase: 11 (Pipeline Wiring) — not started
+Phase: Not started (defining requirements)
 Plan: —
-Status: Roadmap created, ready for `/gsd:plan-phase 11`
-Last activity: 2026-03-28 — Completed quick task 260328-fkw: flexible extra bind mount support
+Status: Defining requirements
+Last activity: 2026-04-01 — Milestone v1.3 started
 
-Progress: [░░░░░░░░░░] 0% (v1.2)
+Progress: [░░░░░░░░░░] 0% (v1.3)
 
 ## Accumulated Context
 

@@ -60,16 +60,18 @@ Models are always accessible regardless of which tier they're on — symlinks en
 - Model hosting/serving — LiteLLM and vLLM handle that; harness is a safety layer only
 - Web UI for policy editing — policies are code/config, not a CMS
 
-## Current Milestone: v1.2 Autoresearch Integration
+## Current Milestone: v1.3 GPU Telemetry and Adaptive Training Support
 
-**Goal:** End-to-end data → training → inferencing pipeline connecting Karpathy autoresearch to local data sources and models on DGX Spark, with safety harness evals after each training experiment, and the resulting model available for inference behind the harness.
+**Goal:** Project-agnostic GPU telemetry primitives so any project training on a DGX Spark can sample hardware state, classify failures, and anchor empirical batch configs — without implementing hardware calls themselves.
 
 **Target features:**
-- Config + glue scripts connecting autoresearch to local datasets (~/data/) and HF cache models
-- Post-training safety eval hook: after each autoresearch experiment, run harness replay evals on the checkpoint
-- Model registration: trained checkpoints automatically registered in LiteLLM/vLLM for inference behind the safety harness
-- Runnable demo script showing the full pipeline with a small sample dataset
-- Step-by-step documentation walkthrough
+- GPUSampler (pynvml, /proc/meminfo UMA fallback) — no subprocess calls
+- UMA memory model (baseline sampling, headroom calculation, jitter margin)
+- Effective scale formula (multiplier tables, tier classification)
+- Anchor store (JSON persistence, OOM/COMPLETED/HANG/WATCHDOG override rules)
+- Probe protocol (prepare/evaluate cycle for batch size changes)
+- Failure classifier (clean/oom/hang/thermal/pressure classification)
+- Package integration (dgx_toolbox.py bridge, status.sh GPU telemetry block)
 
 ## Context
 
@@ -101,5 +103,22 @@ Models are always accessible regardless of which tier they're on — symlinks en
 | Single `modelstore` CLI + individual scripts | CLI for interactive use, individual scripts for cron/hooks/Sync | — Pending |
 | Bash only (no Python) | Core scripts run on host, not in containers; minimize dependencies | — Pending |
 
+## Evolution
+
+This document evolves at phase transitions and milestone boundaries.
+
+**After each phase transition** (via `/gsd:transition`):
+1. Requirements invalidated? → Move to Out of Scope with reason
+2. Requirements validated? → Move to Validated with phase reference
+3. New requirements emerged? → Add to Active
+4. Decisions to log? → Add to Key Decisions
+5. "What This Is" still accurate? → Update if drifted
+
+**After each milestone** (via `/gsd:complete-milestone`):
+1. Full review of all sections
+2. Core Value check — still the right priority?
+3. Audit Out of Scope — reasons still valid?
+4. Update Context with current state
+
 ---
-*Last updated: 2026-03-24 after v1.2 Autoresearch Integration milestone start*
+*Last updated: 2026-04-01 after v1.3 GPU Telemetry milestone start*
