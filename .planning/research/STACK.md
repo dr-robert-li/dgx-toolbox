@@ -1,242 +1,214 @@
 # Stack Research
 
-**Domain:** AI Safety Harness — FastAPI gateway with guardrails, evals, and red teaming on DGX Spark (aarch64)
-**Researched:** 2026-03-22
-**Confidence:** HIGH for core web framework and guardrails; MEDIUM for eval/red-teaming integrations
+**Domain:** GPU Telemetry Primitives — DGX Spark (aarch64, GB10 UMA) monitoring library
+**Researched:** 2026-04-01
+**Confidence:** HIGH for the hardware constraints and fallback strategy; MEDIUM for which NVML calls succeed vs fail on GB10 (community-sourced, no official NVIDIA documentation)
 
 ---
 
-## Context: What Already Exists (Do Not Change)
+## Context: What Already Exists (Do Not Re-Research)
 
-The v1.0 modelstore layer is pure Bash on the host. The safety harness is the **first Python component** in this repo. It runs as a containerized service or virtualenv on top of the existing LiteLLM proxy.
+This document covers ONLY the new additions for v1.3. The previous stack (v1.1 Safety Harness) is documented in the prior version of this file and remains unchanged.
 
 | Existing Component | Role | Interface Point |
-|-------------------|------|-----------------|
-| LiteLLM proxy | Model routing (Ollama, vLLM, cloud) | Safety harness calls LiteLLM via OpenAI-compatible HTTP |
-| Bash modelstore scripts | Tiered storage | No direct interface — storage is transparent via symlinks |
-| DGX Spark aarch64 + NVIDIA GPU | Hardware | All Python deps must have aarch64 wheels or pure-Python fallback |
+|---|---|---|
+| Python 3.12 + FastAPI + uvicorn | Safety harness gateway | v1.3 telemetry module is pure Python — no new frameworks needed |
+| `harness/pyproject.toml` | Python package definition | GPU telemetry goes in `dgx_toolbox/telemetry/` — same package, new submodule |
+| NGC base image `nvcr.io/nvidia/pytorch:26.02-py3` | Docker runtime | Already includes `libnvidia-ml.so` — no driver installation needed in containers |
+| MLflow | Experiment tracking | May optionally receive telemetry events — already a project dependency |
+
+The v1.3 telemetry module is a **pure-Python library** with no new framework dependencies. Stack additions are limited to monitoring primitives.
 
 ---
 
-## Recommended Stack
+## Critical Hardware Constraint: GB10 UMA Architecture
 
-### Core Framework
+This section must be understood before any implementation decision.
 
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| Python | 3.12 | Runtime | All target libraries support 3.10–3.13; 3.12 is the stable production choice with best wheel availability on aarch64 as of 2026. Avoid 3.13 until NeMo Guardrails explicitly lists it (current support: 3.10–3.13 per 0.21.0 docs). |
-| FastAPI | 0.135.1 | HTTP gateway service — POST /chat and streaming endpoints | Industry-standard async framework for LLM gateways. Native async generator support for SSE streaming. Pydantic v2 built-in for request/response validation. Starlette's `StreamingResponse` pairs directly with NeMo Guardrails' async token generators. |
-| uvicorn[standard] | latest | ASGI server (includes uvloop + httptools) | Required to run FastAPI. The `[standard]` extras install uvloop (faster event loop) and httptools (faster HTTP parsing) — both have aarch64 wheels. For production, run under gunicorn with uvicorn workers. |
-| Pydantic | v2 (bundled with FastAPI) | Request/response models, config schemas | FastAPI has dropped Pydantic v1 support. Use Pydantic Settings for environment-based config (guardrail thresholds, judge model selection, etc.). |
+The DGX Spark GB10 uses **Unified Memory Architecture (UMA)**: 128 GB LPDDR5X is a single physical pool shared between CPU and GPU. There is no discrete framebuffer. This breaks the standard NVML memory reporting path.
 
-### Safety and Guardrails Layer
+**What NVML returns on GB10:**
 
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| nemoguardrails | 0.21.0 | Pre/post model content safety rails: prompt injection, jailbreak, PII, toxicity | NVIDIA's own toolkit, actively maintained (0.21.0 released March 2026). Native streaming support via `chunk_size` and sliding window buffer. Integrates via Python SDK (`LLMRails`, `RailsConfig`) directly inside the FastAPI request handler — no separate process needed for dev. Supports NVIDIA safety NIMs for production GPU-accelerated checks. Requires C++ compiler on aarch64 for the Annoy dependency — install `build-essential` first. |
-| presidio-analyzer + presidio-anonymizer | 2.2.362 | PII detection and redaction in prompts and completions | Microsoft's production PII toolkit. The `analyzer` detects entities; `anonymizer` replaces them. Use as a NeMo Guardrails custom action or standalone pre-processing step. Supports spaCy models for NER — use `en_core_web_lg` for highest recall. The `[transformers]` extra enables transformer-based detection for edge cases. Pure Python — aarch64 compatible without compilation. |
+| NVML call | GB10 result | Notes |
+|---|---|---|
+| `nvmlDeviceGetMemoryInfo()` | `NVML_ERROR_NOT_SUPPORTED` | No discrete framebuffer to query |
+| `nvmlDeviceGetUtilizationRates()` | Returns values (works) | GPU compute utilization reporting functions |
+| `nvmlDeviceGetTemperature()` | Returns values (works) | SoC thermal sensor exposed |
+| `nvmlDeviceGetPowerUsage()` | Returns values (works, sometimes 0W) | Whole-SoC power — not GPU-only |
+| `nvmlDeviceGetCount()` | Returns 1 | One logical device |
 
-### Constitutional AI Layer
+**Consequence for design:** The `GPUSampler` component must treat `nvmlDeviceGetMemoryInfo` as an expected failure and fall back to `/proc/meminfo` parsing for UMA memory state. This is not a bug to fix — it is the correct behavior on this hardware.
 
-NeMo Guardrails does not include a Constitutional AI (CAI) critique-revision loop out of the box. Implement directly via the LiteLLM-compatible call path — no additional library needed for the core loop.
-
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| httpx | 0.28.1 | Async HTTP client for calling LiteLLM proxy (judge model calls in CAI loop) | Fully async with connection pooling. Used to call LiteLLM's `/v1/chat/completions` for both the primary model and the judge model in the self-critique pass. Pairs cleanly with FastAPI's async request handlers. Do not use the `openai` Python SDK directly in the gateway — it adds unnecessary abstraction layers when LiteLLM proxy already normalizes the interface. |
-
-### Authentication and Rate Limiting
-
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| PyJWT | 2.12.1 | JWT token generation and verification for per-tenant auth | FastAPI official docs now recommend PyJWT over python-jose (python-jose is effectively abandoned). Lightweight, actively maintained, aarch64-compatible pure Python. Use `pyjwt[crypto]` for RSA/ECDSA signature support. |
-| slowapi | latest | Per-tenant rate limiting as FastAPI dependency | Built on limits library (Flask-Limiter port). Simpler integration than fastapi-limiter for use cases where the identifier is derived from JWT claims. Does not require Redis for single-node deployments — uses in-memory storage. Switch to fastapi-limiter + Redis when multi-worker or multi-process deployment is needed. |
-| passlib[bcrypt] | latest | Password hashing for API key management | Standard FastAPI security recommendation. bcrypt is the preferred algorithm. |
-
-### Trace Logging and Observability
-
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| structlog | 25.5.0 | Structured JSON logging of every request, guardrail decision, CAI critique, and eval result | Processes log events through a pipeline (timestamp → bound context → JSON renderer). Integrates with FastAPI via middleware that binds `request_id` and `tenant_id` to every log line downstream. Pure Python — no compilation needed. Better than stdlib logging for querying traces later. |
-| SQLite + SQLModel | 0.0.37 | Persistent storage of full traces for replay eval harness | SQLModel (SQLAlchemy + Pydantic) is the natural companion to FastAPI (same author). Use SQLite for single-node DGX Spark — no separate database process, traces stored as structured rows. SQLModel's Pydantic integration means request/response models serialize directly into trace rows without adapter code. Upgrade to PostgreSQL if multi-node deployment is needed. |
-
-### Eval Harness
-
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| lm-evaluation-harness (lm-eval) | 0.4.11 | General capability benchmarks (MMLU, HellaSwag, TruthfulQA, etc.) | EleutherAI's standard; used by Hugging Face Open LLM Leaderboard, NVIDIA, Cohere. Points at LiteLLM proxy via `--model openai-completions --model_args base_url=http://localhost:4000` — no special integration code. Install with `pip install lm-eval[vllm]` for GPU-accelerated local eval. Latest: v0.4.11 (Feb 2025). |
-| pytest + httpx (async test client) | latest | Custom replay eval harness against POST /chat | pytest with `pytest-asyncio` lets you replay SQLite-stored traces against the live gateway and assert on guardrail decisions. Use FastAPI's `TestClient` or httpx `AsyncClient` with `ASGITransport` for in-process testing without network overhead. |
-| pytest-asyncio | latest | Async test support for FastAPI endpoint testing | Required for `async def` test functions. Set `asyncio_mode = "auto"` in `pyproject.toml`. |
-
-### Distributed Red Teaming
-
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| garak | 0.14.0 | LLM vulnerability scanner — 100+ attack modules | NVIDIA's own red teaming tool (pure Python, aarch64-compatible, Python >=3.10). Connects to LiteLLM proxy as an OpenAI-compatible endpoint. Run as a CLI scan (`garak --model openai --generator_option api_key=... --generator_option base_url=...`). Results feed back into the eval harness and guardrail threshold calibration. Latest: 0.14.0 (Feb 2026). |
-| deepteam | 1.0.6 | Programmatic red teaming with 20+ attack types and 50+ vulnerability categories | Confident AI's framework — Python-native, importable, configurable via YAML or code. Better for live, feedback-loop red teaming than garak (which is more of a one-shot scanner). Use for the "distributed live red teaming from past critiques/evals/logs" feature — deepteam generates adversarial prompts based on past failure patterns. Python <3.14, >=3.9. |
-| Celery | 5.6.2 | Distributed task queue for async red teaming jobs | Dispatches red teaming jobs across workers without blocking the gateway. Redis as broker (already used for rate limiting Redis backend). Pure Python — aarch64 compatible. Use for long-running garak scans and deepteam red teaming sessions that generate adversarial prompts from historical logs. |
-| Redis | 7.x (system package) | Celery message broker + rate limiter backend | Already standard on Linux. `sudo apt install redis-server` or run in Docker. Single-node Redis is sufficient for this deployment. |
-
-### Development Tools
-
-| Tool | Purpose | Notes |
-|------|---------|-------|
-| uv | Fast Python package/project manager | Replaces pip + venv. `uv venv` + `uv pip install` is significantly faster than pip for the large dependency tree (NeMo + presidio + lm-eval). Single binary, aarch64-compatible. |
-| ruff | Python linting and formatting | Replaces flake8 + isort + black. Single tool, extremely fast. Configure in `pyproject.toml`. |
-| mypy | Static type checking | FastAPI + Pydantic v2 are fully typed; mypy catches integration errors before runtime. |
-| pre-commit | Git hooks for ruff + mypy | Prevents untyped or unlinted code from being committed. |
-| pytest-cov | Test coverage reporting | Track guardrail and CAI logic coverage. |
-| docker compose | Local service orchestration | Run FastAPI gateway + Redis + optional PostgreSQL together for development. Use for CI as well. |
+**Sources:**
+- [NVML Support for DGX Spark — Community Solution](https://forums.developer.nvidia.com/t/nvml-support-for-dgx-spark-grace-blackwell-unified-memory-community-solution/358869) — MEDIUM confidence (community, no official NVML docs confirm)
+- [nvtop GB10 issue #426](https://github.com/Syllo/nvtop/issues/426) — corroborating community evidence
+- [MPS and Telemetry on GB10](https://forums.developer.nvidia.com/t/mps-support-and-telemetry-on-grace-blackwell-gb10-with-unified-memory/363137) — MEDIUM confidence
 
 ---
 
-## Installation
+## Recommended Stack (New Additions Only)
 
-```bash
-# Prerequisites: Python 3.12, build tools for NeMo Guardrails (Annoy C++ extension)
-sudo apt install python3.12 python3.12-venv python3.12-dev build-essential redis-server
+### Core Telemetry Libraries
 
-# Install uv (fast package manager)
-curl -LsSf https://astral.sh/uv/install.sh | sh
+| Technology | Version | Purpose | Why Recommended |
+|---|---|---|---|
+| nvidia-ml-py | 13.595.45 | NVML Python bindings — GPU utilization, temperature, power | Canonical replacement for deprecated `pynvml`. Pure Python (`py3-none-any` wheel), loads `libnvidia-ml.so` via ctypes at runtime. Already present in NGC PyTorch containers (`nvcr.io/nvidia/pytorch:26.02-py3`). Import path unchanged: `from pynvml import nvmlInit, nvmlDeviceGetHandleByIndex, ...`. Version 13.595 corresponds to driver 595, the current DGX Spark release. |
+| psutil | 7.2.0 | UMA memory fallback — reads `/proc/meminfo` fields: `MemTotal`, `MemAvailable`, `MemFree`, `Cached`, `SwapFree` | The only correct way to measure memory state on GB10 UMA when NVML memory reporting fails. psutil's `virtual_memory()` wraps `/proc/meminfo` with a stable API and manylinux aarch64 wheels available. Use `MemAvailable` (not `MemFree`) — `MemAvailable` accounts for reclaimable page cache, which is critical on UMA where the CUDA allocator and page cache share the same physical pool. |
 
-# Create virtualenv and install core dependencies
-uv venv .venv --python 3.12
-source .venv/bin/activate
+### Supporting Libraries
 
-# Core gateway
-uv pip install "fastapi[standard]" uvicorn[standard] pydantic-settings
+| Library | Version | Purpose | When to Use |
+|---|---|---|---|
+| dataclasses (stdlib) | Python 3.12 stdlib | AnchorStore record types, GPUSample named tuples | Use `@dataclass(frozen=True)` for immutable sample records; mutable `@dataclass` for anchor entries. No new dependency — stdlib only. |
+| json (stdlib) | Python 3.12 stdlib | AnchorStore persistence (read/write JSON files to disk) | Use for anchor file serialization. No new dependency — stdlib only. |
+| threading (stdlib) | Python 3.12 stdlib | GPUSampler background polling thread | Use `threading.Thread(daemon=True)` for the sampling loop. Daemon threads exit cleanly when the main process exits — no explicit lifecycle management needed. Use `threading.Event` as a stop signal. |
+| pathlib (stdlib) | Python 3.12 stdlib | Anchor file path resolution, `/proc/meminfo` path construction | Standard. No new dependency. |
 
-# NeMo Guardrails (requires build-essential for Annoy)
-uv pip install "nemoguardrails[server]"
+### Optional: System-Level OOM Protection
 
-# PII detection
-uv pip install presidio-analyzer presidio-anonymizer spacy
-python -m spacy download en_core_web_lg
+These are **host-level system packages**, not pip dependencies. They are not part of the Python telemetry module — they operate as independent OS daemons. Include in setup documentation, not in `pyproject.toml`.
 
-# Auth + rate limiting
-uv pip install "pyjwt[crypto]" slowapi "passlib[bcrypt]"
-
-# Async HTTP client (CAI judge model calls)
-uv pip install httpx
-
-# Trace logging and storage
-uv pip install structlog sqlmodel
-
-# Eval harness
-uv pip install "lm-eval[vllm]"
-uv pip install pytest pytest-asyncio pytest-cov
-
-# Red teaming
-uv pip install garak deepteam
-uv pip install "celery[redis]"
-
-# Dev tools
-uv pip install ruff mypy pre-commit
-```
+| Tool | Version | Purpose | When to Use |
+|---|---|---|---|
+| earlyoom | 1.8.2+ | System-level early OOM killer — terminates highest-oom_score process before the kernel enters uninterruptible sleep | Install on DGX Spark host (`sudo apt install earlyoom`) for any user running training workloads. The GB10 UMA hang-to-zombie failure mode (where the entire machine becomes unresponsive rather than the process crashing cleanly) is mitigated significantly by earlyoom. The telemetry module cannot prevent this at the Python level alone. |
 
 ---
 
-## Alternatives Considered
-
-| Recommended | Alternative | When to Use Alternative |
-|-------------|-------------|-------------------------|
-| FastAPI | Flask, Django | Never for this use case — FastAPI's native async generators are essential for streaming guardrails. Flask is sync-first; Django adds too much ORM/template machinery. |
-| FastAPI | LiteLLM as the gateway | LiteLLM handles model routing but has no first-class support for multi-step pipelines (guardrails → model → critique → trace). Build the safety harness as a separate service that calls LiteLLM, not as a LiteLLM plugin. |
-| nemoguardrails | Guardrails AI (guardrails-hub) | Use Guardrails AI if you need structured output validation (JSON schemas, type enforcement) as your primary need. NeMo is better for conversational safety rails with dialog flow control and NVIDIA NIM integration. They are complementary, not mutually exclusive. |
-| presidio-analyzer | GLiNER (via NeMo extras) | GLiNER is included as a NeMo Guardrails extra. Use presidio for production PII redaction (Microsoft-maintained, HIPAA-tested patterns). Use GLiNER when you need custom entity types that presidio doesn't cover. |
-| httpx for CAI loop | openai Python SDK | openai SDK adds JWT/key management and retry logic not needed when calling LiteLLM proxy (which already handles auth and routing). httpx is leaner and gives full control over streaming. |
-| slowapi (in-memory) | fastapi-limiter + Redis | Use fastapi-limiter when deploying with multiple uvicorn workers or multiple machines — Redis centralizes counters. slowapi in-memory is fine for single-worker dev and single-node production. |
-| SQLite + SQLModel | PostgreSQL + SQLModel | Upgrade to PostgreSQL when traces exceed ~10GB or you need concurrent writes from multiple workers. SQLModel supports both backends transparently. |
-| garak + deepteam | promptfoo | promptfoo is excellent for CI-integrated eval (YAML-driven), but its red teaming is less programmatic than deepteam. Use promptfoo if you want a UI for the eval results. |
-| Celery + Redis | FastAPI BackgroundTasks | Use BackgroundTasks for lightweight async work (single request scope). Use Celery when red teaming jobs outlive request lifetime, need retry logic, or must run across multiple workers. |
-| PyJWT | python-jose | python-jose has not been meaningfully updated since 2021 and has known security issues. PyJWT is now the FastAPI documentation recommendation. |
-
----
-
-## What NOT to Use
+## What NOT to Add
 
 | Avoid | Why | Use Instead |
-|-------|-----|-------------|
-| python-jose | Effectively abandoned; FastAPI documentation explicitly moved away from it in 2024; compatibility issues on Python >=3.10 | PyJWT 2.12.1 |
-| LangChain ConstitutionalChain | Heavyweight abstraction with unpredictable updates; LangChain's API surface changes frequently and adds significant dependency weight for a feature implementable in ~50 lines of async Python | Implement CAI critique-revision loop directly with httpx calls to LiteLLM |
-| Synchronous requests library | Blocks the event loop in FastAPI's async context — kills streaming performance and concurrency under load | httpx with `AsyncClient` |
-| Flask-based Guardrails API | NeMo Guardrails has a native FastAPI server mode — there is no reason to wrap it in a separate Flask process | nemoguardrails Python SDK called inline from FastAPI request handlers |
-| OpenTelemetry full stack (Jaeger/Grafana) | Overkill for single-node DGX Spark. structlog + SQLite provides all the trace queryability needed without running a separate observability backend. | structlog + SQLite for structured trace storage; add OpenTelemetry later if multi-service deployment grows |
-| Hugging Face `transformers` as the model serving layer inside the gateway | The gateway is a safety harness, not a model server. vLLM and Ollama (via LiteLLM) already handle model serving. Importing transformers into the gateway would bloat the process and create GPU memory conflicts. | Call LiteLLM proxy via httpx |
-| `asyncio.run()` inside FastAPI route handlers | Calling `asyncio.run()` inside an already-running event loop raises RuntimeError. All async work must use `await` or `asyncio.create_task()`. | Native `async def` route handlers with `await` |
+|---|---|---|
+| `pynvml` (the package) | Deprecated since NGC container 25.09-py3. Identical API to `nvidia-ml-py` but emits `FutureWarning` on import. Already being removed from NGC containers. | `nvidia-ml-py` 13.595.45 — same import path, same API, no warning |
+| DCGM (Data Center GPU Manager) | Explicitly not supported on DGX Spark GB10. NVIDIA confirmed "no plans to support DCGM on Spark" — it requires discrete-framebuffer GPU architecture. | `nvidia-ml-py` for what works + `/proc/meminfo` for UMA memory |
+| nvidia-smi subprocess calls | Subprocess introduces 100–500ms latency per call and is fragile when called from inside training containers. The telemetry spec explicitly requires "no subprocess calls". Use the NVML Python bindings directly. | `nvidia-ml-py` Python API |
+| `torch.cuda.memory_allocated()` / `torch.cuda.mem_get_info()` | On GB10 UMA, `cudaMemGetInfo` conflates "physically free" with "available to CUDA" — it does not represent true system memory availability. Additionally, PyTorch issue #174358 shows that on GB10, `cudaMemGetInfo` can trigger the same allocator instability that causes system hangs. Do not use for headroom calculation. | `/proc/meminfo` via psutil for physical UMA state; `nvidia-ml-py` for GPU compute utilization only |
+| prometheus-client or OpenMetrics stack | Overkill for a single-node embedded telemetry module. The telemetry library exports a Python dataclass, not a metrics endpoint. The caller (training scripts) decides what to do with the sample. | Direct Python API — `sampler.sample()` returns a `GPUSample` dataclass |
+| Grafana / Prometheus | No network monitoring infrastructure exists on DGX Spark. Single-node training tool. | MLflow for logging experiment-correlated telemetry snapshots (already in stack) |
+| CUPTI (CUDA Profiling Tools Interface) | Correct tool for per-kernel GPU utilization on GB10, but requires CUDA toolkit headers, privileged access, and process injection. Complexity-to-value ratio is too high for this use case. | `nvmlDeviceGetUtilizationRates()` for coarse compute utilization |
 
 ---
 
-## Stack Patterns by Variant
+## Integration Points
 
-**For streaming guardrails (every N tokens):**
-- Use NeMo Guardrails' `chunk_size` config to set the token window
-- Return `StreamingResponse(generator)` from FastAPI where `generator` is an `async def` with `yield`
-- NeMo streaming uses a sliding window buffer (configurable `context_size`, default 50 tokens) — set `chunk_size` to match your latency tolerance
-- Redact detected violations before yielding the chunk downstream
+### Where the Module Lives
 
-**For single-node development (no Redis):**
-- slowapi in-memory rate limiting
-- SQLite trace storage (single file, zero setup)
-- Celery with `task_always_eager=True` for synchronous local execution
-- Run uvicorn directly: `uvicorn app.main:app --reload`
+```
+dgx_toolbox/
+  telemetry/
+    __init__.py          # Public API: GPUSampler, UMAModel, AnchorStore, ProbeProtocol, FailureClassifier
+    sampler.py           # GPUSampler — polls NVML + /proc/meminfo
+    uma_model.py         # UMAModel — headroom calculation, jitter margin
+    scale.py             # EffectiveScale — multiplier tables, tier classification
+    anchor.py            # AnchorStore — JSON persistence, override rules
+    probe.py             # ProbeProtocol — prepare/evaluate cycle
+    classifier.py        # FailureClassifier — clean/oom/hang/thermal/pressure
+```
 
-**For production on DGX Spark (GPU-accelerated checks):**
-- Install `nemoguardrails[nvidia]` to enable NVIDIA safety NIMs
-- Use `nemoguardrails[server]` to run the guardrails engine as a separate actions server process (`nemoguardrails actions-server --port 8001`)
-- Run FastAPI under gunicorn: `gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker`
-- Redis for Celery broker and rate limiting
+The `dgx_toolbox.py` bridge script in `examples/` imports from `dgx_toolbox.telemetry` and exposes a CLI entry point. The `status.sh` GPU telemetry block calls the bridge script via a one-shot `python -c "..."` invocation (acceptable in a status display context — not in training hot loops).
 
-**For Constitutional AI self-critique pipeline:**
-- Implement as a plain async function: `async def critique_and_revise(response, constitution, judge_model)` calling httpx to LiteLLM
-- Constitution stored as YAML/TOML config file (user-editable)
-- Judge model specified by name in config; default to same model as primary via LiteLLM routing
-- First pass: ask judge to critique response against each constitutional principle
-- Second pass: ask judge to revise response based on critiques
-- Log both passes to SQLite traces
+### Dependency Declaration (pyproject.toml additions)
 
-**For lm-eval-harness integration:**
-- LiteLLM proxy already exposes `/v1/completions` and `/v1/chat/completions` — no custom adapter needed
-- Point lm-eval at the proxy: `lm_eval --model openai-chat-completions --model_args model=<model_name>,base_url=http://localhost:4000,api_key=dummy`
-- Run safety-specific custom tasks (stored in `evals/tasks/`) alongside standard benchmarks
+```toml
+[project]
+dependencies = [
+    # existing...
+    "nvidia-ml-py>=13.595,<14",
+    "psutil>=7.0,<8",
+]
+
+[project.optional-dependencies]
+telemetry = [
+    "nvidia-ml-py>=13.595,<14",
+    "psutil>=7.0,<8",
+]
+```
+
+Keep the telemetry extras separate so non-GPU deployments (CI runners, macOS dev machines without NVIDIA drivers) can install the package without pulling in NVML bindings. The `GPUSampler` must handle `ImportError` on `nvidia-ml-py` gracefully by degrading to `/proc/meminfo`-only mode.
+
+### NVML Initialization Pattern
+
+```python
+# Correct initialization for GB10 — gracefully handles missing driver or UMA restrictions
+try:
+    from pynvml import (
+        nvmlInit, nvmlShutdown,
+        nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex,
+        nvmlDeviceGetMemoryInfo, nvmlDeviceGetUtilizationRates,
+        nvmlDeviceGetTemperature, NVML_TEMPERATURE_GPU,
+        NVMLError, NVMLError_NotSupported,
+    )
+    nvmlInit()
+    _NVML_AVAILABLE = True
+except Exception:
+    _NVML_AVAILABLE = False
+```
+
+`nvmlDeviceGetMemoryInfo` must be called inside a `try/except NVMLError_NotSupported` block, not assumed to work. When it raises, fall back to psutil `/proc/meminfo` parsing.
+
+### UMA Memory Reading Pattern
+
+```python
+import psutil
+
+def _read_uma_state():
+    vm = psutil.virtual_memory()
+    return {
+        "total_bytes": vm.total,
+        "available_bytes": vm.available,   # MemAvailable — use this, not vm.free
+        "used_bytes": vm.used,
+        "percent_used": vm.percent,
+    }
+```
+
+`vm.available` maps to Linux `MemAvailable` (kernel 3.14+), which accounts for page cache that the kernel can reclaim. On GB10 where the CUDA allocator competes with the page cache for the same LPDDR5X pool, `MemAvailable` is the correct signal for "how much can a training job actually use without triggering the zombie failure mode."
+
+Also read `/proc/pressure/memory` (PSI — Pressure Stall Information) for the earliest warning of memory stall. Available on Ubuntu 22.04+ with `CONFIG_PSI=y` (default on DGX OS).
 
 ---
 
 ## Version Compatibility
 
 | Package | Compatible With | Notes |
-|---------|-----------------|-------|
-| nemoguardrails 0.21.0 | Python 3.10–3.13 | Requires build-essential for Annoy C++ extension on aarch64. Use `pip install "nemoguardrails[nvidia]"` for NVIDIA NIM support. |
-| FastAPI 0.135.1 | Pydantic v2 only | Pydantic v1 support dropped. All models must use Pydantic v2 syntax. |
-| SQLModel 0.0.37 | SQLAlchemy 2.0.x, Pydantic v2 | SQLModel 0.0.14+ supports Pydantic v2. Earlier versions do not — use >=0.0.14. |
-| lm-eval 0.4.11 | Python 3.8+ | Install with `[vllm]` extra for GPU-accelerated local eval. Points at LiteLLM via OpenAI-compatible endpoint. |
-| Celery 5.6.2 | Python >=3.9, Redis 6+ | Use `celery[redis]` extra. Redis 7.x recommended. |
-| garak 0.14.0 | Python 3.10–3.12 | Python 3.13 not listed as supported. Pin to 3.12 runtime. |
-| deepteam 1.0.6 | Python 3.9–3.13 | No architecture-specific wheels; pure Python — aarch64 compatible. |
-| presidio-analyzer 2.2.362 | Python 3.10–3.13 | Requires spaCy model download after install (`python -m spacy download en_core_web_lg`). |
-| PyJWT 2.12.1 | Python >=3.9 | Use `pyjwt[crypto]` for RSA/ECDSA. |
+|---|---|---|
+| nvidia-ml-py 13.595.45 | Python 3.6+, aarch64 via pure-Python ctypes | Requires `libnvidia-ml.so.1` on host — present in NGC containers and DGX OS. The `.45` in the version is the NVML API revision; `13` matches driver 595 generation. |
+| psutil 7.2.0 | Python 3.6+, aarch64 manylinux wheel available | `manylinux_2_17_aarch64` wheel available on PyPI. No compilation needed on aarch64 if using the manylinux wheel. |
+| Both | NGC PyTorch 26.02-py3 base | `nvidia-ml-py` is present in the NGC container as a PyTorch internal dependency. `psutil` is not always present — declare as explicit dependency. |
+
+---
+
+## Failure Mode Reference
+
+This is directly relevant to the `FailureClassifier` implementation decisions.
+
+| Failure Class | Observable Signal | Detection Approach |
+|---|---|---|
+| `CLEAN` | Process exits with `RuntimeError: CUDA out of memory` | Exit code non-zero, stderr contains "CUDA out of memory" |
+| `OOM` (UMA zombie) | System becomes unresponsive; SSH hangs; no exit code | Heartbeat thread stops responding; PSI memory stall exceeds threshold; MemAvailable < 2% |
+| `HANG` | Process alive, GPU utilization 0% for >N seconds | nvmlDeviceGetUtilizationRates returns 0 continuously with no training progress |
+| `THERMAL` | GPU temperature exceeds threshold; training slows | nvmlDeviceGetTemperature > configurable threshold (suggest 85°C for GB10 SoC) |
+| `PRESSURE` | MemAvailable dropping but not yet critical; PSI stall increasing | MemAvailable < configurable headroom threshold; `/proc/pressure/memory` stall time increasing |
+| `WATCHDOG` | Override from anchor store (user manually flagged a run) | Anchor store entry with `reason=WATCHDOG` for this batch/config combination |
+
+The most dangerous failure on GB10 is the OOM zombie: by the time the kernel OOM killer would trigger, the nvidia-modeset kernel thread may already be in uninterruptible D-state. The `FailureClassifier` must treat `PRESSURE` as an early warning and trigger a clean abort before reaching `OOM`.
 
 ---
 
 ## Sources
 
-- [nemoguardrails on PyPI](https://pypi.org/project/nemoguardrails/) — version 0.21.0, Python 3.10–3.13 (HIGH confidence, official registry)
-- [NeMo Guardrails installation guide](https://docs.nvidia.com/nemo/guardrails/latest/getting-started/installation-guide.html) — C++ compiler requirement, extras (HIGH confidence, official docs)
-- [NeMo Guardrails streaming docs](https://docs.nvidia.com/nemo/guardrails/latest/user-guides/advanced/streaming.html) — chunk_size, context_size, sliding window (HIGH confidence, official docs)
-- [FastAPI on PyPI](https://pypi.org/project/fastapi/) — version 0.135.1 released March 1, 2026 (HIGH confidence, official registry)
-- [lm-evaluation-harness releases](https://github.com/EleutherAI/lm-evaluation-harness/releases) — v0.4.11 released Feb 13, 2025 (HIGH confidence, official GitHub)
-- [LiteLLM + lm-eval-harness tutorial](https://docs.litellm.ai/docs/tutorials/lm_evaluation_harness) — OpenAI-compatible endpoint integration (HIGH confidence, official docs)
-- [garak on PyPI](https://pypi.org/project/garak/) — 0.14.0, Python 3.10–3.12, released Feb 2026 (HIGH confidence, official registry)
-- [deepteam on PyPI](https://pypi.org/project/deepteam/) — 1.0.6, Python 3.9–3.13, released Mar 2026 (HIGH confidence, official registry)
-- [presidio-analyzer on PyPI](https://pypi.org/project/presidio-analyzer/) — 2.2.362, Python 3.10–3.13 (HIGH confidence, official registry)
-- [Celery on PyPI](https://pypi.org/project/celery/) — 5.6.2, Python >=3.9 (HIGH confidence, official registry)
-- [PyJWT on PyPI](https://pypi.org/project/pyjwt/) — 2.12.1, Python >=3.9 (HIGH confidence, official registry)
-- [structlog on PyPI](https://pypi.org/project/structlog/) — 25.5.0 (HIGH confidence, official registry)
-- [SQLModel on PyPI](https://pypi.org/project/sqlmodel/) — 0.0.37, released Feb 21, 2026 (HIGH confidence, official registry)
-- [httpx on PyPI](https://pypi.org/project/httpx/) — 0.28.1 (HIGH confidence, official registry)
-- [FastAPI JWT discussion — python-jose deprecation](https://github.com/fastapi/fastapi/discussions/9587) — community confirmation of python-jose abandonment (MEDIUM confidence, community source but consistent with official docs)
-- [NeMo Guardrails streaming blog — NVIDIA](https://developer.nvidia.com/blog/stream-smarter-and-safer-learn-how-nvidia-nemo-guardrails-enhance-llm-output-streaming/) — streaming implementation details (HIGH confidence, official NVIDIA blog)
+- [nvidia-ml-py on PyPI](https://pypi.org/project/nvidia-ml-py/) — version 13.595.45, March 19, 2026 (HIGH confidence, official registry)
+- [psutil on PyPI](https://pypi.org/project/psutil/) — version 7.2.0, January 2026, aarch64 manylinux wheels available (HIGH confidence, official registry)
+- [psutil documentation — virtual_memory()](https://psutil.readthedocs.io/) — MemAvailable mapping on Linux (HIGH confidence, official docs)
+- [pynvml deprecation warning — NGC forum](https://forums.developer.nvidia.com/t/pynvml-package-is-deprecated-warning-in-nvcr-io-nvidia-pytorch-25-09-py3/348569) — deprecation confirmed in NGC 25.09+ containers (MEDIUM confidence, community)
+- [NVML Support for DGX Spark — Community Solution](https://forums.developer.nvidia.com/t/nvml-support-for-dgx-spark-grace-blackwell-unified-memory-community-solution/358869) — nvmlDeviceGetMemoryInfo fails with NVML_ERROR_NOT_SUPPORTED on GB10 (MEDIUM confidence, community solution, no official NVML docs confirmation)
+- [MPS and Telemetry on GB10 forum](https://forums.developer.nvidia.com/t/mps-support-and-telemetry-on-grace-blackwell-gb10-with-unified-memory/363137) — DCGM not supported; CUDA runtime + /proc/meminfo is the community workaround (MEDIUM confidence, community)
+- [DGX Spark becomes zombie instead of OOM](https://forums.developer.nvidia.com/t/dgx-spark-becomes-unresponsive-zombie-instead-of-throwing-cuda-oom/353752) — UMA zombie failure mode mechanics (MEDIUM confidence, community reports)
+- [Mitigating OOM freezes on UMA](https://forums.developer.nvidia.com/t/mitigating-oom-system-freezes-on-uma-based-single-board-computers/362769) — earlyoom recommendation; PSI /proc/pressure/memory signals (MEDIUM confidence, community)
+- [PyTorch issue #174358](https://github.com/pytorch/pytorch/issues/174358) — cudaMemGetInfo causes allocator instability on GB10 (MEDIUM confidence, PyTorch issue tracker, Feb 2026)
+- [nvtop GB10 issue #426](https://github.com/Syllo/nvtop/issues/426) — nvmlDeviceGetMemoryInfo N/A on GB10; per-process memory works (MEDIUM confidence, community)
+- [nvidia-ml-py pure-Python mechanism](https://pypi.org/project/nvidia-ml-py/) — py3-none-any wheel uses ctypes to dlopen libnvidia-ml.so; works on any arch with the driver present (HIGH confidence, PyPI metadata)
 
 ---
 
-*Stack research for: v1.1 Safety Harness — FastAPI gateway with NeMo Guardrails, CAI, evals, red teaming*
-*Researched: 2026-03-22*
+*Stack research for: v1.3 GPU Telemetry Primitives — DGX Spark aarch64, GB10 UMA*
+*Researched: 2026-04-01*
+*Previous milestone stack (v1.1 Safety Harness) documented in git history — this file supersedes for the current milestone*

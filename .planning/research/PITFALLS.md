@@ -1,298 +1,372 @@
 # Pitfalls Research
 
-**Domain:** AI safety harness (FastAPI gateway + NeMo Guardrails + Constitutional AI + eval harness) added to existing bash-heavy DGX Spark toolbox
-**Researched:** 2026-03-22
-**Confidence:** HIGH for NeMo Guardrails specifics (verified against official docs and GitHub issues); MEDIUM for Constitutional AI latency and red teaming (WebSearch + official paper, limited production case studies); HIGH for integration/async pitfalls (official docs + multiple verified sources)
+**Domain:** GPU telemetry primitives and adaptive training support added to existing DGX Spark toolbox
+**Researched:** 2026-04-01
+**Confidence:** HIGH for pynvml/GB10 UMA behavior (verified against NVIDIA official docs, NVIDIA Developer Forum community solutions, GitHub issues across multiple projects); HIGH for /proc/meminfo parsing (verified against kernel manual, Oracle Linux blog, Red Hat docs); HIGH for PyTorch OOM reference leak (official PyTorch docs and multiple issue threads); MEDIUM for anchor store concurrency patterns (general atomic-write literature); MEDIUM for effective scale formula correctness (Unsloth blog, community discussions); LOW for thermal classification specifics on GB10 (limited GB10-specific thermal API documentation found)
 
 ---
 
 ## Critical Pitfalls
 
-### Pitfall 1: NeMo Guardrails LLMRails Initialized Inside Async Function
+### Pitfall 1: nvmlDeviceGetMemoryInfo Returns "Not Supported" on GB10 — No Graceful Fallback
 
 **What goes wrong:**
-`LLMRails` is instantiated inside a FastAPI route handler or a `@app.on_event("startup")` async function. On the first request, a `RuntimeError: Cannot enter into task while another task is being executed` fires. Subsequent requests succeed, masking the bug during testing.
+`pynvml.nvmlDeviceGetMemoryInfo(handle)` raises `NVMLError_NotSupported` (or the equivalent `NVML_ERROR_NOT_SUPPORTED`) on the DGX Spark GB10 because the unified memory architecture has no dedicated framebuffer. Code that calls this function without a try/except will crash. Worse, code that catches only `RuntimeError` will still crash because pynvml raises its own exception hierarchy. Tools like HAMi's device plugin have exhibited panic/crash behavior from exactly this uncaught error in production.
+
+nvidia-smi also explicitly reports "Memory-Usage: Not Supported" on iGPU platforms — this is documented in the official DGX Spark User Guide as expected behavior, not a bug.
 
 **Why it happens:**
-NeMo Guardrails patches the global asyncio event loop via `nest_asyncio` at import time. This patching creates conflicts when `LLMRails` is constructed inside an async context that is already running under uvicorn's event loop. FastAPI's lifespan handler runs inside the same event loop, so even "startup" hooks hit this.
+Developers test on discrete-GPU workstations (RTX, A100, H100) where `nvmlDeviceGetMemoryInfo` always succeeds. They add a GPU sampler and it works in local testing. When the sampler runs on the DGX Spark GB10, the first call throws an unhandled exception and the entire GPUSampler crashes.
 
 **How to avoid:**
-Instantiate `LLMRails` at module top level (outside any coroutine) before `uvicorn.run()` is called. Use FastAPI's `lifespan` context manager if you need to delay initialization, but ensure `LLMRails()` is called synchronously before the async context begins. Add an integration smoke test that calls the gateway on startup and asserts no asyncio exceptions — do not rely on manual testing that misses the first-call-only symptom.
+Wrap every `nvmlDeviceGetMemoryInfo` call in a `try/except pynvml.NVMLError` block (not `except Exception`, not `except RuntimeError`). On `NVMLError_NotSupported`, fall back to `/proc/meminfo` UMA parsing. Document this as the expected path for UMA hardware. The community NVML shim solution (CUDA Runtime API + `/proc/meminfo` for unified memory queries) is the correct architectural pattern.
 
-**Warning signs:**
-- Error appears only on the first POST to `/chat` after a fresh server start, then disappears
-- Traceback mentions `nest_asyncio`, `asyncio.run`, or `Cannot enter task` in NeMo internals
-- Works fine in a plain Python script but fails under uvicorn
-
-**Phase to address:**
-Phase 1 (Gateway foundation) — the initialization pattern must be established before any guardrail features are added on top of it.
-
----
-
-### Pitfall 2: NeMo Guardrails and uvloop Incompatibility
-
-**What goes wrong:**
-FastAPI is started with `uvloop` (common for performance) and NeMo Guardrails raises `Can't patch loop of type <class 'uvloop.Loop'>` on startup. The entire service fails to start.
-
-**Why it happens:**
-`nest_asyncio` cannot patch `uvloop.Loop` because uvloop's C extension does not expose the same hook points as the pure-Python asyncio event loop. NeMo Guardrails relies on `nest_asyncio` patching, so uvloop breaks the guarantee.
-
-**How to avoid:**
-Do not run the safety harness process with uvloop. Use the default asyncio event loop for the FastAPI gateway process. If performance requires uvloop elsewhere, run those as separate services. Document this explicitly in the service `Makefile` / startup script so future contributors don't "optimize" by adding uvloop.
-
-**Warning signs:**
-- `uvloop` appears in `requirements.txt` or is installed as a transitive dep
-- Service crashes immediately at startup with a `nest_asyncio` error
-- Works in a plain Python REPL but not under uvicorn
-
-**Phase to address:**
-Phase 1 (Gateway foundation) — pin loop type in the uvicorn startup command before NeMo is integrated.
-
----
-
-### Pitfall 3: Annoy Build Failure on aarch64 (NeMo Guardrails Dep)
-
-**What goes wrong:**
-`pip install nemoguardrails` fails on the DGX Spark (aarch64) with an error building the `annoy` wheel. The package has no pre-built arm64 wheel on PyPI for the required version, so pip falls back to source compilation and fails if build tools are absent.
-
-**Why it happens:**
-NeMo Guardrails pulls in `annoy`, a C++ library for approximate nearest neighbor search. On aarch64, pre-built wheels may not exist for the exact version pinned. If `gcc`, `g++`, and `python3-dev` are not installed, the source build errors out with a misleading pip error.
-
-**How to avoid:**
-Before writing `requirements.txt`, verify the full install on the DGX Spark in a fresh venv:
-```bash
-sudo apt-get install -y gcc g++ python3-dev
-pip install nemoguardrails --no-cache-dir
-```
-Pin `annoy` explicitly to a version with a known aarch64 wheel if available; otherwise include the build deps in the service setup script. Add a CI step that runs `pip install -r requirements.txt` on an aarch64 runner (or the DGX itself) as a gate.
-
-**Warning signs:**
-- `ERROR: Could not build wheels for annoy` in pip output
-- Install succeeds on a developer's x86_64 laptop but fails on DGX Spark
-- Missing `gcc` or `g++` in the base environment
-
-**Phase to address:**
-Phase 1 (Gateway foundation / environment setup) — validate the full install before writing any application code.
-
----
-
-### Pitfall 4: Streaming Guardrails Block the Event Loop on CPU-Bound Rails
-
-**What goes wrong:**
-NeMo Guardrails output rails (toxicity classifier, PII detector) are synchronous classifiers running on CPU. When called inside an async streaming generator, they block the uvicorn event loop for the duration of the inference, causing all concurrent requests to stall. This shows up as high tail latency under load, not as errors.
-
-**Why it happens:**
-Developers integrate guardrail checks as inline `await` calls inside the streaming generator, but the underlying classifiers are synchronous and CPU-bound. FastAPI/asyncio cannot yield the loop back to other requests while a CPU-bound task is running without explicit offloading.
-
-**How to avoid:**
-Offload all synchronous guardrail model calls to a thread pool executor:
 ```python
-result = await asyncio.get_event_loop().run_in_executor(
-    thread_pool_executor, classifier.check, chunk
-)
+try:
+    mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
+    total, used, free = mem.total, mem.used, mem.free
+except pynvml.NVMLError:
+    # UMA fallback: GB10 has no dedicated framebuffer
+    total, used, free = _read_proc_meminfo_uma()
 ```
-Or use NeMo Guardrails' own async rail definitions with explicit `async def` actions. Profile with `asyncio-linter` or add a linting rule that flags `time.sleep` and blocking calls in async code paths. Set a per-chunk timeout so a slow classifier does not starve the stream indefinitely.
 
 **Warning signs:**
-- P50 latency is fine but P99 spikes under 5+ concurrent requests
-- `top` shows 100% CPU on a single core during streaming
-- Adding `asyncio.sleep(0)` between chunks temporarily reduces latency (confirms loop starvation)
+- `NVMLError_NotSupported` or `NVMLError: Not Supported` in any traceback
+- `nvidia-smi` shows `N/A` or `Not Supported` for memory columns on the DGX Spark
+- GPUSampler unit tests pass on CI (x86_64) but the sampler crashes at runtime on the DGX Spark
 
 **Phase to address:**
-Phase 2 (Streaming guardrails) — design async offloading before implementing the streaming pipeline.
+Phase 1 (GPUSampler implementation) — the fallback path is the primary code path on this hardware and must be built from the start, not retrofitted.
 
 ---
 
-### Pitfall 5: Double-Proxy Latency Accumulation (FastAPI Gateway + LiteLLM)
+### Pitfall 2: cudaMemGetInfo Underreports Available Memory on UMA — Misses Reclaimable SWAP
 
 **What goes wrong:**
-The safety harness adds a FastAPI gateway in front of LiteLLM, which is itself a FastAPI proxy. Every request now passes through two HTTP hops, two JSON serialization/deserialization cycles, two middleware stacks, and two logging pipelines. Measured LiteLLM proxy overhead is 12 ms median (P99: 43 ms). Adding the harness naively doubles this, plus adds guardrail latency on top.
+`torch.cuda.mem_get_info()` and the underlying `cudaMemGetInfo` API return values that are smaller than actual allocatable memory on the DGX Spark because the API "does not account for memory that could potentially be reclaimed from SWAP." This is documented in the official DGX Spark User Guide. If the UMA headroom calculation uses `cudaMemGetInfo` as the source of truth, it will underestimate available memory, causing the adaptive training system to refuse larger batch sizes that would actually succeed.
 
 **Why it happens:**
-Each FastAPI + Starlette middleware layer adds overhead even before application logic runs. CORS middleware, auth middleware, and Prometheus instrumentation all add serialization and allocation cost. Teams add these without measuring baseline, then discover the overhead only after deployment.
+`cudaMemGetInfo` was designed for discrete GPU memory and reports only the current allocatable CUDA pool. On a UMA system where CPU DRAM and GPU memory are the same physical pool, SWAP reclamation represents a real expansion of available capacity that this API ignores.
 
 **How to avoid:**
-- Measure baseline latency through LiteLLM alone before adding the harness.
-- For the harness's internal call to LiteLLM, use the LiteLLM Python SDK directly instead of an HTTP call when running co-located (removes one full HTTP round-trip).
-- Keep middleware minimal: one auth check, no duplicate logging between harness and LiteLLM.
-- Run health/readiness endpoints on a separate lightweight app so they don't contend with the guardrail pipeline.
-- Document a latency budget per phase: e.g., harness overhead must be < 50 ms added to model TTFT.
+Use `/proc/meminfo` as the authoritative source for total system memory on GB10. Specifically:
+- Read `MemAvailable` (not `MemFree`) for available headroom — it accounts for reclaimable page cache and slab
+- Read `SwapFree` and add a configurable fraction as bonus headroom (NVIDIA's own guidance)
+- Do not trust `cudaMemGetInfo` for capacity planning on UMA hardware; use it only for currently allocated CUDA pool sizes if needed
 
 **Warning signs:**
-- Measured TTFT through the harness is more than 2x the measured TTFT through LiteLLM alone
-- Prometheus traces show time disappearing in middleware before route handlers
-- Logs show duplicate entries (both harness and LiteLLM logging the same request)
+- Headroom calculation reports <30GB available when `nvidia-smi` or `/proc/meminfo` shows much more
+- Probe protocol rejects batch sizes that actually succeed when tried manually
+- `MemAvailable` in `/proc/meminfo` is consistently much larger than what `cudaMemGetInfo` reports
 
 **Phase to address:**
-Phase 1 (Gateway foundation) — establish the LiteLLM call pattern before any guardrail work begins.
+Phase 1 (GPUSampler) and Phase 2 (UMA memory model) — headroom formula must use `/proc/meminfo` from the first iteration.
 
 ---
 
-### Pitfall 6: Guardrail Evasion via Unicode / Character Injection
+### Pitfall 3: /proc/meminfo Parsing Uses MemFree Instead of MemAvailable — Grossly Underestimates Free Memory
 
 **What goes wrong:**
-Input guardrails pass a prompt as clean, but the model receives the prompt with zero-width characters, Unicode homoglyphs, or emoji tags that obfuscate the true intent. The classifier was trained on clean text, so it misses the attack. NeMo Guardrails' built-in classifiers are not immune to this.
+Code reads `MemFree` from `/proc/meminfo` and uses it as "available memory." On a DGX Spark running a training workload, the Linux kernel aggressively fills available DRAM with page cache (model weight files, dataset mmaps, log files). `MemFree` can show as low as 1-2GB while `MemAvailable` shows 40GB. The GPUSampler reports severe memory pressure when none exists, the failure classifier misclassifies normal training runs as OOM-pressure events, and the probe protocol refuses all batch size increases.
 
 **Why it happens:**
-A 2025 empirical study (arxiv 2504.11168) demonstrated up to 100% evasion success against Azure Prompt Shield and Meta Prompt Guard using character injection. The root cause is that classifiers trained on clean natural language fail to normalize Unicode before classification.
+`MemFree` is the most visible field and the most intuitive name. Developers use it without reading the kernel documentation. The old formula `free + cached` is documented as "wrong on modern kernels" (Red Hat, Oracle Linux, kernel manual) but continues to appear in example code because it was correct before Linux 3.14.
+
+`MemAvailable` has been the correct field since Linux 3.14. It accounts for page cache reclaimable, reclaimable slab, and zone watermarks — the kernel's own estimate of how much memory can actually be freed for a new allocation.
 
 **How to avoid:**
-- Add a Unicode normalization step (NFC/NFKC + zero-width character stripping) as the first input preprocessing stage, before any guardrail classifier runs.
-- Include adversarial Unicode examples in the red-team test suite from Phase 1.
-- Treat guardrails as one layer of a defense-in-depth stack, not a complete solution.
-- Subscribe to NeMo Guardrails release notes for classifier updates.
+Always parse `MemAvailable`, not `MemFree`:
+```python
+def _read_memavailable_kb() -> int:
+    with open("/proc/meminfo") as f:
+        for line in f:
+            if line.startswith("MemAvailable:"):
+                return int(line.split()[1])
+    raise RuntimeError("MemAvailable not found in /proc/meminfo")
+```
+Add a unit test that compares `MemFree` vs `MemAvailable` on the DGX Spark under load and asserts they can differ by >10x. This makes the distinction visible in the test suite.
 
 **Warning signs:**
-- Red team can craft prompts that pass guardrails by inserting invisible characters
-- Guardrail logs show "PASS" for prompts that visually contain harmful content
-- lm-eval-harness results show safety scores that don't match manual inspection
+- Reported available memory matches `MemFree` (usually low under load) rather than `MemAvailable`
+- Memory pressure alarms trigger while `free -h` shows large `available` column
+- On an otherwise idle system, free shows `MemFree` as low as 100MB but `MemAvailable` as 90GB
 
 **Phase to address:**
-Phase 2 (Pre/post guardrails) — add normalization before implementing classifiers, not as a retrofit.
+Phase 1 (GPUSampler) — the parsing function is the foundation of the UMA model; getting this wrong invalidates all downstream calculations.
 
 ---
 
-### Pitfall 7: Trace Logs Storing Raw PII / Prompts
+### Pitfall 4: Page Cache Jitter Makes Memory Baseline Unstable — Sampling at the Wrong Time
 
 **What goes wrong:**
-Full trace logging is implemented as specified (prompt, tools, model outputs, guardrail decisions). The prompt contains user-submitted PII (names, emails, credentials). The trace log files grow on disk without access control or redaction. Any process that can read the log directory can read all historical conversations.
+Baseline memory sampling is done once at startup or at the start of a training job. The Linux kernel's buffer cache fluctuates by several GB in the seconds after model loading completes, as the kernel progressively caches model weight files. A baseline sampled too early reads inflated "used" values. A baseline sampled just after cache pressure relief reads deflated values. The UMA jitter margin calculation is defeated by a single-point-in-time sample.
+
+On a DGX Spark training a 70B model, buffer cache pressure from model file loading can create 10-20GB of transient page cache population that evaporates within 60 seconds of training start. Any baseline sample taken during this window is garbage.
 
 **Why it happens:**
-"Log everything for auditability" is the right instinct, but teams implement it as raw JSON dumps without a redaction pass. The guardrail's PII detector runs on the model's output, not on the logged trace record itself.
+Developers run the baseline sampler once, see a reasonable number, and proceed. The variance only becomes visible after collecting multiple baseline samples over time or observing the sampler during a large model load event.
 
 **How to avoid:**
-- Run the PII redaction pass on the trace record before writing to disk, not just on the model output.
-- Store full traces in a separate restricted-access log store (not the same directory as application logs).
-- Apply structured logging with explicit field-level redaction: mark fields as `[REDACTED]` before serialization.
-- Add a log retention policy from the start — don't let raw traces accumulate indefinitely.
-- For the replay eval harness, ensure replayed prompts from production logs have been through the redaction pipeline first.
+- Take baseline memory samples as a rolling window (e.g., median of 10 samples over 30 seconds) rather than a single point-in-time read
+- Always read `Buffers` and `Cached` from `/proc/meminfo` alongside `MemAvailable` to detect whether a cache-heavy transient is in progress; if `Buffers + Cached` is >20% of total and dropping, wait for stabilization before committing a baseline
+- Apply a configurable jitter margin (e.g., 2GB) to all headroom calculations to absorb normal page cache variance
+- Document the baseline as "stable after training loop iteration 1 completes" not "sampled at process start"
 
 **Warning signs:**
-- Log files are world-readable or in a directory with broad group permissions
-- Log entries contain email addresses, phone numbers, or API keys in plain text
-- Replay harness inputs have never been through the PII pipeline
+- Baseline memory values differ by >5GB between two runs of the same training configuration
+- Baseline reads taken 10 seconds apart on the same workload differ significantly
+- `Buffers` + `Cached` in `/proc/meminfo` drops visibly between samples
 
 **Phase to address:**
-Phase 3 (Trace logging) — redaction policy before the first production log write.
+Phase 2 (UMA memory model) — rolling baseline and jitter margin are core model features, not optimizations.
 
 ---
 
-### Pitfall 8: Colang 2.0 vs 1.0 Syntax Conflict
+### Pitfall 5: pynvml Library Package Confusion — pynvml vs nvidia-ml-py
 
 **What goes wrong:**
-Developer writes Colang 1.0 flow definitions (using `define user`, `define bot`, `execute` keyword). Installs a newer version of NeMo Guardrails that defaults to Colang 2.0, and the flows silently do nothing or raise cryptic parse errors. The migration tool exists but is not automatically invoked.
+The codebase installs `pynvml` (the `gpuopenanalytics` fork on PyPI) but imports from it expecting the behavior and API of `nvidia-ml-py` (the official NVIDIA binding). These are separate packages with different import names, different version histories, and different error types in some versions. Mixing them in requirements or in documentation causes import failures or silent behavioral differences.
+
+Additionally, `pynvml` (the older fork) is effectively deprecated — the official NVIDIA package is `nvidia-ml-py` and its import is also `pynvml`. Installing both in the same environment causes one to shadow the other unpredictably.
 
 **Why it happens:**
-Colang 2.0 is a complete language rewrite: the `define` and `execute` keywords are gone, flows must be explicitly activated (not active by default), and `await` replaces `execute`. Documentation examples mix versions. Teams copy examples from blog posts that predate 2.0.
+Both packages expose `import pynvml` as their top-level namespace. Documentation and tutorials use both names interchangeably. `pip install pynvml` installs the fork; `pip install nvidia-ml-py` installs the official package. The distinction is non-obvious.
 
 **How to avoid:**
-- Pick one Colang version at project start and pin it explicitly in `config.yaml`: `colang_version: "2.x"` or `"1.0"`.
-- Use only official NeMo Guardrails docs examples matching the pinned version.
-- Add a CI test that loads the Colang config and validates it parses without errors against the installed version.
-- When upgrading NeMo Guardrails, check the CHANGELOG-Colang.md for breaking changes before running the migration tool.
+Pin `nvidia-ml-py` in `pyproject.toml` or `requirements.txt`, not `pynvml`. Verify the installed package in CI:
+```bash
+pip show nvidia-ml-py  # should show the official NVIDIA package
+pip show pynvml        # should NOT be installed
+```
+Add a comment in requirements explaining which package is canonical.
 
 **Warning signs:**
-- Guardrails appear to be active in config but never trigger
-- No errors on startup, but flows have no effect on model output
-- GitHub Copilot / LLM autocomplete suggests `define user` syntax (training data predates Colang 2.0)
+- `pip install pynvml` was used instead of `pip install nvidia-ml-py`
+- Both `pynvml` and `nvidia-ml-py` appear in `pip list` output
+- `NVMLError` exception hierarchy behaves differently than expected in error handling
 
 **Phase to address:**
-Phase 2 (Pre/post guardrails) — establish Colang version pin before writing any flow files.
+Phase 1 (GPUSampler) — pin the correct package before writing the first import.
 
 ---
 
-### Pitfall 9: Constitutional AI Self-Critique Adds Unbounded Latency
+### Pitfall 6: PyTorch OOM Exception Handler Holds References — Memory Never Freed for Retry
 
 **What goes wrong:**
-The two-pass Constitutional AI critique pattern (model generates response → judge model critiques → model revises) doubles or triples inference time for every request. At interactive use, this makes the system feel broken. Without a timeout, a slow judge model blocks the response indefinitely.
+The probe protocol catches a CUDA OOM exception to trigger rollback, then attempts to retry with a smaller batch size. The retry OOMs immediately even though sufficient memory should exist. The root cause: Python's exception handling keeps a reference to the stack frame where the OOM was raised, which keeps all the tensors in that frame alive. CUDA memory is not freed until the exception object goes out of scope.
+
+This is a documented PyTorch issue (GitHub #27600, #82218) with a well-known pattern: recovery code inside the `except` block cannot free CUDA memory because the exception object itself holds references.
 
 **Why it happens:**
-Each critique pass is a full LLM inference. A 7B judge model can take 2-15 seconds per critique on local hardware. Two passes = 2x that. Teams prototype with fast cloud APIs then discover local inference latency in production.
+```python
+# WRONG — retrying inside except block; tensors from failed forward still allocated
+try:
+    loss = model(batch)
+except torch.cuda.OutOfMemoryError:
+    torch.cuda.empty_cache()
+    loss = model(smaller_batch)  # OOMs again
+```
+The exception object `e` in the except clause references the traceback, which references the stack frame, which holds all intermediate tensors.
 
 **How to avoid:**
-- Implement critique as an optional async background pass: return the original response immediately, then post a critique result to a side-channel (log, dashboard) if the response passed safety rails.
-- For synchronous critique (blocking), enforce a hard timeout per pass (e.g., 10 seconds). If the judge times out, log the timeout and return the original response with a flag.
-- Benchmark the judge model's P95 latency on the DGX Spark aarch64 hardware before designing the pipeline.
-- For streaming responses, run the critique on the completed buffer after streaming ends, not blocking the stream.
+Move all recovery logic outside the except block using a flag:
+```python
+oom = False
+try:
+    loss = model(batch)
+except torch.cuda.OutOfMemoryError:
+    oom = True
+    torch.cuda.empty_cache()
+    gc.collect()
+
+if oom:
+    loss = model(smaller_batch)  # Now previous tensors are freed
+```
+The probe protocol's rollback implementation must follow this pattern exactly.
 
 **Warning signs:**
-- TTFB (time to first byte) exceeds 30 seconds for interactive queries
-- Users report the system appearing hung
-- Judge model P99 latency is within 2x of the interactive patience threshold
+- Retry after OOM fails immediately with another OOM
+- `torch.cuda.memory_allocated()` immediately after `empty_cache()` inside the except block still shows high allocation
+- OOM recovery works in a REPL session but not inside the training loop
 
 **Phase to address:**
-Phase 3 (Constitutional AI) — define the synchronous/async split before implementing the critique loop.
+Phase 4 (Probe protocol) — the OOM recovery pattern is the structural foundation of the probe cycle; establish it before any probe logic.
 
 ---
 
-### Pitfall 10: lm-eval-harness Loglikelihood Tasks Fail Against Chat Endpoints
+### Pitfall 7: Anchor Store JSON Corruption from Concurrent Writes
 
 **What goes wrong:**
-lm-eval-harness is pointed at the `/chat` gateway endpoint. MMLU, HellaSwag, and other multiple-choice tasks fail or return garbage scores because they rely on log-probability scoring (loglikelihood), which is only available from completion endpoints — not chat-completion endpoints.
+Two training processes (or a sampler background thread and the main training process) write to the anchor store JSON file simultaneously. One process truncates the file while the other is mid-read. The result is truncated or malformed JSON. On the next read, `json.loads()` raises `JSONDecodeError`, the anchor store fails to initialize, and the entire adaptive batch sizing system falls back to defaults or crashes — silently losing all previously anchored configs.
+
+This exact failure mode has been documented in production systems including Claude Code's `.claude.json` (GitHub Issues #29051, #29217).
 
 **Why it happens:**
-lm-eval-harness has two evaluation modes: loglikelihood (requires access to token log-probs) and generative (uses text output). Chat-completion APIs do not return log-probs. Mixing chat-format evaluation with loglikelihood tasks silently produces wrong results, not errors, so teams only notice during result analysis.
+Python's `open(path, 'w') + json.dump()` is a two-step operation (truncate then write). A concurrent read between those two steps sees an empty or partial file.
 
 **How to avoid:**
-- Use the `--apply_chat_template` flag with a completion endpoint (not chat endpoint) for loglikelihood tasks.
-- Separate eval targets: point capability benchmarks (MMLU, ARC) at the direct LiteLLM completion endpoint, point safety/refusal evals at the `/chat` gateway.
-- Document this split in the eval harness README so future phases don't silently route the wrong tasks.
+Use atomic write via write-to-temp-then-rename:
+```python
+import tempfile, os
+
+def _atomic_write_json(path: str, data: dict) -> None:
+    dir_ = os.path.dirname(path)
+    with tempfile.NamedTemporaryFile('w', dir=dir_, delete=False, suffix='.tmp') as f:
+        json.dump(data, f, indent=2)
+        tmp_path = f.name
+    os.replace(tmp_path, path)  # atomic on POSIX
+```
+`os.replace()` is atomic on Linux (wraps `rename(2)` which is atomic per POSIX). This prevents partial reads.
+
+Also add a `.bak` pattern: on every successful write, copy the previous version to `anchor_store.json.bak`. On `JSONDecodeError` during load, fall back to `.bak` before raising.
 
 **Warning signs:**
-- MMLU accuracy is suspiciously uniform across models (all scoring ~25% = random)
-- No errors in harness output, but results look wrong
-- Using a `/chat` or `/v1/chat/completions` endpoint for loglikelihood tasks
+- `JSONDecodeError` appears in sampler or training logs
+- Anchor store file is 0 bytes on disk
+- Adaptive batch sizing reverts to defaults unexpectedly mid-training run
 
 **Phase to address:**
-Phase 4 (lm-eval-harness integration) — set up endpoint routing before running any benchmarks.
+Phase 3 (Anchor store) — atomic writes must be the only write path; this cannot be added later without risk of existing data corruption.
 
 ---
 
-### Pitfall 11: Python Service in Bash Repo — venv Not Activated in Cron / Sync Invocations
+### Pitfall 8: Stale Anchor Entries Not Keyed on Hardware Config — Wrong Batch Sizes After Environment Change
 
 **What goes wrong:**
-The FastAPI service is developed with an activated venv. The service's systemd unit, cron entry, or NVIDIA Sync invocation forgets to activate the venv or specify the full venv Python path. The service starts with the system Python, which lacks all the safety harness dependencies, and produces `ModuleNotFoundError: No module named 'nemoguardrails'` at runtime.
+The anchor store persists batch configs keyed only on model name (e.g., `"llama-3-8b": {"batch_size": 32}`). The user upgrades from a Docker container with 60GB available to a container with 100GB available (different `--ulimit memlock`, or same machine but different competing workloads). The anchor store still returns the conservative batch size from the constrained environment. The probe protocol is never triggered because the anchor exists.
+
+The inverse is more dangerous: an anchor from a high-memory environment is loaded in a constrained environment, the anchor batch size causes immediate OOM, and the failure classifier sees a hang/restart loop.
 
 **Why it happens:**
-This is the first Python component in a bash-heavy repo. The existing bash scripts on this repo have no venv management pattern. Developers activate the venv manually during development and forget it's not active in non-interactive invocation contexts.
+Model name is the obvious primary key. Hardware state is dynamic and harder to capture. Developers defer "hardware keying" as a future enhancement, but the deferred version never ships and the stale anchors accumulate.
 
 **How to avoid:**
-- Use absolute venv Python path in all non-interactive invocation contexts: `/path/to/harness/.venv/bin/python`, never bare `python3`.
-- In the systemd unit file, set `ExecStart=/path/to/harness/.venv/bin/uvicorn ...` — do not use `Environment=PATH=...` as a workaround.
-- Add a smoke test to the bash `lib.sh` pattern: a `check_harness_deps` function that calls `$HARNESS_PYTHON -c "import nemoguardrails"` and fails loudly if the venv is missing.
-- Document the venv path in `CLAUDE.md` and the service README.
+Key anchors on a composite key: `{model_name}_{memory_tier}` where `memory_tier` is a coarse bucket (e.g., `"<64GB"`, `"64-100GB"`, `"100GB+"`) derived from total system memory at anchor-write time. Store the total memory snapshot alongside the anchored config so staleness is detectable. Add an expiry: anchors older than N days (configurable, default 30) are treated as unanchored and trigger a new probe.
+
+```json
+{
+  "llama-3-8b_100GB+": {
+    "batch_size": 32,
+    "anchored_at": "2026-04-01T10:00:00Z",
+    "memory_total_gb": 128,
+    "expires_at": "2026-05-01T10:00:00Z"
+  }
+}
+```
 
 **Warning signs:**
-- Service works when run manually as the user but fails in cron or systemd
-- `ImportError` or `ModuleNotFoundError` in service logs
-- `which python` inside the service process resolves to `/usr/bin/python3` not the venv
+- Anchor store has entries that are months old
+- After a container rebuild, batch sizes are immediately accepted from the store without probing
+- OOM occurs on first training step despite the anchor store claiming the config is safe
 
 **Phase to address:**
-Phase 1 (Gateway foundation) — the venv path convention must be established and tested before any other phases build on it.
+Phase 3 (Anchor store) — key schema and expiry must be designed before any entries are written; changing the key schema after production use requires a migration.
 
 ---
 
-### Pitfall 12: Red Team Feedback Loop Creates Skewed Training Data
+### Pitfall 9: Effective Scale Formula Applies Multiplier to Physical Batch Size — Ignores Gradient Accumulation Steps
 
 **What goes wrong:**
-The distributed red teaming system generates adversarial prompts from past critiques and eval failures. These adversarial prompts are fed back into threshold calibration and labeled as training data for fine-tuning. Over time the dataset becomes dominated by adversarial examples, making the model more likely to refuse benign edge cases (over-refusal) because benign prompts are underrepresented.
+The effective scale formula calculates "effective batch size" but the user has configured `gradient_accumulation_steps > 1`. The formula applies its tier multiplier to the physical micro-batch size, not the effective batch size (`micro_batch * grad_accum_steps`). The tier boundary comparisons are therefore off by the accumulation factor. A config that should land in the "high" tier is classified as "medium", triggering a probe that is unnecessary and potentially disruptive.
 
 **Why it happens:**
-Feedback loops in eval harnesses naturally amplify failures — failures get labeled, reprocessed, and emphasized. Without active sampling of benign traffic to balance the adversarial examples, the dataset distribution drifts.
+The formula is derived from memory pressure logic (what fits in a single forward pass), so `micro_batch_size` is the natural input. The relationship to `effective_batch_size` is added as an afterthought. The confusion is compounded by the Unsloth/Hugging Face bug (2024) where gradient accumulation loss averaging was wrong — the community awareness of effective-vs-micro batch semantics is inconsistent.
 
 **How to avoid:**
-- Maintain a balanced dataset policy: for every adversarial example added, add at least one benign example from production traffic.
-- Track over-refusal rate as a first-class metric alongside safety metrics in CI/CD gates. Block promotion if over-refusal exceeds the threshold.
-- Apply stratified sampling in the red team loop: sample adversarial prompts from the long tail (novel attack patterns), not just the easiest-to-reproduce failures.
-- Version the training data corpus alongside model checkpoints so drift is detectable.
+Define clearly in the formula's interface which concept is being classified:
+- Tier boundaries operate on **physical micro-batch size** (memory impact)
+- Effective scale reporting uses **effective batch size** (training dynamics impact)
+- Never mix these in a single formula without explicit documentation
+
+Document the formula's inputs and outputs with concrete examples at each tier boundary. Add a unit test that passes `micro_batch=4, grad_accum=8` and asserts the memory-tier classification uses 4, while the effective-batch reporting emits 32.
 
 **Warning signs:**
-- Safety scores improve while helpfulness scores (on benign tasks) degrade over multiple eval cycles
-- Users report the model refusing reasonable requests after a safety update
-- Training data ratio of adversarial to benign exceeds 30%
+- Tier boundaries change unexpectedly when `gradient_accumulation_steps` is changed without changing `per_device_train_batch_size`
+- Probe protocol triggers unnecessarily after switching from `bs=16, ga=1` to `bs=4, ga=4`
+- Formula comments use "batch size" without specifying micro vs effective
 
 **Phase to address:**
-Phase 5 (Red teaming + feedback loop) — define dataset balance policy before the first feedback loop is enabled.
+Phase 2 (Effective scale formula) — the semantic distinction must be documented in the formula's type signature and docstring before the formula is used by any downstream component.
+
+---
+
+### Pitfall 10: Hang vs OOM Misclassification — Exit Code 137 Is Ambiguous
+
+**What goes wrong:**
+The failure classifier sees exit code 137 (SIGKILL) and classifies the failure as OOM (killed by the Linux OOM killer). However, exit code 137 is also produced by a watchdog timer sending SIGKILL to a hung process, by `docker stop` (which sends SIGTERM then SIGKILL after timeout), and by the user running `kill -9` manually. Classifying a watchdog-killed hang as an OOM incorrectly triggers OOM override rules in the anchor store (reducing batch size) when the correct response would be hang-investigation or watchdog extension.
+
+**Why it happens:**
+The Linux OOM killer sends SIGKILL, and its canonical exit code is 137 (128 + signal 9). This is documented and widely cited. The possibility that other sources also send SIGKILL is less prominent in training-failure discussions.
+
+**How to avoid:**
+Multi-signal classification — do not rely on exit code alone:
+
+| Signal | Exit Code | Supplementary Evidence | Classification |
+|--------|-----------|----------------------|----------------|
+| SIGKILL | 137 | `dmesg` contains "Out of memory: Killed process" | OOM |
+| SIGKILL | 137 | No dmesg OOM line; process ran for >N minutes before kill | HANG/WATCHDOG |
+| SIGKILL | 137 | `docker stop` issued; container logs show graceful warning | EXTERNAL_STOP |
+| SIGTERM | 130/143 | Normal shutdown pattern | CLEAN |
+
+Parse `dmesg` (or `/var/log/kern.log`) for OOM killer messages keyed on the training process PID. If the kernel OOM message is absent but exit code is 137, classify as HANG or WATCHDOG, not OOM. The difference matters because OOM triggers batch-size reduction while HANG should not.
+
+**Warning signs:**
+- Batch size is being reduced after jobs that were externally stopped or timed out by a job scheduler
+- `dmesg` does not contain OOM lines corresponding to the classified OOM events
+- Hang events never appear in the failure log — everything is classified as OOM
+
+**Phase to address:**
+Phase 5 (Failure classifier) — the multi-signal classification schema must be established before the anchor store OOM override rules are written; changing the classification schema after override rules are deployed requires careful migration.
+
+---
+
+### Pitfall 11: Probe Protocol Leaves Model in Inconsistent State on Failure — No Optimizer State Rollback
+
+**What goes wrong:**
+The probe protocol runs a prepare/evaluate cycle to test a new batch size. During the evaluate phase, an OOM occurs after optimizer state has been partially updated (or after a gradient step completes). The probe does not roll back the optimizer state or model weights. The training loop resumes from a partially-updated model rather than the pre-probe checkpoint. Depending on the loss function, this can corrupt training silently (loss continues decreasing so no alarm fires) or cause loss divergence that is attributed to hyperparameters rather than the probe.
+
+**Why it happens:**
+The probe is designed as a "test forward pass" that should be rollback-trivially. But in eager execution PyTorch, a forward pass that includes loss computation and `backward()` has already updated gradient buffers. If the probe runs a full step (forward + backward + optimizer step), rolling back requires checkpointing the optimizer state before the probe — an expensive operation.
+
+**How to avoid:**
+Design probe phases strictly:
+- **Prepare phase:** Only forward pass, no `loss.backward()`, no `optimizer.step()`. Use `with torch.no_grad():` to prevent gradient computation.
+- **Evaluate phase:** Measure memory after forward pass only. If memory is acceptable, declare the probe successful and let the real training loop run the backward pass.
+- Never run `optimizer.step()` inside the probe cycle.
+- If the probe must test backward (to catch activation memory OOM), snapshot optimizer state before the probe and restore on any failure.
+
+Document this constraint in the probe interface (`ProbeProtocol.evaluate()` docstring): "Probe does not execute optimizer.step(). Successful probe guarantees only that forward + backward memory fits."
+
+**Warning signs:**
+- Loss spikes or diverges immediately after a probe cycle completes
+- Probe cycles that include a gradient step (logs show "optimizer step" inside probe)
+- Model checkpoint after probe differs from checkpoint before probe when probe is expected to be no-op
+
+**Phase to address:**
+Phase 4 (Probe protocol) — the no-optimizer-step constraint must be in the interface specification before implementation begins.
+
+---
+
+### Pitfall 12: GPUSampler Polling Loop Uses subprocess Calls — Performance and Reliability Issues
+
+**What goes wrong:**
+GPUSampler is implemented using `subprocess.run(["nvidia-smi", ...])` inside a tight polling loop. On the DGX Spark, `nvidia-smi` is itself an NVML wrapper and carries 50-150ms subprocess startup overhead per call. At a 1-second sampling interval, subprocess overhead consumes 5-15% of each interval just in process creation. At faster intervals (100ms for probe evaluation), the sampler loop can barely keep up with its own invocations. Additionally, subprocess calls are not unit-testable without mocking the entire subprocess infrastructure.
+
+The PROJECT.md specification explicitly states "no subprocess calls" for the GPUSampler.
+
+**Why it happens:**
+`nvidia-smi` is the most documented GPU monitoring approach. Developers default to it before discovering the NVML Python bindings. The pynvml/nvidia-ml-py wrapper eliminates subprocess overhead entirely and is directly mockable in unit tests.
+
+**How to avoid:**
+Use `nvidia-ml-py` (pynvml) exclusively for all NVML calls. No subprocess invocations. All calls go through the Python bindings, which call the shared library directly via ctypes. This is the canonical approach for monitoring tools (nvitop, gpustat, nvidia-smi itself are all built on NVML).
+
+**Warning signs:**
+- `subprocess`, `Popen`, or `shlex` imports in the GPUSampler module
+- `"nvidia-smi"` string literal in GPUSampler source
+- Sampler poll intervals slower than expected under light load
+
+**Phase to address:**
+Phase 1 (GPUSampler) — this is a specification requirement; catch it in code review before any implementation lands.
 
 ---
 
@@ -302,31 +376,31 @@ Shortcuts that seem reasonable but create long-term problems.
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| Pointing lm-eval at the same `/chat` endpoint as users | Single endpoint to maintain | Silently wrong loglikelihood scores on all MC tasks | Never — route evals separately |
-| Storing raw traces in application log dir | Zero extra infra | PII exposure, audit failure, no retention control | Never in production |
-| Using LiteLLM HTTP call from harness instead of SDK | Simpler code | Extra HTTP hop, doubled latency overhead | Only in early prototype, remove before Phase 2 |
-| Initializing LLMRails in a FastAPI startup hook (async) | Feels clean | asyncio/nest_asyncio conflict on first request | Never — initialize at module level |
-| Skipping Unicode normalization on input, relying on classifier | Less code | 100% evasion success for Unicode injection attacks | Never |
-| Running critique synchronously before returning response | Simpler mental model | Unacceptable TTFB on local hardware | Only for offline batch eval, never for interactive |
-| Installing NeMo Guardrails system-wide instead of venv | One less step | Breaks existing system Python deps, conflicts between toolbox scripts and harness | Never — always use venv |
-| Colang version left implicit (no `colang_version` pin) | Zero config | Silent migration issues when NeMo Guardrails is upgraded | Never |
+| Using `MemFree` instead of `MemAvailable` from `/proc/meminfo` | Simple one-field parse | Underreports available memory by 10-50x under load; causes false OOM pressure alarms | Never |
+| Single-point-in-time baseline instead of rolling window | One read instead of 10 | Baseline corrupted by page cache transients during model load; jitter margin useless | Never |
+| Keying anchor store only on model name | Simple key | Stale entries from different memory environments applied silently | Only acceptable as an MVP if an expiry TTL is also implemented |
+| `open(path, 'w')` for anchor store writes | Two lines of code | Corruption on concurrent write; undetectable without explicit testing | Never — atomic write is equally simple |
+| Subprocess to `nvidia-smi` instead of pynvml | Familiar tool, easy to prototype | 50-150ms overhead per sample; not mockable; breaks on GB10 for memory fields | Acceptable only in a throwaway script, never in the GPUSampler |
+| Catching `Exception` in OOM handler instead of `torch.cuda.OutOfMemoryError` | Catches more errors | Masks non-OOM exceptions; Python reference leak same either way | Never — be specific |
+| Anchor entries without expiry TTL | Zero clock management | Stale anchors from 6 months ago applied to changed hardware | Never — 30-day default TTL costs nothing |
+| Classifying all SIGKILL as OOM | Simple rule | Hang events trigger batch-size reduction; corrupts anchor store with wrong failure type | Never when dmesg is available |
 
 ---
 
 ## Integration Gotchas
 
-Common mistakes when connecting to external services.
+Common mistakes when connecting to the existing DGX Toolbox infrastructure.
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| NeMo Guardrails + FastAPI | Constructing `LLMRails` inside an async handler | Construct at module top level before `uvicorn.run()` |
-| NeMo Guardrails + uvicorn | Running uvicorn with `--loop uvloop` | Use default asyncio loop; uvloop cannot be patched by nest_asyncio |
-| Harness gateway + LiteLLM | HTTP call from harness to LiteLLM for every request | Use LiteLLM Python SDK when co-located to avoid second HTTP hop |
-| lm-eval-harness + gateway | Point all tasks at `/v1/chat/completions` | Route loglikelihood tasks to completion endpoint, generative to chat |
-| Streaming + NeMo output rails | Call blocking classifier inline in async generator | Offload to `run_in_executor` thread pool |
-| Trace logger + PII | Log raw prompt/response to JSON file | Run PII redaction pass before writing trace record |
-| Red team loop + training data | Auto-label all adversarial examples, no benign sampling | Maintain balanced dataset policy, track over-refusal metric |
-| FastAPI harness + Nginx/reverse proxy | SSE stream buffered by Nginx until 16KB | Add `X-Accel-Buffering: no` header to streaming responses |
+| pynvml on GB10 | Calling `nvmlDeviceGetMemoryInfo` without NVMLError fallback | Wrap in `try/except pynvml.NVMLError` and fall through to `/proc/meminfo` UMA path |
+| `/proc/meminfo` parsing | Reading `MemFree` as available memory | Always read `MemAvailable`; add `Buffers` + `Cached` reads for transient detection |
+| `cudaMemGetInfo` on UMA | Treating result as authoritative available memory | Use as secondary signal only; `/proc/meminfo MemAvailable + SwapFree` is authoritative |
+| anchor store + existing `lib.sh` pattern | Storing anchor file in a directory without write guarantees | Store in `~/.config/dgx-toolbox/` or alongside the model; verify write permissions at startup |
+| dgx_toolbox.py bridge | Adding GPU telemetry imports at module top level | Wrap in `try/except ImportError` so the bridge degrades gracefully if pynvml is absent |
+| status.sh GPU telemetry block | Calling Python telemetry from status.sh without checking Python environment | Add a guard: `if command -v python3 >/dev/null && python3 -c "import pynvml" 2>/dev/null; then` |
+| failure classifier + training launcher scripts | Checking only process exit code | Check exit code + `dmesg` OOM lines + NVML temperature to classify correctly |
+| probe protocol + Unsloth training | Running probe inside the Unsloth training loop | Probe must run before Unsloth's `Trainer.train()` is called; Unsloth manages its own CUDA state |
 
 ---
 
@@ -336,57 +410,54 @@ Patterns that work at small scale but fail as usage grows.
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
-| Blocking classifier in async stream path | High P99 latency, low P50 | Offload to thread pool executor | At 5+ concurrent streaming requests |
-| LiteLLM Postgres log table unbounded growth | Slow query latency, dashboard hangs | Add log retention/pruning from day one | Past ~1M rows |
-| Synchronous critique before stream return | Every request feels hung | Async critique or hard timeout | Immediately on local 7B+ judge model |
-| Full trace stored in SQLite for replay harness | Replay harness slow to load test cases | Use append-only log files + indexed SQLite for metadata only | Past ~100K traces |
-| Redis for usage-based routing between harness and LiteLLM | Added Redis round-trip per request | Use simple shuffle routing; reserve Redis for session state | At 50+ req/s |
-| HITL dashboard loading all traces at once | Dashboard hangs | Paginate traces, filter by review status | Past ~10K unreviewed traces |
+| Single-sample `/proc/meminfo` read as baseline | Baseline variance >5GB between runs of same config | Rolling window (10 samples / 30 seconds); wait for cache stabilization | Immediately on large model loads (>30B parameters) |
+| Anchor store loaded/saved on every sample poll | High I/O rate on NVMe; lock contention | Load at startup; save only on state change; use atomic write | At 1Hz sampling rate with frequent updates |
+| pynvml handle opened and closed per sample | NVML overhead; handle creation latency | Open once at GPUSampler init; close only at shutdown | At sampling rates >0.5Hz |
+| Failure classifier reading full dmesg | dmesg can be 50MB+; slow parse | Read last N lines only; filter by timestamp window matching training job | On systems with months of uptime |
+| Probe protocol testing every batch size increment | Linear probe time O(N) before each training run | Binary-search between last successful anchor and current candidate | When batch size search space >32 options |
+| Anchor store grows unbounded | File size grows; load time increases | TTL-based expiry; cap at N entries per model; prune on load | After 6+ months and 10+ models |
 
 ---
 
 ## Security Mistakes
 
-Domain-specific security issues beyond general web security.
+Domain-specific security issues for GPU telemetry in a shared DGX toolbox.
 
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| No Unicode normalization before input classifier | 100% guardrail evasion via zero-width chars, homoglyphs | NFC/NFKC normalize + strip zero-width chars before any classifier |
-| Logging raw prompts with PII before redaction | Compliance failure, credential exposure | PII redaction pass before trace write |
-| Red team prompts fed back as training data without human review | Trains model to produce adversarial outputs | Human-in-loop review gate on any example entering fine-tune corpus |
-| No rate limiting at harness ingress | Inference compute exhaustion, DoS via LLM cost | Token-bucket rate limiting per tenant/IP in Phase 1 |
-| Trace replay harness reading production logs directly | Sensitive prod data exposed to CI environment | Anonymized/redacted log export pipeline for replay harness |
-| Constitution file world-writable | Attacker modifies constitution to permit harmful output | Read-only mount for constitution and Colang config in production |
-| Guardrail bypass treated as an anomaly, not an attack | Silent evasion goes undetected | Log all guardrail decisions and alert on unusual PASS rate spikes |
+| Anchor store world-writable | Any process on the system can inject fake "safe" batch configs, causing OOM on next run | chmod 600 on anchor store file; verify on every load |
+| Parsing unsanitized `/proc/meminfo` lines | Not a real attack vector, but defensive parsing avoids crashes from kernel version differences | Use explicit field parsing, not eval or split-with-assumption |
+| Probe protocol exposing model intermediate activations to logs | Debug logging of probe tensors leaks model weights or training data embeddings | Log only scalar metrics (batch size, memory used, success/fail); never log tensor values |
+| dmesg parsing without privilege check | On some systems, `dmesg` requires root or `CAP_SYSLOG`; silent failure returns empty, all OOMs misclassified as hangs | Check dmesg readability at startup; log a warning and adjust classifier behavior if unavailable |
 
 ---
 
 ## UX Pitfalls
 
-Common user experience mistakes in this domain (operator UX — the people tuning guardrails).
+Common mistakes in the operator/developer experience for this telemetry layer.
 
 | Pitfall | User Impact | Better Approach |
 |---------|-------------|-----------------|
-| Constitution editing with no preview/test | Operator changes a principle, does not see effect until next eval run | Add a `--dry-run` mode that runs the critique loop on a sample prompt immediately |
-| Guardrail threshold UI with no baseline reference | Operator does not know what threshold 0.7 means in practice | Show example prompts that pass/fail at current threshold alongside the slider |
-| HITL review queue shows all traces, no prioritization | Reviewer burns out on benign traces | Default to showing borderline-scored and flagged traces first |
-| Over-refusal is invisible in dashboard | Operators optimize for safety metrics, helpfulness degrades silently | Surface over-refusal rate as a top-level metric next to safety score |
-| AI-guided guardrail suggestions accepted with one click | Operator rubber-stamps AI suggestions without understanding change | Require diff view + confirmation comment for AI-suggested constitution changes |
+| Telemetry block in status.sh shows raw bytes | Numbers like "127926272000" are unreadable | Always convert to GiB for display; keep raw bytes in data structures |
+| Anchor store shows no expiry information | Users don't know if they're using a stale anchor | Display `anchored_at` and `expires_at` in status output |
+| GPUSampler errors crash status.sh | A single pynvml error makes the entire status script fail | GPUSampler errors in status.sh context must be caught and displayed as "telemetry unavailable" |
+| Failure classifier emits only final verdict | Debugging misclassifications requires knowing which signals were checked | Log all classifier signals (exit code, dmesg match, temperature) alongside the final verdict |
+| Probe protocol "silent success" | Users don't know a probe ran or what batch size was anchored | Log probe start/end and the anchored result to stdout and the dgx-toolbox log |
 
 ---
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **NeMo Guardrails installed:** Verify `from nemoguardrails import LLMRails` imports without error on aarch64 before writing any integration code
-- [ ] **Streaming guardrails:** Verify output rails are offloaded to thread pool — a passing test with a fast mock classifier does not prove it
-- [ ] **Unicode normalization:** Verify the normalization step runs before classifiers, not after — add a test with a zero-width-character-injected prompt
-- [ ] **Colang version pinned:** Verify `colang_version` is explicit in `config.yaml`, not relying on NeMo default
-- [ ] **LLMRails initialization:** Verify it is called before `uvicorn.run()`, with a test that hits the endpoint twice in quick succession (not just once)
-- [ ] **Trace PII redaction:** Verify the redaction pipeline runs on trace records, not only on model output — inspect a raw trace file after a test with a synthetic PII prompt
-- [ ] **lm-eval routing:** Verify loglikelihood tasks are hitting a completion endpoint by checking that MMLU scores are non-uniform (not ~25%)
-- [ ] **venv in systemd:** Verify the service starts correctly via `systemctl start`, not just `python -m uvicorn ...` in the terminal
-- [ ] **Over-refusal metric:** Verify the CI gate checks over-refusal rate, not only safety pass rate — run a benign prompt suite after every safety config change
-- [ ] **Dataset balance:** Verify the red team feedback loop has a max adversarial ratio enforced in code, not as a documentation note
+- [ ] **GPUSampler on GB10:** Verify `nvmlDeviceGetMemoryInfo` fallback fires by running the sampler with pynvml mocked to raise `NVMLError_NotSupported`; assert the `/proc/meminfo` path is invoked
+- [ ] **MemAvailable vs MemFree:** Verify by checking the parsing function under load; assert the returned value matches `MemAvailable` in `/proc/meminfo`, not `MemFree`
+- [ ] **Atomic anchor write:** Verify no partial-write corruption by running concurrent writer + reader in a unit test; assert `json.loads()` never raises `JSONDecodeError` on concurrent access
+- [ ] **Anchor expiry:** Verify by seeding an anchor with an `expires_at` in the past; assert it is treated as absent on next load
+- [ ] **Probe no-optimizer-step:** Verify by confirming `optimizer.step()` is never called inside the probe cycle; add an assertion or mock that fails if it is called
+- [ ] **OOM recovery outside except block:** Verify by inserting a manual OOM in a test and confirming the retry allocates successfully; confirm `torch.cuda.memory_allocated()` drops before the retry
+- [ ] **Exit code 137 disambiguation:** Verify the classifier distinguishes OOM from hang by testing with a mock that returns 137 with and without a matching dmesg OOM line
+- [ ] **Effective scale formula micro vs effective batch:** Verify by running formula with `micro_batch=4, grad_accum=8` and asserting tier classification uses 4, effective scale reports 32
+- [ ] **status.sh guard for pynvml absent:** Verify status.sh does not crash when `import pynvml` fails; the GPU block should show "telemetry unavailable" not a Python traceback
+- [ ] **nvidia-ml-py not pynvml installed:** Verify `pip show nvidia-ml-py` succeeds and `pip show pynvml` is absent in the project venv
 
 ---
 
@@ -396,14 +467,14 @@ When pitfalls occur despite prevention, how to recover.
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| asyncio/LLMRails init conflict discovered in production | LOW | Move LLMRails construction to module level; redeploy; no data loss |
-| uvloop incompatibility | LOW | Remove uvloop from requirements; restart service |
-| Annoy build failure on aarch64 | LOW-MEDIUM | `apt-get install gcc g++ python3-dev` then rebuild venv; add to setup script |
-| Trace logs containing raw PII already on disk | HIGH | Audit affected files; run redaction script over historical logs; rotate access credentials if any leaked; update retention policy |
-| Colang 1.0 flows silently doing nothing under 2.0 | MEDIUM | Run `nemoguardrails convert`; test each flow; pin version going forward |
-| Over-refusal from skewed training data | HIGH | Roll back constitution/thresholds to last known good; audit dataset balance; remove adversarial-only batches from corpus |
-| lm-eval wrong scores from chat endpoint | LOW | Redirect loglikelihood tasks to completion endpoint; rerun benchmarks; discard contaminated historical scores |
-| Streaming event loop starvation in production | MEDIUM | Add `run_in_executor` for all blocking classifiers; load test before re-enabling streaming |
+| nvmlDeviceGetMemoryInfo crash on GB10 | LOW | Add try/except NVMLError with /proc/meminfo fallback; redeploy; no data loss |
+| MemFree used instead of MemAvailable | LOW | Change one field name in parsing function; all calculations self-correct on next sample |
+| Corrupt anchor store JSON | LOW | Delete anchor store file; system falls back to unanchored defaults; probe runs on next training start |
+| Stale anchors causing OOM | MEDIUM | Delete affected anchor entries; add hardware-keyed composite key; add expiry TTL; rerun probes |
+| Probe corrupted optimizer state | HIGH | Roll back to pre-probe checkpoint; add `torch.no_grad()` guard to probe; verify checkpoint save precedes any probe |
+| Misclassified hangs reducing batch size | MEDIUM | Audit anchor store OOM entries against dmesg history; correct misclassified entries; add dmesg check to classifier |
+| All SIGKILL classified as OOM — batch size spiraling down | MEDIUM | Reset anchor store; implement multi-signal classifier; add a floor to prevent batch size going below minimum viable |
+| pynvml vs nvidia-ml-py conflict in venv | LOW | `pip uninstall pynvml`; `pip install nvidia-ml-py`; verify imports work |
 
 ---
 
@@ -413,45 +484,46 @@ How roadmap phases should address these pitfalls.
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| LLMRails init in async context | Phase 1 (Gateway) | Smoke test: two rapid consecutive requests, assert no asyncio exceptions |
-| uvloop incompatibility | Phase 1 (Gateway) | Verify `loop=asyncio` in uvicorn config; check `asyncio.get_event_loop().__class__.__name__` != `uvloop.Loop` |
-| Annoy aarch64 build failure | Phase 1 (Env setup) | `pip install nemoguardrails` in fresh venv on DGX Spark; assert import works |
-| Double-proxy latency | Phase 1 (Gateway) | Measure baseline TTFT through LiteLLM alone vs through harness; assert delta < 50 ms |
-| Colang version conflict | Phase 2 (Guardrails) | Assert `colang_version` key exists in config.yaml; validate Colang parses on CI |
-| Streaming event loop blocking | Phase 2 (Streaming) | Load test: 10 concurrent streaming requests; assert P99 TTFT < 2x single-request P99 |
-| Unicode injection evasion | Phase 2 (Guardrails) | Red team test suite includes zero-width and homoglyph examples; assert all flagged |
-| Trace PII logging | Phase 3 (Trace logging) | Unit test: send synthetic PII prompt; assert no PII in trace file on disk |
-| Synchronous critique latency | Phase 3 (Constitutional AI) | Measure TTFB with and without critique; assert interactive mode is async |
-| venv not activated in systemd | Phase 1 (Gateway) | Start service via `systemctl start`; assert `ModuleNotFoundError` does not occur |
-| lm-eval chat endpoint wrong scores | Phase 4 (lm-eval) | Run MMLU; assert score is non-uniform (> 30% and variance across models) |
-| Red team dataset drift | Phase 5 (Red teaming) | Enforce adversarial ratio cap in code; CI gate on over-refusal metric |
-| HITL review queue overload | Phase 6 (Dashboard) | Default queue sorted by borderline score, not insertion order |
+| nvmlDeviceGetMemoryInfo on GB10 | Phase 1 (GPUSampler) | Unit test: mock NVMLError_NotSupported; assert /proc/meminfo path invoked |
+| cudaMemGetInfo underreports UMA | Phase 1 (GPUSampler) + Phase 2 (UMA model) | Assert headroom calculation uses /proc/meminfo MemAvailable, not cudaMemGetInfo |
+| MemFree vs MemAvailable | Phase 1 (GPUSampler) | Unit test: parse real /proc/meminfo; assert field is MemAvailable |
+| Page cache jitter in baseline | Phase 2 (UMA memory model) | Baseline sampler takes 10 samples; asserts median vs single-point differ <5% on stable system |
+| pynvml package confusion | Phase 1 (environment setup) | CI check: pip show nvidia-ml-py succeeds; pip show pynvml absent |
+| PyTorch OOM reference leak | Phase 4 (Probe protocol) | Unit test: probe OOM recovery; assert successful retry after 137 ms, not immediate second OOM |
+| Anchor store JSON corruption | Phase 3 (Anchor store) | Concurrent write stress test; assert no JSONDecodeError in 1000 concurrent writes |
+| Stale anchors from different hardware | Phase 3 (Anchor store) | Anchor key includes memory tier; expiry TTL enforced; unit test with past-expiry anchor |
+| Effective scale formula confusion | Phase 2 (Effective scale formula) | Unit test with micro_batch=4, grad_accum=8; assert tier uses 4, effective reports 32 |
+| Hang vs OOM misclassification | Phase 5 (Failure classifier) | Unit test: exit 137 with no dmesg OOM → HANG; exit 137 with dmesg OOM → OOM |
+| Probe optimizer state corruption | Phase 4 (Probe protocol) | Assert no optimizer.step() called in probe; mock test confirms pre-probe weights == post-probe-failure weights |
+| subprocess in GPUSampler | Phase 1 (GPUSampler) | Grep for subprocess/Popen in sampler source; CI linting rule |
 
 ---
 
 ## Sources
 
-- [NeMo Guardrails GitHub Issue #137: asyncio exception when initializing LLMRails inside function](https://github.com/NVIDIA/NeMo-Guardrails/issues/137)
-- [NeMo Guardrails GitHub Issue #112: Can't patch loop of type uvloop.Loop](https://github.com/NVIDIA-NeMo/Guardrails/issues/112)
-- [NeMo Guardrails Installation Guide — compiler requirements](https://docs.nvidia.com/nemo/guardrails/latest/getting-started/installation-guide.html)
-- [NeMo Guardrails GitHub Issue #86: annoy wheel build failure](https://github.com/NVIDIA-NeMo/Guardrails/issues/86)
-- [NeMo Guardrails Streaming docs](https://docs.nvidia.com/nemo/guardrails/user_guides/advanced/streaming.html)
-- [NeMo Guardrails Colang 2.0 What's Changed](https://docs.nvidia.com/nemo/guardrails/latest/colang-2/whats-changed.html)
-- [NVIDIA blog: Stream Smarter and Safer — streaming guardrails](https://developer.nvidia.com/blog/stream-smarter-and-safer-learn-how-nvidia-nemo-guardrails-enhance-llm-output-streaming/)
-- [LiteLLM middleware performance blog](https://docs.litellm.ai/blog/fastapi-middleware-performance)
-- [LiteLLM production best practices](https://docs.litellm.ai/docs/proxy/prod)
-- [arxiv 2504.11168: Bypassing LLM Guardrails — character and AML evasion at up to 100% success](https://arxiv.org/abs/2504.11168)
-- [Mindgard: Bypassing LLM guardrails in practice](https://mindgard.ai/resources/bypassing-llm-guardrails-character-and-aml-attacks-in-practice)
-- [FastAPI event loop blocking case study (2026)](https://www.techbuddies.io/2026/01/10/case-study-fixing-fastapi-event-loop-blocking-in-a-high-traffic-api/)
-- [FastAPI SSE streaming docs](https://fastapi.tiangolo.com/tutorial/server-sent-events/)
-- [LiteLLM lm-evaluation-harness tutorial](https://docs.litellm.ai/docs/tutorials/lm_evaluation_harness)
-- [lm-evaluation-harness API guide — loglikelihood vs generative](https://github.com/EleutherAI/lm-evaluation-harness/blob/main/docs/API_guide.md)
-- [Statsig: PII redaction in LLMs](https://www.statsig.com/perspectives/piiredactionprivacyllms)
-- [Langfuse: LLM security and guardrails trace logging](https://langfuse.com/docs/security-and-guardrails)
-- [Kinde: Human-in-the-loop evals at scale](https://www.kinde.com/learn/ai-for-software-engineering/ai-devops/human-in-the-loop-evals-at-scale-golden-sets-review-queues-drift-watch/)
-- [Braintrust: Best AI evals tools for CI/CD 2025](https://www.braintrust.dev/articles/best-ai-evals-tools-cicd-2025)
-- [NeMo Guardrails nested asyncio loop docs](https://docs.nvidia.com/nemo/guardrails/0.16.0/user-guides/advanced/nested-async-loop.html)
+- [NVIDIA Developer Forums: NVML Support for DGX Spark Grace Blackwell Unified Memory — Community Solution (2026-01-28)](https://forums.developer.nvidia.com/t/nvml-support-for-dgx-spark-grace-blackwell-unified-memory-community-solution/358869)
+- [NVIDIA Developer Forums: NVTOP with DGX Spark unified memory support](https://forums.developer.nvidia.com/t/nvtop-with-dgx-spark-unified-memory-support/351284)
+- [NVIDIA DGX Spark Known Issues — cudaMemGetInfo and SWAP reclamation](https://docs.nvidia.com/dgx/dgx-spark/known-issues.html)
+- [HAMi GitHub Issue #1511: Device plugin panics on NVIDIA GB10 — GetMemoryInfo returns "Not Supported"](https://github.com/Project-HAMi/HAMi/issues/1511)
+- [nvtop GitHub Issue #426: NVIDIA GB10 Grace Blackwell Reporting Issues — memory N/A](https://github.com/Syllo/nvtop/issues/426)
+- [NVIDIA DGX Spark GB10 Unified Memory Architecture — DeepWiki](https://deepwiki.com/NVIDIA/dgx-spark-playbooks/9.1-unified-memory-architecture)
+- [Linux kernel manual proc_meminfo(5) — MemAvailable definition](https://man7.org/linux/man-pages/man5/proc_meminfo.5.html)
+- [Oracle Linux Blog: Understanding Linux Kernel Memory Statistics — MemAvailable vs MemFree](https://blogs.oracle.com/linux/understanding-linux-kernel-memory-statistics)
+- [Red Hat Customer Portal: Interpreting /proc/meminfo — MemFree + Cached is wrong on modern kernels](https://access.redhat.com/solutions/406773)
+- [Oracle Linux Blog: Why is MemAvailable sometimes less than MemFree](https://blogs.oracle.com/linux/memavailable-less-than-memfree)
+- [PyTorch FAQ: Out of memory errors and reference leaks](https://docs.pytorch.org/docs/stable/notes/faq.html)
+- [PyTorch GitHub Issue #27600: Free Memory after CUDA out of memory error](https://github.com/pytorch/pytorch/issues/27600)
+- [PyTorch GitHub Issue #82218: OOM during backward leads to memory leaks](https://github.com/pytorch/pytorch/issues/82218)
+- [PyTorch Blog: Understanding GPU Memory 2 — Reference Cycles](https://pytorch.org/blog/understanding-gpu-memory-2/)
+- [Unsloth Blog: Bug Fixes in LLM Training — Gradient Accumulation denominator bug](https://unsloth.ai/blog/gradient)
+- [Crash-safe JSON at scale: atomic writes + recovery without a DB — DEV Community](https://dev.to/constanta/crash-safe-json-at-scale-atomic-writes-recovery-without-a-db-3aic)
+- [Claude Code GitHub Issue #29051: claude.json corrupted by concurrent writes — no atomic write](https://github.com/anthropics/claude-code/issues/29051)
+- [NVIDIA NVML API Reference Guide — nvmlDeviceGetMemoryInfo](https://docs.nvidia.com/deploy/nvml-api/group__nvmlDeviceQueries.html)
+- [NVIDIA XID Errors documentation — Xid 137 and watchdog events](https://docs.nvidia.com/deploy/xid-errors/index.html)
+- [Python Speed: Dying fast and slow — out-of-memory crashes in Python — SIGKILL exit codes](https://pythonspeed.com/articles/python-out-of-memory/)
+- [nvidia-ml-py PyPI — official NVIDIA Python NVML bindings](https://pypi.org/project/nvidia-ml-py/)
+- [pynvml deprecation notice — install nvidia-ml-py instead](https://magazine.ediary.site/blog/pynvml-deprecated-install-nvidia-ml)
 
 ---
-*Pitfalls research for: AI safety harness (FastAPI + NeMo Guardrails + Constitutional AI + eval harness) on DGX Spark aarch64*
-*Researched: 2026-03-22*
+*Pitfalls research for: GPU telemetry primitives and adaptive training support on DGX Spark GB10 aarch64 (UMA)*
+*Researched: 2026-04-01*
