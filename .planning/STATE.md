@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Safety Harness
-status: "Roadmap created, ready for `/gsd:plan-phase 11`"
-stopped_at: Completed 13-01-PLAN.md
-last_updated: "2026-04-01T03:19:03.802Z"
-last_activity: "2026-03-28 — Completed quick task 260328-fkw: flexible extra bind mount support"
+status: completed
+stopped_at: Completed 13-02-PLAN.md
+last_updated: "2026-04-01T03:33:35.654Z"
+last_activity: "2026-04-01 — Completed 13-01-PLAN.md: GPU telemetry package scaffold, FailureClassifier, GPUSampler"
 progress:
   total_phases: 13
   completed_phases: 12
-  total_plans: 27
-  completed_plans: 28
-  percent: 0
+  total_plans: 30
+  completed_plans: 29
+  percent: 33
 ---
 
 # Project State
@@ -119,6 +119,9 @@ Recent decisions affecting current work:
 - [Phase 13]: Root conftest.py path injection fixes namespace package collision between dgx-toolbox/telemetry/ directory and the installable telemetry package
 - [Phase 13]: HANG classification never contains batch_cap per TELEM-14; prevents incorrect batch backoff on dataloader deadlocks
 - [Phase 13]: nvmlDeviceGetMemoryInfo never called; /proc/meminfo MemAvailable is the authoritative memory source for GB10 UMA architecture
+- [Phase 13-gpu-telemetry-primitives]: Tier classification based on raw_params not effective_params — raw model size determines hardware tier; effective_params used for memory headroom calculation
+- [Phase 13-gpu-telemetry-primitives]: GPUSampler mock mode reads /proc/meminfo for memory — UMA architecture means memory is always available via procfs even without NVML
+- [Phase 13-gpu-telemetry-primitives]: mock_pynvml fixture clears telemetry.sampler sys.modules cache before patching pynvml to prevent test ordering pollution from transitive imports
 
 ### v1.1 Architecture Decisions (Pre-Phase 5)
 
@@ -167,7 +170,7 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-04-01T03:19:03.800Z
-Stopped at: Completed 13-01-PLAN.md
+Last session: 2026-04-01T03:33:24.829Z
+Stopped at: Completed 13-02-PLAN.md
 Resume file: None
 Next action: `/gsd:plan-phase 11`

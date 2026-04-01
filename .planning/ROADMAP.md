@@ -237,11 +237,11 @@ Plans:
   3. `uma_model.calculate_headroom()` returns a `safe_threshold` that correctly accounts for the 5 GB jitter margin, and `effective_scale.compute()` maps the result to the correct tier batch cap and headroom percentage for the model size in use
   4. An anchor record written by a COMPLETED training run raises the batch ceiling to `max(tier_cap, N + step_size)` on the next probe; a record written by an OOM or WATCHDOG run sets a hard cap at `N - step_size`; a HANG record never produces a batch cap field
   5. `dgx_toolbox.py status_report()` includes a `gpu_telemetry` section when pynvml is available and omits it gracefully when not; `status.sh` displays a GPU TELEMETRY block with current watts, temperature, and utilization, or prints "sampler not installed" when the package is absent
-**Plans:** 1/3 plans complete
+**Plans:** 2/3 plans executed
 
 Plans:
 - [x] 13-01-PLAN.md — Package scaffold, FailureClassifier, GPUSampler with mock mode and JSONL append
-- [ ] 13-02-PLAN.md — UMAMemModel, EffectiveScale, AnchorStore, ProbeProtocol
+- [x] 13-02-PLAN.md — UMAMemModel, EffectiveScale, AnchorStore, ProbeProtocol
 - [ ] 13-03-PLAN.md — dgx_toolbox.py bridge and status.sh GPU TELEMETRY integration
 
 ## Progress
@@ -263,4 +263,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 10. HITL Dashboard | 3/3 | Complete | 2026-03-23 |
 | 11. Pipeline Wiring | 2/2 | Complete    | 2026-03-24 |
 | 12. Demo and Documentation | 1/1 | Complete    | 2026-03-24 |
-| 13. GPU Telemetry Primitives | 1/3 | In Progress | - |
+| 13. GPU Telemetry Primitives | 2/3 | In Progress|  |

@@ -174,23 +174,23 @@ Requirements for the telemetry module milestone. Each maps to Phase 13.
 
 ### UMA Memory Model
 
-- [ ] **TELEM-05**: `uma_model.sample_baseline()` drops page cache before sampling (via `/proc/sys/vm/drop_caches`) and returns a baseline dict with MemAvailable, Cached (page cache), idle GPU watts, and a timestamp
-- [ ] **TELEM-06**: `uma_model.calculate_headroom(baseline, current, tier_headroom_pct, jitter_margin_gb=5)` returns `{safe_threshold, headroom_gb, headroom_pct}` accounting for the 5 GB jitter margin; `pin_memory` is always False for UMA; `prefetch_factor` is capped at 4
+- [x] **TELEM-05**: `uma_model.sample_baseline()` drops page cache before sampling (via `/proc/sys/vm/drop_caches`) and returns a baseline dict with MemAvailable, Cached (page cache), idle GPU watts, and a timestamp
+- [x] **TELEM-06**: `uma_model.calculate_headroom(baseline, current, tier_headroom_pct, jitter_margin_gb=5)` returns `{safe_threshold, headroom_gb, headroom_pct}` accounting for the 5 GB jitter margin; `pin_memory` is always False for UMA; `prefetch_factor` is capped at 4
 
 ### Effective Scale
 
-- [ ] **TELEM-07**: `effective_scale.compute(raw_params, quant_mode, training_framework, gradient_checkpointing_mode, lora_rank, seq_len, optimizer, model_weight_gb)` returns `{effective_params, tier: {batch_cap, min_headroom_pct}}` using the multiplier tables (quant × grad_ckpt × seq_len × lora_rank × optimizer)
-- [ ] **TELEM-08**: The effective scale formula applies the correct tier thresholds: ≤1B → (cap=64, headroom=15%), 1–13B → (cap=16, headroom=20%), 13–30B → (cap=8, headroom=20%), 30B+ → (cap=4, headroom=25%)
+- [x] **TELEM-07**: `effective_scale.compute(raw_params, quant_mode, training_framework, gradient_checkpointing_mode, lora_rank, seq_len, optimizer, model_weight_gb)` returns `{effective_params, tier: {batch_cap, min_headroom_pct}}` using the multiplier tables (quant × grad_ckpt × seq_len × lora_rank × optimizer)
+- [x] **TELEM-08**: The effective scale formula applies the correct tier thresholds: ≤1B → (cap=64, headroom=15%), 1–13B → (cap=16, headroom=20%), 13–30B → (cap=8, headroom=20%), 30B+ → (cap=4, headroom=25%)
 
 ### Anchor Store
 
-- [ ] **TELEM-09**: `anchor_store.AnchorStore` persists anchor records to a JSON file, keyed by `config_hash` (SHA-256 of model_id + quant_mode + framework + grad_ckpt + lora_rank + seq_len + optimizer + batch_size + grad_accum), and automatically expires records older than 7 days or with stale config_hash components
-- [ ] **TELEM-10**: The anchor store applies override rules: COMPLETED status raises the ceiling to `max(tier_cap, N + step_size)`; WATCHDOG or OOM status sets a hard cap at `N - step_size`; HANG status logs only and never creates a batch cap
+- [x] **TELEM-09**: `anchor_store.AnchorStore` persists anchor records to a JSON file, keyed by `config_hash` (SHA-256 of model_id + quant_mode + framework + grad_ckpt + lora_rank + seq_len + optimizer + batch_size + grad_accum), and automatically expires records older than 7 days or with stale config_hash components
+- [x] **TELEM-10**: The anchor store applies override rules: COMPLETED status raises the ceiling to `max(tier_cap, N + step_size)`; WATCHDOG or OOM status sets a hard cap at `N - step_size`; HANG status logs only and never creates a batch cap
 
 ### Probe Protocol
 
-- [ ] **TELEM-11**: `probe.prepare_probe(current_config, proposed_changes)` writes a rollback config and probe config to disk and returns `{rollback_config_path, probe_config_path, results_path}` — the consuming project runs 3–5 training steps and writes telemetry to `results_path`
-- [ ] **TELEM-12**: `probe.evaluate_probe(results_path, baseline, tier_headroom, jitter_margin=5)` reads the results file, compares peak memory against the safe threshold, and returns `{action: "commit"|"revert", reason, anchor_record}` for the consuming project to act on
+- [x] **TELEM-11**: `probe.prepare_probe(current_config, proposed_changes)` writes a rollback config and probe config to disk and returns `{rollback_config_path, probe_config_path, results_path}` — the consuming project runs 3–5 training steps and writes telemetry to `results_path`
+- [x] **TELEM-12**: `probe.evaluate_probe(results_path, baseline, tier_headroom, jitter_margin=5)` reads the results file, compares peak memory against the safe threshold, and returns `{action: "commit"|"revert", reason, anchor_record}` for the consuming project to act on
 
 ### Failure Classification
 
@@ -327,14 +327,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TELEM-02 | Phase 13 | Pending |
 | TELEM-03 | Phase 13 | Pending |
 | TELEM-04 | Phase 13 | Pending |
-| TELEM-05 | Phase 13 | Pending |
-| TELEM-06 | Phase 13 | Pending |
-| TELEM-07 | Phase 13 | Pending |
-| TELEM-08 | Phase 13 | Pending |
-| TELEM-09 | Phase 13 | Pending |
-| TELEM-10 | Phase 13 | Pending |
-| TELEM-11 | Phase 13 | Pending |
-| TELEM-12 | Phase 13 | Pending |
+| TELEM-05 | Phase 13 | Complete |
+| TELEM-06 | Phase 13 | Complete |
+| TELEM-07 | Phase 13 | Complete |
+| TELEM-08 | Phase 13 | Complete |
+| TELEM-09 | Phase 13 | Complete |
+| TELEM-10 | Phase 13 | Complete |
+| TELEM-11 | Phase 13 | Complete |
+| TELEM-12 | Phase 13 | Complete |
 | TELEM-13 | Phase 13 | Pending |
 | TELEM-14 | Phase 13 | Pending |
 | TELEM-15 | Phase 13 | Pending |
