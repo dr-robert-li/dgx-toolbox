@@ -80,11 +80,25 @@ class GPUSampler:
                 "mock": True,
             }
 
-        watts = pynvml.nvmlDeviceGetPowerUsage(self._handle) / 1000.0
-        temperature_c = pynvml.nvmlDeviceGetTemperature(
-            self._handle, pynvml.NVML_TEMPERATURE_GPU
-        )
-        gpu_util_pct = pynvml.nvmlDeviceGetUtilizationRates(self._handle).gpu
+        # Per-metric try/except: individual NVML calls can raise NVMLError
+        # (e.g. NVMLError_NotSupported) even after successful init. Each metric
+        # degrades independently to None rather than crashing sample().
+        try:
+            watts = pynvml.nvmlDeviceGetPowerUsage(self._handle) / 1000.0
+        except pynvml.NVMLError:
+            watts = None
+
+        try:
+            temperature_c = pynvml.nvmlDeviceGetTemperature(
+                self._handle, pynvml.NVML_TEMPERATURE_GPU
+            )
+        except pynvml.NVMLError:
+            temperature_c = None
+
+        try:
+            gpu_util_pct = pynvml.nvmlDeviceGetUtilizationRates(self._handle).gpu
+        except pynvml.NVMLError:
+            gpu_util_pct = None
         # Memory always from /proc/meminfo — GB10 UMA pattern (TELEM-02)
         mem_available_gb = self._read_meminfo("MemAvailable")
         page_cache_gb = self._read_meminfo("Cached")
