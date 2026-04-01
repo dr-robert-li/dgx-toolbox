@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Safety Harness
 status: "Roadmap created, ready for `/gsd:plan-phase 11`"
-stopped_at: Completed 12-01-PLAN.md
-last_updated: "2026-03-24T05:06:29.841Z"
-last_activity: 2026-03-28 — Completed quick task 260328-fkw: Add flexible extra bind mount support to all container scripts
+stopped_at: Completed 13-01-PLAN.md
+last_updated: "2026-04-01T03:19:03.802Z"
+last_activity: "2026-03-28 — Completed quick task 260328-fkw: flexible extra bind mount support"
 progress:
-  total_phases: 12
+  total_phases: 13
   completed_phases: 12
   total_plans: 27
-  completed_plans: 27
+  completed_plans: 28
   percent: 0
 ---
 
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-03-24)
 
 ## Current Position
 
-Phase: 11 (Pipeline Wiring) — not started
-Plan: —
-Status: Roadmap created, ready for `/gsd:plan-phase 11`
-Last activity: 2026-03-28 — Completed quick task 260328-fkw: flexible extra bind mount support
+Phase: 13 (GPU Telemetry Primitives) — in progress
+Plan: 13-01 complete, 13-02 next
+Status: Completed 13-01-PLAN.md
+Last activity: 2026-04-01 — Completed 13-01-PLAN.md: GPU telemetry package scaffold, FailureClassifier, GPUSampler
 
-Progress: [░░░░░░░░░░] 0% (v1.2)
+Progress: [█░░░░░░░░░] 33% (v1.3, 1/3 plans)
 
 ## Accumulated Context
 
@@ -116,6 +116,9 @@ Recent decisions affecting current work:
 - [Phase 11-pipeline-wiring]: String-append for LiteLLM config registration preserves comments; pyyaml round-trip for deregistration with timestamped backup
 - [Phase 11-pipeline-wiring]: set +e/-e guards around subprocess calls when exit code capture is needed inside set -euo pipefail test scripts
 - [Phase 12-demo-and-documentation]: Cycle-limiting via background log monitor plus time-based fallback avoids patching autoresearch train.py
+- [Phase 13]: Root conftest.py path injection fixes namespace package collision between dgx-toolbox/telemetry/ directory and the installable telemetry package
+- [Phase 13]: HANG classification never contains batch_cap per TELEM-14; prevents incorrect batch backoff on dataloader deadlocks
+- [Phase 13]: nvmlDeviceGetMemoryInfo never called; /proc/meminfo MemAvailable is the authoritative memory source for GB10 UMA architecture
 
 ### v1.1 Architecture Decisions (Pre-Phase 5)
 
@@ -164,7 +167,7 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-24T05:03:35.636Z
-Stopped at: Completed 12-01-PLAN.md
+Last session: 2026-04-01T03:19:03.800Z
+Stopped at: Completed 13-01-PLAN.md
 Resume file: None
 Next action: `/gsd:plan-phase 11`

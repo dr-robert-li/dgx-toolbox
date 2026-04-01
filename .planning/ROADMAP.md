@@ -225,12 +225,29 @@ Plans:
 **Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 12-01-PLAN.md — End-to-end demo script and README walkthrough with CHANGELOG v1.2 entry
+- [x] 12-01-PLAN.md — End-to-end demo script and README walkthrough with CHANGELOG v1.2 entry
+
+### Phase 13: GPU Telemetry Primitives
+**Goal**: Any project training on DGX Spark can import the telemetry package to sample hardware state, calculate UMA memory headroom, classify failures, and anchor proven batch configurations — without implementing any NVML or /proc calls themselves
+**Depends on**: Phase 12
+**Requirements**: TELEM-01, TELEM-02, TELEM-03, TELEM-04, TELEM-05, TELEM-06, TELEM-07, TELEM-08, TELEM-09, TELEM-10, TELEM-11, TELEM-12, TELEM-13, TELEM-14, TELEM-15, TELEM-16, TELEM-17
+**Success Criteria** (what must be TRUE):
+  1. A caller can `pip install -e dgx-toolbox/telemetry/` and immediately `from telemetry.sampler import GPUSampler`, call `sample()`, and receive a structured dict with GPU watts, temperature, utilization, and MemAvailable — the call completes without any subprocess invocation and without crashing when run in mock mode (no GPU present)
+  2. On a GB10 UMA device where `nvmlDeviceGetMemoryInfo` returns NOT_SUPPORTED, the sampler transparently falls back to `/proc/meminfo` MemAvailable — the caller sees a valid memory value and is never exposed to an NVMLError exception
+  3. `uma_model.calculate_headroom()` returns a `safe_threshold` that correctly accounts for the 5 GB jitter margin, and `effective_scale.compute()` maps the result to the correct tier batch cap and headroom percentage for the model size in use
+  4. An anchor record written by a COMPLETED training run raises the batch ceiling to `max(tier_cap, N + step_size)` on the next probe; a record written by an OOM or WATCHDOG run sets a hard cap at `N - step_size`; a HANG record never produces a batch cap field
+  5. `dgx_toolbox.py status_report()` includes a `gpu_telemetry` section when pynvml is available and omits it gracefully when not; `status.sh` displays a GPU TELEMETRY block with current watts, temperature, and utilization, or prints "sampler not installed" when the package is absent
+**Plans:** 1/3 plans complete
+
+Plans:
+- [x] 13-01-PLAN.md — Package scaffold, FailureClassifier, GPUSampler with mock mode and JSONL append
+- [ ] 13-02-PLAN.md — UMAMemModel, EffectiveScale, AnchorStore, ProbeProtocol
+- [ ] 13-03-PLAN.md — dgx_toolbox.py bridge and status.sh GPU TELEMETRY integration
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -246,3 +263,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 10. HITL Dashboard | 3/3 | Complete | 2026-03-23 |
 | 11. Pipeline Wiring | 2/2 | Complete    | 2026-03-24 |
 | 12. Demo and Documentation | 1/1 | Complete    | 2026-03-24 |
+| 13. GPU Telemetry Primitives | 1/3 | In Progress | - |
