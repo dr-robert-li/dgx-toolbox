@@ -53,7 +53,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 Plans:
 - [x] 01-01-PLAN.md — Project scaffold, lib/config.sh, lib/common.sh with mount check, space check, logging, and test infrastructure
-- [ ] 01-02-PLAN.md — cmd/init.sh with gum/read-p fallback, filesystem validation, model scan, crontab, reinit support
+- [x] 01-02-PLAN.md — cmd/init.sh with gum/read-p fallback, filesystem validation, model scan, crontab, reinit support
 
 ### Phase 2: Adapters and Usage Tracking
 **Goal**: HuggingFace and Ollama models can each be enumerated, sized, and individually identified, and every model load from a launcher updates a persistent usage timestamp
@@ -242,7 +242,7 @@ Plans:
 Plans:
 - [x] 13-01-PLAN.md — Package scaffold, FailureClassifier, GPUSampler with mock mode and JSONL append
 - [x] 13-02-PLAN.md — UMAMemModel, EffectiveScale, AnchorStore, ProbeProtocol
-- [ ] 13-03-PLAN.md — dgx_toolbox.py bridge and status.sh GPU TELEMETRY integration
+- [x] 13-03-PLAN.md — dgx_toolbox.py bridge and status.sh GPU TELEMETRY integration
 
 ## Progress
 
