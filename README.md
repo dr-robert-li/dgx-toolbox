@@ -1,6 +1,6 @@
 # DGX Spark Toolbox
 
-![Version](https://img.shields.io/badge/version-1.2.3-blue)
+![Version](https://img.shields.io/badge/version-1.3.0-blue)
 ![Tests](https://github.com/dr-robert-li/dgx-toolbox/actions/workflows/test.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![Bash](https://img.shields.io/badge/bash-5.0%2B-4EAA25?logo=gnubash&logoColor=white)
@@ -68,6 +68,9 @@ dgx-status
 ├──────────────┴──────────────┴──────────────┴─────────────────┤
 │  Safety Harness (FastAPI :5000)                               │
 │  Auth │ Guardrails │ Critique │ Evals │ Red Team │ HITL      │
+├──────────────────────────────────────────────────────────────┤
+│  GPU Telemetry (pip install -e telemetry/)                    │
+│  GPUSampler │ UMA Model │ Anchor Store │ Probe │ Classifier  │
 ├──────────────────────────────────────────────────────────────┤
 │  Shared: base-toolbox image │ lib.sh │ docker-compose        │
 ├──────────────────────────────────────────────────────────────┤
@@ -925,6 +928,62 @@ modelstore migrate
 Models are tracked via a usage watcher (docker events + inotifywait). When a model hasn't been accessed for the configured stale threshold, the cron job migrates it: the model directory is moved to cold storage and replaced with a symlink so tools continue to work transparently. `modelstore recall` reverses this for a specific model; `modelstore revert` restores everything to the original flat-file layout.
 
 Supports HuggingFace (`~/.cache/huggingface/hub/`) and Ollama (`~/.ollama/models/`) storage backends.
+
+## GPU Telemetry
+
+Installable Python package for hardware-aware training on DGX Spark. Any training project can import the telemetry primitives to sample GPU state, calculate memory headroom, classify failures, and persist proven batch configurations — without touching NVML or `/proc` directly.
+
+### Install
+
+```bash
+pip install -e ~/dgx-toolbox/telemetry/
+```
+
+### Usage
+
+```python
+from telemetry.sampler import GPUSampler
+from telemetry.uma_model import UMAMemModel
+from telemetry.effective_scale import compute
+from telemetry.anchor_store import AnchorStore
+from telemetry.probe import prepare_probe, evaluate_probe
+from telemetry.failure_classifier import classify_failure
+
+# Sample current GPU state (works in mock mode without GPU)
+sampler = GPUSampler()
+snapshot = sampler.sample()
+# → {"watts": 65.0, "temperature_c": 55, "gpu_util_pct": 42,
+#    "mem_available_gb": 80.0, "page_cache_gb": 20.0, "mock": False}
+
+# Calculate memory headroom with 5 GB jitter margin
+model = UMAMemModel(sampler)
+baseline = model.sample_baseline()
+headroom = UMAMemModel.calculate_headroom(baseline, snapshot, tier_headroom_pct=20)
+# → {"safe_threshold": 21.0, "headroom_gb": 59.0, "headroom_pct": 73.75, ...}
+
+# Classify training outcome
+result = classify_failure(snapshot, exit_code=0, training_completed=True)
+# → {"classification": "clean", "evidence": {}}
+```
+
+### Modules
+
+| Module | Purpose |
+|--------|---------|
+| `sampler.py` | GPUSampler — NVML metrics + `/proc/meminfo` memory (GB10 UMA safe) |
+| `uma_model.py` | Baseline sampling with cache drop, headroom calculation with jitter margin |
+| `effective_scale.py` | Multiplier tables (quant, grad ckpt, LoRA, seq len, optimizer) → tier classification |
+| `anchor_store.py` | JSON persistence of proven batch configs, SHA-256 keyed, 7-day expiry |
+| `probe.py` | Prepare/evaluate cycle for testing new batch size configurations |
+| `failure_classifier.py` | Classify training outcomes: clean, oom, hang, thermal, pressure |
+
+### Key Design Decisions
+
+- **No subprocess calls** — all GPU metrics via pynvml direct API, memory via `/proc/meminfo`
+- **Mock mode** — automatically activated when `libnvidia-ml.so.1` is absent (CI, containers without GPU passthrough)
+- **UMA architecture** — `nvmlDeviceGetMemoryInfo` is never called (raises `NVMLError_NotSupported` on GB10); memory always from `/proc/meminfo` MemAvailable
+- **Per-metric degradation** — individual NVML calls fail independently to `None`, never crash `sample()`
+- **HANG never produces batch_cap** — prevents incorrect batch backoff on dataloader deadlocks
 
 ## Port Reference
 

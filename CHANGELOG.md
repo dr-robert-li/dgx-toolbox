@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-04-01 — GPU Telemetry and Adaptive Training Support (v1.3.0)
+
+### Added
+
+- **GPU telemetry package** — Installable Python package at `telemetry/` with `pip install -e` support. Provides hardware-aware primitives for training on DGX Spark without direct NVML or `/proc` calls
+- **GPUSampler** — Wraps pynvml for GPU power, temperature, and utilization; always reads memory from `/proc/meminfo` MemAvailable (GB10 UMA architecture). Mock mode for CI without GPU hardware. Per-metric degradation: individual NVML calls fail independently to `None`
+- **UMA memory model** — `sample_baseline()` with page cache drop (graceful `PermissionError` fallback) and `calculate_headroom()` with 5 GB jitter margin, `pin_memory=False`, `prefetch_factor` capped at 4
+- **Effective scale formula** — Multiplier tables for quantization, gradient checkpointing, LoRA rank, sequence length, and optimizer. Four tier thresholds: ≤1B (cap=64), 1-13B (cap=16), 13-30B (cap=8), 30B+ (cap=4)
+- **Anchor store** — JSON persistence of proven batch configs keyed by SHA-256 hash of 9 locked fields. 7-day expiry. Override rules: COMPLETED raises ceiling, OOM/WATCHDOG hard cap, HANG logs only (no batch_cap)
+- **Probe protocol** — `prepare_probe()` writes rollback and probe configs; `evaluate_probe()` returns commit/revert with anchor record based on peak memory vs safe threshold
+- **Failure classifier** — Classifies training outcomes as clean, oom, hang, thermal, or pressure from telemetry snapshots. HANG intentionally omits `batch_cap` to prevent incorrect batch backoff
+- **Integration** — `dgx_toolbox.py` `status_report()` includes `gpu_telemetry` section when package installed; `status.sh` displays GPU TELEMETRY block with watts/temp/utilization or "sampler not installed"
+
 ## 2026-03-31 — Headless Training & MLflow (v1.2.3)
 
 ### Added
