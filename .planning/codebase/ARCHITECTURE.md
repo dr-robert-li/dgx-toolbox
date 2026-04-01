@@ -1,189 +1,261 @@
 # Architecture
 
-**Analysis Date:** 2026-03-19
+**Analysis Date:** 2026-04-01
 
 ## Pattern Overview
 
-**Overall:** Containerized microservice orchestration with shell-script entry points and shared host-mounted directories for data interchange.
+**Overall:** Monorepo of loosely-coupled subsystems orchestrated via shell scripts and Docker containers, with one embedded Python microservice (Safety Harness).
 
 **Key Characteristics:**
-- Distributed containers (inference servers, toolboxes, labeling platforms) coordinating via host networking and host-gateway DNS
-- Data flows through shared host directories (`~/data/*`, `~/eval/*`, `~/triton/*`, etc.) rather than container volumes or APIs
-- Unified proxy (LiteLLM) abstracts multiple inference backends (Ollama, vLLM, cloud APIs) into a single OpenAI-compatible endpoint
-- Host system setup (Python, build tools, Miniconda, pyenv) bootstrapped once by `dgx-global-base-setup.sh`
-- Per-tool bootstrap via build scripts that create Docker images with layered dependencies on NGC PyTorch base
+- Shell-script-first launcher pattern: each service is a standalone bash script that manages its own Docker container lifecycle
+- Shared library (`lib.sh`) provides common container management primitives
+- The Safety Harness is the only subsystem with a true application architecture (FastAPI, layered Python modules)
+- No inter-service communication bus; services connect point-to-point (e.g., Harness proxies to LiteLLM, LiteLLM routes to vLLM/Ollama)
+- Configuration is file-based (YAML, JSON) with no centralized config service
+- Docker image hierarchy: `base-toolbox` (NGC PyTorch) -> `eval-toolbox` + `data-toolbox`
 
 ## Layers
 
-**System Layer (Host):**
-- Purpose: Foundational environment for development and container execution
-- Location: Host OS (DGX Spark aarch64) with setup managed by `dgx-global-base-setup.sh`
-- Contains: Python 3, Miniconda (aarch64), pyenv, pyenv-virtualenv, build tools, Docker with NVIDIA Container Toolkit
-- Depends on: NVIDIA DGX Spark hardware, NGC container registry access
-- Used by: All containers (NGC PyTorch base image) and scripts
+**Infrastructure Layer (Shell Scripts):**
+- Purpose: Container lifecycle management, service orchestration, system setup
+- Location: `lib.sh`, `status.sh`, `build-toolboxes.sh`, `setup/dgx-global-base-setup.sh`
+- Contains: Docker run/stop/status commands, shared helper functions, system provisioning
+- Depends on: Docker, systemd (for Ollama)
+- Used by: All launcher scripts, bash aliases
+- Key functions in `lib.sh`: `is_running()`, `ensure_container()`, `print_banner()`, `stream_logs()`, `sync_exit()`, `build_extra_mounts()`
 
 **Inference Layer:**
-- Purpose: Multiple LLM serving backends with unified proxy routing
-- Location: `start-vllm.sh`, `start-ollama-remote.sh`, `start-litellm.sh`, `start-open-webui.sh`
-- Contains: Ollama (systemd service at :11434), vLLM (OpenAI-compatible at :8020), LiteLLM proxy (unified at :4000), Open-WebUI (chat UI at :12000)
-- Depends on: Host system, NGC PyTorch base, HuggingFace model cache (`~/.cache/huggingface`), model configurations
-- Used by: Data toolbox, eval toolbox, n8n, external clients via NVIDIA Sync
+- Purpose: Serve LLM models via OpenAI-compatible APIs
+- Location: `inference/`, `docker-compose.inference.yml`
+- Contains: Launcher scripts for vLLM, LiteLLM, Open-WebUI, Ollama remote setup
+- Depends on: Docker, NVIDIA GPU drivers, HuggingFace model cache
+- Used by: Safety Harness (proxies through LiteLLM), end users (via Open-WebUI or API)
+- Key services:
+  - **Ollama** (systemd, port 11434) -- host-native inference
+  - **vLLM** (`inference/start-vllm.sh`, port 8020) -- high-throughput GPU inference
+  - **LiteLLM** (`inference/start-litellm.sh`, port 4000) -- unified API proxy routing to all backends
+  - **Open-WebUI** (`inference/start-open-webui.sh`, port 12000) -- chat UI
 
-**Data Processing Layer:**
-- Purpose: Prepare, curate, and generate training data using distributed tools
-- Location: `data-toolbox-build.sh` → `data-toolbox.sh`, `data-toolbox-jupyter.sh`
-- Contains: pandas, polars, pyarrow, duckdb, datatrove, distilabel, label-studio-sdk, argilla client, cloud storage clients
-- Depends on: NGC PyTorch base, host data directories (`~/data/*`)
-- Used by: Data engineers, synthetic data generation pipelines
+**Safety Harness Layer (Python/FastAPI):**
+- Purpose: API gateway with auth, rate limiting, guardrails, PII redaction, Constitutional AI critique, tracing
+- Location: `harness/`
+- Contains: FastAPI app, proxy routes, guardrail engine, PII redactor, trace store, eval framework, red team engine, HITL review system
+- Depends on: LiteLLM (upstream), SQLite (traces), NeMo Guardrails (optional), spaCy (PII)
+- Used by: API consumers who need safety-wrapped LLM access
+- Entry point: `harness/main.py` via `harness/start-harness.sh` (uvicorn, port 5000)
+
+**Fine-Tuning Layer:**
+- Purpose: Model fine-tuning via Unsloth
+- Location: `containers/unsloth-studio.sh`, `containers/unsloth-headless.sh`, `containers/unsloth-headless-sync.sh`
+- Contains: Container launchers for interactive (Studio UI, port 8000) and headless training
+- Depends on: NVIDIA PyTorch container (nvcr.io), GPU, HuggingFace cache
+
+**Data Engineering Layer:**
+- Purpose: Data processing, labeling, curation for ML pipelines
+- Location: `data/`, `data-toolbox/Dockerfile`, `docker-compose.data.yml`
+- Contains: Toolbox container (polars, DuckDB, datatrove, etc.), Label Studio (port 8081), Argilla (port 6900) launchers
+- Depends on: base-toolbox image, Docker
 
 **Evaluation Layer:**
-- Purpose: Benchmark models against datasets and compute metrics
-- Location: `eval-toolbox-build.sh` → `eval-toolbox.sh`, `eval-toolbox-jupyter.sh`
-- Contains: lm-eval, ragas, torchmetrics, evaluate, scikit-learn, mlflow, Triton client, OpenAI client
-- Depends on: NGC PyTorch base, host eval directories (`~/eval/*`), LiteLLM proxy for model access
-- Used by: ML engineers for benchmarking and evaluation
+- Purpose: Model benchmarking and evaluation
+- Location: `eval/`, `eval-toolbox/Dockerfile`, `harness/eval/`
+- Contains: Toolbox container (lm-eval, RAGAS, MLflow), Triton TRT-LLM server (port 8010), eval gate/replay/trends within Harness
+- Depends on: base-toolbox image, Docker, LiteLLM/Harness for API-based evals
 
-**Specialized Compute Layer:**
-- Purpose: Optimize inference and training for specific use cases
-- Location: `triton-trtllm.sh` (TensorRT-LLM), `unsloth-studio.sh` (fine-tuning UI), `ngc-pytorch.sh` (interactive), `ngc-jupyter.sh` (Jupyter)
-- Contains: Triton Inference Server with TensorRT-LLM backend, Unsloth Studio, NGC PyTorch environment
-- Depends on: NGC PyTorch base, GPU access, model directories
-- Used by: Advanced users for fine-tuning, optimization, and custom research
+**Model Store Layer:**
+- Purpose: Tiered model storage management (hot NVMe <-> cold HDD/NAS)
+- Location: `modelstore/`, `modelstore.sh`
+- Contains: CLI router, subcommands (init, status, migrate, recall, revert), adapter libraries for HF and Ollama
+- Depends on: jq, mount points, cron (for automated migration)
+- Architecture: CLI router pattern -- `modelstore.sh` dispatches to `modelstore/cmd/*.sh`, shared logic in `modelstore/lib/*.sh`
 
-**Orchestration Layer:**
-- Purpose: Visual workflow automation and integration between tools
-- Location: `start-n8n.sh`
-- Contains: n8n workflow engine with OpenAI-compatible node support (via LiteLLM proxy)
-- Depends on: LiteLLM proxy, inference backends
-- Used by: Non-technical users for no-code ML workflows
+**Autoresearch Layer:**
+- Purpose: Karpathy autoresearch integration for autonomous ML experimentation
+- Location: `karpathy-autoresearch/`
+- Contains: Interactive launcher with data source selection, DGX Spark GPU tuning, HF model selection
+- Depends on: uv (Python package manager), autoresearch repo (cloned at runtime)
 
-**Labeling/Annotation Layer:**
-- Purpose: Persistent data annotation services
-- Location: `start-label-studio.sh`, `start-argilla.sh`
-- Contains: Label Studio (web UI at :8081), Argilla (web UI at :6900) with persistent storage
-- Depends on: Host directories, client libraries in data toolbox
-- Used by: Data curators via SDKs in data toolbox or web UIs
+**Container Images Layer:**
+- Purpose: Pre-built Docker images with ML tooling
+- Location: `base-toolbox/Dockerfile`, `eval-toolbox/Dockerfile`, `data-toolbox/Dockerfile`
+- Build hierarchy: `base-toolbox` (NGC PyTorch 26.02) -> `eval-toolbox` + `data-toolbox`
+- Built via: `build-toolboxes.sh`
+
+**Programmatic Interface:**
+- Purpose: Python execution engine for container-based ML pipelines
+- Location: `examples/dgx_toolbox.py`
+- Contains: `DGXToolbox` class with validation, container lifecycle, execution engine, status reporting
+- Pattern: Singleton with config-driven component resolution and idempotent execution
 
 ## Data Flow
 
-**Model Serving Flow:**
-1. Host system runs systemd Ollama service (`:11434`)
-2. vLLM container pulls models from `~/.cache/huggingface` and serves at `:8020`
-3. LiteLLM proxy reads `~/.litellm/config.yaml` and routes requests to Ollama, vLLM, or cloud APIs
-4. Open-WebUI connects to LiteLLM (or any backend) and provides chat UI at `:12000`
-5. Eval/data toolboxes query LiteLLM via `host.docker.internal:4000` for synthetic generation or evaluation
+**LLM Request Flow (through Safety Harness):**
 
-**Training Data Pipeline:**
-1. Raw data ingested to `~/data/raw`
-2. Data toolbox reads from `~/data/raw`, processes via pandas/duckdb/polars
-3. Intermediate outputs written to `~/data/processed`
-4. Quality filtering and deduplication via datatrove writes to `~/data/curated`
-5. Synthetic generation via distilabel + LiteLLM writes to `~/data/synthetic`
-6. Final exports curated to `~/data/exports` for eval toolbox
-7. Eval toolbox reads from `~/data/exports` and `~/eval/models` for training
+1. Client sends `POST /v1/chat/completions` with Bearer token to Harness (`:5000`)
+2. `harness/auth/bearer.py` verifies API key against Argon2 hashes in tenant config
+3. `harness/ratelimit/sliding_window.py` checks RPM and TPM limits (sliding window, in-memory)
+4. `harness/guards/normalizer.py` normalizes Unicode (detects evasion attempts)
+5. `harness/guards/engine.py` runs all enabled input rails (injection regex, PII, NeMo) -- run-all, not fail-fast
+6. If blocked: return refusal (hard_block), rewrite and forward (soft_steer), or explain (informative)
+7. Proxy request to LiteLLM at `localhost:4000` via httpx.AsyncClient
+8. Run output rails on response (self_check_output, jailbreak_output, sensitive_data_output)
+9. If borderline (score >= critique_threshold but not blocked): `harness/critique/engine.py` runs Constitutional AI critique-revise loop via judge model
+10. Background task: PII-redact prompt+response via spaCy NER, write trace to SQLite (`harness/traces/store.py`)
 
-**Evaluation Flow:**
-1. Fine-tuned models checkpointed to `~/eval/models`
-2. Eval datasets in `~/eval/datasets`
-3. Eval toolbox runs lm-eval/ragas against vLLM or Ollama via LiteLLM proxy
-4. Results logged to `~/eval/runs` (mlflow)
-5. Triton TRT-LLM can serve optimized engines from `~/triton/engines` for production evaluation
+**Model Migration Flow (ModelStore):**
+
+1. `modelstore.sh migrate` loads config from `~/.modelstore/config.json`
+2. Scans `usage.json` for models past `retention_days`
+3. For each stale model: write op_state (interrupt safety), rsync to cold path, create symlink, audit log
+4. Supports both HuggingFace cache (`modelstore/lib/hf_adapter.sh`) and Ollama models (`modelstore/lib/ollama_adapter.sh`)
+5. Automated via cron (`modelstore/cron/migrate_cron.sh`) or manual invocation
+
+**Autoresearch Flow:**
+
+1. `karpathy-autoresearch/launch-autoresearch.sh` clones/pulls karpathy/autoresearch
+2. User selects data source (default, local dir, HF dataset, GitHub repo, Kaggle dataset, auto-discovered ~/data/ subdirs)
+3. Runs `prepare.py` to tokenize data
+4. Applies DGX Spark GPU tuning via `karpathy-autoresearch/spark-config.sh`
+5. Optionally selects base model from HF cache
+6. Points AI agent at `program.md` for autonomous experiment loop
+
+**Red Team Flow:**
+
+1. `POST /admin/redteam/start` dispatches red team job via `harness/redteam/router.py`
+2. Job types: `garak` (external tool, `harness/redteam/garak_runner.py`) or `deepteam` (internal, `harness/redteam/engine.py`)
+3. Deepteam: queries near-miss traces, generates adversarial variants via judge model, writes to pending JSONL (`harness/eval/datasets/pending/`)
+4. Balance scoring in `harness/redteam/balance.py` prevents imbalanced test suites
 
 **State Management:**
-- Config state: YAML files in `~/.litellm/`, `~/.n8n/`, `~/.vllm-model`, `~/.ollama/`, `~/.open-webui/`
-- Data state: Shared host directories (`~/data/*`, `~/eval/*`, `~/triton/*`, `~/.cache/huggingface`)
-- Container state: Docker volumes for persistent services (Open-WebUI, Label Studio, Argilla, Unsloth Studio)
-- Model state: HuggingFace cache and local model checkpoints
-- No in-memory or database state (except within containers during execution)
+- Harness state: SQLite database at `harness/data/traces.db` (tables: traces, eval_runs, redteam_jobs, corrections)
+- ModelStore state: JSON files at `~/.modelstore/` (config.json, usage.json, op_state.json, audit.jsonl)
+- LiteLLM config: YAML at `~/.litellm/config.yaml`
+- Container state: Docker daemon (no custom state files)
+- Rate limiter: In-memory sliding window (resets on Harness restart)
 
 ## Key Abstractions
 
-**Inference Backend (vLLM, Ollama, Cloud APIs):**
-- Purpose: Multiple LLM serving options with consistent interface
-- Examples: `start-vllm.sh`, `start-litellm.sh`, systemd Ollama service
-- Pattern: Each backend exposes OpenAI-compatible API; LiteLLM routes to any
+**TenantConfig (`harness/config/loader.py`):**
+- Purpose: Per-tenant API configuration (rate limits, allowed models, PII strictness, guardrail overrides)
+- Pattern: Pydantic model loaded from `tenants.yaml`
+- Fields: `tenant_id`, `api_key_hash`, `rpm_limit`, `tpm_limit`, `allowed_models`, `bypass`, `pii_strictness`, `rail_overrides`
 
-**Toolbox (Data, Eval, NGC):**
-- Purpose: Containerized Python environments with pre-installed domain-specific packages
-- Examples: `data-toolbox/Dockerfile`, `eval-toolbox/Dockerfile`
-- Pattern: Inherit from NGC PyTorch base (includes CUDA/cuDNN), layer domain packages, mount directories from host
+**GuardrailEngine (`harness/guards/engine.py`):**
+- Purpose: Central guardrail execution with run-all-rails aggregation
+- Pattern: Engine with pluggable rails (regex + NeMo), three refusal modes (hard_block, soft_steer, informative)
+- Input rails: `self_check_input`, `jailbreak_detection`, `sensitive_data_input`, `injection_heuristic`
+- Output rails: `self_check_output`, `jailbreak_output`, `sensitive_data_output`
+- Fail-open: NeMo unavailability defaults to pass (score=0.0)
 
-**Build-Run Pattern:**
-- Purpose: Separate image build from execution for reusability
-- Examples: `data-toolbox-build.sh` + `data-toolbox.sh`, `eval-toolbox-build.sh` + `eval-toolbox.sh`
-- Pattern: Build script creates image once; launch script runs container with host mounts and GPU access
+**CritiqueEngine (`harness/critique/engine.py`):**
+- Purpose: Constitutional AI single-pass critique-revise loop for borderline outputs
+- Pattern: Risk-gated (only runs when score >= critique_threshold but < threshold), judge model call with category-filtered principles
+- Fail-open: timeout or parse failure returns None
 
-**Config Generator:**
-- Purpose: Detect running services and auto-populate proxy configuration
-- Examples: `setup-litellm-config.sh` detects Ollama/vLLM and generates LiteLLM config.yaml
-- Pattern: Inspect running containers via Docker API, query service endpoints, prompt for secrets
+**TraceStore (`harness/traces/store.py`):**
+- Purpose: Async SQLite storage for request traces, eval runs, red team jobs, and HITL corrections
+- Pattern: Repository with typed write/query methods, WAL mode for concurrent access
+- Tables: `traces`, `eval_runs`, `redteam_jobs`, `corrections`
+
+**RailConfig (`harness/config/rail_loader.py`):**
+- Purpose: Per-rail configuration (enabled, threshold, refusal_mode, critique_threshold)
+- Pattern: Loaded from `rails.yaml`
+
+**DGXToolbox (`examples/dgx_toolbox.py`):**
+- Purpose: Programmatic interface for container-based pipeline execution
+- Pattern: Singleton execution engine with validation checks, container lifecycle, idempotent execution, status reporting
+
+**lib.sh Functions (`lib.sh`):**
+- Purpose: Container lifecycle primitives shared across all launcher scripts
+- Key functions: `is_running()`, `container_exists()`, `ensure_container()`, `print_banner()`, `stream_logs()`, `sync_exit()`, `build_extra_mounts()`
 
 ## Entry Points
 
-**System Bootstrap:**
-- Location: `dgx-global-base-setup.sh`
-- Triggers: Manual execution once per DGX host
-- Responsibilities: Install system packages (apt), Miniconda (aarch64), pyenv, set up PATH
+**Shell Script Launchers (user-facing):**
+- `inference/start-vllm.sh` -- Start vLLM inference server (port 8020)
+- `inference/start-litellm.sh` -- Start LiteLLM API proxy (port 4000)
+- `inference/start-open-webui.sh` -- Start Open-WebUI chat interface (port 12000)
+- `inference/setup-litellm-config.sh` -- Auto-generate LiteLLM config
+- `inference/setup-ollama-remote.sh` -- Enable Ollama LAN access
+- `containers/unsloth-studio.sh` -- Start Unsloth fine-tuning UI (port 8000)
+- `containers/unsloth-headless.sh` -- Start headless training container
+- `containers/ngc-pytorch.sh` -- Interactive PyTorch shell
+- `containers/ngc-jupyter.sh` -- Jupyter Lab on NGC PyTorch (port 8888)
+- `containers/start-n8n.sh` -- n8n workflow automation (port 5678)
+- `harness/start-harness.sh` -- Start Safety Harness gateway (port 5000)
+- `data/start-label-studio.sh` -- Start Label Studio (port 8081)
+- `data/start-argilla.sh` -- Start Argilla (port 6900)
+- `data/data-toolbox.sh` -- Interactive data processing shell
+- `data/data-toolbox-jupyter.sh` -- Jupyter Lab with data stack (port 8890)
+- `eval/eval-toolbox.sh` -- Interactive eval shell
+- `eval/eval-toolbox-jupyter.sh` -- Jupyter Lab with eval stack (port 8889)
+- `eval/triton-trtllm.sh` -- Triton + TRT-LLM server (port 8010)
+- `karpathy-autoresearch/launch-autoresearch.sh` -- Launch autoresearch agent
+- `modelstore.sh` -- Model store CLI (dispatches to `modelstore/cmd/*.sh`)
+- `status.sh` -- Show all service statuses
+- `build-toolboxes.sh` -- Build Docker images
 
-**Container Image Build:**
-- Locations: `data-toolbox-build.sh`, `eval-toolbox-build.sh`, `triton-trtllm.sh`, `unsloth-studio.sh`
-- Triggers: User-initiated builds (one-time per toolbox)
-- Responsibilities: Invoke `docker build` on Dockerfile, tag images, confirm completion
+**Sync Variants:**
+- Many launchers have `-sync.sh` variants (e.g., `inference/start-vllm-sync.sh`) that print status and exit immediately without streaming logs, designed for NVIDIA Sync remote sessions
 
-**Container Execution (Interactive):**
-- Locations: `data-toolbox.sh`, `eval-toolbox.sh`, `ngc-pytorch.sh`, `ngc-jupyter.sh`, `eval-toolbox-jupyter.sh`, `data-toolbox-jupyter.sh`
-- Triggers: User runs script to enter interactive shell
-- Responsibilities: Check for running container, reuse if exists, otherwise create with GPU/directory mounts, drop into bash or Jupyter
+**FastAPI Routes (Harness):**
+- `POST /v1/chat/completions` -- Main proxy endpoint (`harness/proxy/litellm.py`)
+- `POST /probe` -- Auth test endpoint (`harness/main.py`)
+- `POST /admin/suggest-tuning` -- Tuning analysis (`harness/proxy/admin.py`)
+- `POST /admin/redteam/start` -- Red team job dispatch (`harness/redteam/router.py`)
+- `GET /admin/redteam/status/{job_id}` -- Red team job status (`harness/redteam/router.py`)
+- `GET /admin/hitl/queue` -- HITL review queue (`harness/hitl/router.py`)
+- `POST /admin/hitl/correct` -- Submit correction (`harness/hitl/router.py`)
 
-**Container Execution (Background Service):**
-- Locations: `start-vllm.sh`, `start-litellm.sh`, `start-open-webui.sh`, `start-n8n.sh`, `start-label-studio.sh`, `start-argilla.sh`, `triton-trtllm.sh`, `unsloth-studio.sh`
-- Triggers: User runs script to start persistent service
-- Responsibilities: Create container with `docker run -d`, mount host directories/configs, expose port, stream logs
+**Docker Compose:**
+- `docker-compose.inference.yml` -- Inference stack (Open-WebUI + LiteLLM + vLLM)
+- `docker-compose.data.yml` -- Data stack (Label Studio + Argilla)
 
-**Config Generation:**
-- Location: `setup-litellm-config.sh`
-- Triggers: User-initiated or on first LiteLLM launch
-- Responsibilities: Detect Ollama/vLLM running, query their APIs, generate `~/.litellm/config.yaml`, prompt for cloud API keys
+**Bash Aliases:**
+- `example.bash_aliases` -- User-friendly command aliases for all services (68 aliases)
 
-**NVIDIA Sync Integration:**
-- Locations: All *-sync.sh variants (`start-open-webui-sync.sh`, `start-vllm-sync.sh`, etc.)
-- Triggers: Remote execution via `nvidia-sync exec`
-- Responsibilities: Same as non-sync versions but detach immediately (background execution)
+**CI/CD:**
+- `.github/workflows/test.yml` -- ShellCheck, harness pytest, bash syntax, secrets scan, vulnerability scan
 
 ## Error Handling
 
-**Strategy:** Fail-fast with exit codes; container restart policies (unless-stopped) handle transient failures.
+**Strategy:** Fail-open for safety subsystems, fail-fast for infrastructure
 
 **Patterns:**
-- Scripts use `set -e` to exit on first error
-- Docker run commands check for existing container before creating (avoid duplicates)
-- Fallback Docker run with `||` operator for optional flags (e.g., --env-file in litellm-config)
-- Service health checks via HTTP endpoints (`curl -sf`) to detect running services
-- Log streaming with `docker logs -f` for debugging (Ctrl+C detaches, container continues)
+- Harness guardrails: NeMo failures default to pass (score=0.0) -- fail-open to avoid blocking legitimate requests
+- Harness critique: Timeout (60s) and parse failures return None -- fail-open
+- Harness auth: 401 on invalid API key, iterates all tenants with Argon2 verify
+- ModelStore: Operation state files (`op_state.json`) provide interrupt safety -- stale state cleared after 4 hours
+- ModelStore: Space checks with 10% safety margin before migration (`check_space()` in `modelstore/lib/common.sh`)
+- ModelStore: Filesystem validation rejects exfat/vfat/ntfs, warns on unknown fs (`validate_cold_fs()`)
+- Shell scripts: `set -e` / `set -euo pipefail` for fail-fast behavior
+- Container launchers: Check if already running before starting (idempotent)
+- Docker containers: `--restart unless-stopped` for automatic recovery
 
 ## Cross-Cutting Concerns
 
 **Logging:**
-- Entry point: Each container streams logs to stdout via `docker logs -f`
-- Format: Container-native logs (Docker daemon formats timestamps)
-- Aggregation: NVIDIA Sync can forward container logs to client machine
+- Harness: Python `logging` module with `harness.proxy` logger
+- Shell scripts: `echo` to stdout/stderr, ModelStore uses `ms_log()` and `ms_die()` prefixed helpers in `modelstore/lib/common.sh`
+- Container logs: `docker logs -f` for real-time streaming
+- Audit: ModelStore writes structured audit records to `~/.modelstore/audit.jsonl` via `modelstore/lib/audit.sh`
 
 **Validation:**
-- Config validation: YAML syntax checked by LiteLLM on startup
-- Directory validation: Scripts create host directories if missing (`mkdir -p`)
-- Service validation: HTTP checks confirm Ollama/vLLM/LiteLLM alive before proceeding
+- Harness: Pydantic models for tenant config (`harness/config/loader.py`), FastAPI request validation
+- ModelStore: Filesystem validation (`validate_cold_fs`), mount verification (`check_cold_mounted`), space checks
+- DGXToolbox: Pluggable validation engine with named checks (toolbox, memory, container, mounted, gpu, deps) in `examples/dgx_toolbox.py`
 
 **Authentication:**
-- API keys: Stored in plain text in `~/.litellm/.env` (file permissions 600)
-- LiteLLM config: YAML with model routing, no embedded secrets
-- Cloud API secrets: Environment variables (OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY) injected at container startup
+- Harness: HTTPBearer with Argon2 password hashing (`harness/auth/bearer.py`)
+- LiteLLM: Optional env-based API keys via `~/.litellm/.env`
+- Other services: No authentication (local network assumption)
 
-**Network:**
-- Local: Host networking (localhost:PORT)
-- Container-to-host: `--add-host=host.docker.internal:host-gateway` enables containers to reach host services
-- Remote: NVIDIA Sync provides port forwarding and remote execution
-- DNS: No service discovery; hardcoded endpoints (localhost:8020 for vLLM, etc.)
+**PII Protection:**
+- Harness traces: All prompts and responses PII-redacted before SQLite write (`harness/pii/redactor.py`)
+- Redaction engine: spaCy NER (`en_core_web_lg`) with configurable strictness levels
+- HITL corrections: Edited responses also PII-redacted before storage
+- Input/output rails: `sensitive_data_input` and `sensitive_data_output` detect PII in real-time
 
 ---
 
-*Architecture analysis: 2026-03-19*
+*Architecture analysis: 2026-04-01*

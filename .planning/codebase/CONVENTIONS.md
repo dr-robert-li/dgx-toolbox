@@ -1,159 +1,187 @@
 # Coding Conventions
 
-**Analysis Date:** 2026-03-19
+**Analysis Date:** 2026-04-01
 
 ## Naming Patterns
 
-**Files:**
-- Kebab-case for all shell scripts: `start-vllm.sh`, `setup-litellm-config.sh`, `dgx-global-base-setup.sh`
-- Descriptive action prefixes: `start-*` for services, `setup-*` for configuration, `eval-toolbox*` and `data-toolbox*` for toolbox variants
-- Build scripts suffixed with `-build.sh`: `eval-toolbox-build.sh`, `data-toolbox-build.sh`
-- Sync variants suffixed with `-sync.sh`: `start-vllm-sync.sh`, `start-open-webui-sync.sh`
+**Files (Python):**
+- Use `snake_case.py` for all Python modules: `redactor.py`, `sliding_window.py`, `rail_loader.py`
+- Test files: `test_<module>.py` in a dedicated `tests/` directory: `harness/tests/test_auth.py`, `harness/tests/test_pii.py`
+- Package init files: `__init__.py` in every Python package directory
 
-**Variables:**
-- UPPERCASE_WITH_UNDERSCORES for all shell variables: `CONTAINER_NAME`, `IMAGE`, `PORT`, `CONFIG_DIR`, `SCRIPT_DIR`, `EXTRA_ARGS`
-- Configuration variables at script top: ports (e.g., `PORT=8020`), image names, container names
-- Temporary/boolean variables use descriptive names: `OLLAMA_RUNNING`, `VLLM_RUNNING`, `VLLM_MODEL`, `OPENAI_KEY`
-- Variables capturing paths use underscore case: `CONFIG_DIR`, `ENV_FILE`, `CONFIG_FILE`, `MINICONDA_DIR`, `HOME`, `PWD`
+**Files (Shell):**
+- Use `kebab-case.sh` for all shell scripts: `start-vllm.sh`, `test-config.sh`, `run-all.sh`
+- Prefix launcher scripts with `start-`: `start-vllm.sh`, `start-litellm.sh`, `start-open-webui.sh`
+- Prefix build scripts with `-build`: `eval-toolbox-build.sh`, `data-toolbox-build.sh`
+- Sync-mode variants append `-sync`: `start-vllm-sync.sh`, `start-litellm-sync.sh`
 
-**Functions:**
-- No explicit functions defined; scripts structured as sequential command execution with inline error handling
-- Shell inline operations for common tasks rather than function definitions
+**Functions (Python):**
+- Use `snake_case`: `verify_api_key()`, `load_tenants()`, `redact()`, `compute_priority()`
+- Private/internal functions prefixed with `_`: `_regex_redact()`, `_extract_triggering_rail()`
+- Async functions use the same naming (no `async_` prefix): `async def check_input()`
+
+**Functions (Shell):**
+- Use `snake_case`: `ms_log()`, `ms_die()`, `check_cold_mounted()`, `validate_cold_fs()`
+- Modelstore functions prefixed with `ms_`: `ms_log()`, `ms_die()`
+- Top-level lib functions unprefixed: `get_ip()`, `is_running()`, `ensure_container()`
+
+**Variables (Python):**
+- Module-level private constants use `_UPPER_SNAKE_CASE`: `_CONFIG_DIR`, `_LITELLM_BASE`, `_OPERATOR_MAP`
+- Public constants use `UPPER_SNAKE_CASE`: `STRICTNESS_ENTITIES`, `INJECTION_PATTERNS`
+- Local variables use `snake_case`: `trace_store`, `db_path`, `rail_filter`
+
+**Variables (Shell):**
+- Constants in `UPPER_SNAKE_CASE`: `PORT`, `CONTAINER_NAME`, `IMAGE`, `MODELSTORE_CONFIG`
+- Local variables in `lower_snake_case`: `local cold_path`, `local fstype`
+
+**Classes (Python):**
+- Use `PascalCase`: `TenantConfig`, `TraceStore`, `GuardrailEngine`, `SlidingWindowLimiter`
+- Pydantic models use `PascalCase`: `TenantConfig`, `TenantsFile`, `RailConfig`
+- Dataclass-style types: `GuardrailDecision`, `RailResult`
 
 ## Code Style
 
-**Formatting:**
-- Shebang always: `#!/usr/bin/env bash` at line 1
-- Error handling: `set -e` at top for exit-on-error; some scripts use `set -euo pipefail` for stricter mode (see `dgx-global-base-setup.sh`)
-- Line length: No specific limit observed; practical wrapping at docker run commands (60-80 chars before continuation)
-- Indentation: 2 spaces for command continuations (docker run, heredoc content)
+**Formatting (Python):**
+- No explicit formatter config (no ruff, black, or pyproject.toml formatting sections)
+- 4-space indentation throughout
+- Line length generally kept under 120 characters
+- Double quotes for strings (consistent across all Python files)
+- Use `from __future__ import annotations` at top of modules that use `|` union types: `harness/traces/store.py`, `harness/proxy/litellm.py`
+
+**Formatting (Shell):**
+- ShellCheck enforced at `--severity=error` in CI (`.github/workflows/test.yml`)
+- Exclude `SC1087` from ShellCheck
+- 2-space indentation for shell scripts
+- `set -euo pipefail` for production scripts, `set -uo pipefail` (no `-e`) for test scripts
+- Use `#!/usr/bin/env bash` shebang for all shell scripts
 
 **Linting:**
-- ShellCheck directives observed: `# shellcheck disable=SC1090` for sourcing files without validation
-- Most scripts pass default ShellCheck without suppressions
-- Quoting convention: all variable references quoted (`"${VAR}"`) to prevent word splitting
+- ShellCheck for all `.sh` files (CI job: `shellcheck`), excludes `karpathy-autoresearch/` directory
+- Bash syntax check: `bash -n` for all `.sh` files (CI job: `bash-syntax`)
+- No Python linter config (no ruff, flake8, pylint, or mypy configured)
+- Secrets scanning in CI: regex patterns for API keys from known providers
 
 ## Import Organization
 
-**Not applicable** - Shell scripts do not use import statements. Source operations occur inline:
-```bash
-# shellcheck disable=SC1090
-source "$HOME/.bashrc" || true
-```
+**Python import order:**
+1. `from __future__ import annotations` (when used)
+2. Standard library imports: `os`, `json`, `re`, `asyncio`, `pathlib`
+3. Third-party imports: `pytest`, `httpx`, `fastapi`, `pydantic`, `yaml`
+4. Local imports: `from harness.config.loader import TenantConfig`
 
-**Sourcing pattern:**
-- Guard with `|| true` to prevent exit on source failure
-- Only used in `dgx-global-base-setup.sh` for sourcing `.bashrc` to apply newly added configurations
-- Suppress ShellCheck warnings for dynamic sourcing with explicit disable comment
+**Python import style:**
+- Prefer `from X import Y` over `import X` for specific symbols
+- Module-level imports at top of file
+- Delayed imports inside functions/lifespan when needed for startup ordering: see `harness/main.py` lines 46-73
+
+**Shell source organization:**
+- Scripts source shared libs at top: `source "${MODELSTORE_LIB}/common.sh"`
+- Use `shellcheck source=` directives for static analysis: `# shellcheck source=../lib/config.sh`
+- Top-level `lib.sh` provides shared utilities; modelstore has its own `lib/` directory
+
+**Path Aliases:**
+- None used (no pyproject.toml path aliases, no TypeScript)
 
 ## Error Handling
 
-**Patterns:**
-- **Exit-on-error mode:** `set -e` used in all scripts as default safety mechanism
-- **Strict mode:** `set -euo pipefail` in `dgx-global-base-setup.sh` for maximum safety (no undefined vars, pipefail)
-- **Optional operations:** Use `|| true` suffix to continue on error: `docker rm -f "$CONTAINER_NAME" 2>/dev/null` or `docker start "$CONTAINER_NAME" || docker run ...`
-- **Graceful fallback chains:** `setup-litellm-config.sh` attempts docker run with `--env-file` flag, falls back to run without it (lines 70-77)
-- **Exit codes:** Explicit `exit 0` or `exit 1` used for status signaling; missing exit codes default to previous command's exit status
+**Python patterns:**
+- Raise `ValueError` for configuration/validation errors: `harness/config/loader.py` lines 46-54
+- Raise `HTTPException` for API errors with status code and detail message: `harness/auth/bearer.py` line 29
+- Wrap external errors with `from exc` for chaining: `raise ValueError(...) from exc`
+- Optional features degrade gracefully with try/except: `harness/main.py` line 68 catches `FileNotFoundError` for optional CAI config
+- `# noqa: F401` and `# noqa: E402` used for intentional import side effects and late imports
 
-**Error suppression:**
-- Redirect stderr to `/dev/null` for operations that may fail benignly: `docker ps 2>/dev/null`, `mkdir -p ... 2>/dev/null`
-- Guard existence checks with `-f` (files) or `-d` (directories): `[ -f "$FILE" ] && ...` or `[ ! -f "$FILE" ] && ...`
+**Shell patterns:**
+- `ms_die "message"` for fatal errors (logs to stderr, exits 1): `modelstore/lib/common.sh`
+- `set -euo pipefail` ensures scripts fail fast on errors
+- Temp directory cleanup with `trap 'rm -rf "$TMPDIR"' EXIT`
+- Guard conditions before destructive operations: check if container running before starting
 
 ## Logging
 
-**Framework:** `echo` and `printf` exclusively; no structured logging framework
+**Python:**
+- No structured logging framework; uses print/stderr implicitly through FastAPI
+- Module docstrings serve as documentation for purpose
 
-**Patterns:**
-- **Status messages:** Plain `echo` for progress: `echo "Creating LiteLLM container..."`
-- **Section headers:** `echo` with separator lines (equals/dashes):
-  ```bash
-  echo "========================================"
-  echo " LiteLLM Proxy"
-  echo "========================================"
-  ```
-- **Information blocks:** Echo variable-interpolated messages:
-  ```bash
-  echo "  Model:    ${MODEL}"
-  echo "  API:      http://localhost:${PORT}/v1"
-  ```
-- **User instructions:** Multi-line usage examples via `echo` or heredoc cat:
-  ```bash
-  cat << 'GUIDE'
-  [multiline instructions]
-  GUIDE
-  ```
-- **Streaming logs:** `docker logs -f "$CONTAINER_NAME"` at script exit to watch service startup
+**Shell:**
+- `ms_log()` function logs to stderr with `[modelstore]` prefix: `modelstore/lib/common.sh` line 14
+- `ms_die()` function logs error to stderr and exits: `modelstore/lib/common.sh` line 19
+- Banner output via `print_banner()` function in `lib.sh` for service startup messages
 
 ## Comments
 
-**When to Comment:**
-- Header comments at line 1-3: describe script purpose, usage, examples
-- Inline comments before logical sections (prefixed with `#` on separate line)
-- Section dividers: `# --- [Section Name] ---` used in `setup-litellm-config.sh`
-- Conditional explanations: brief comments on logic branches: `# Fall back to config file if no model argument`
+**Module docstrings:**
+- Every Python module starts with a triple-quoted docstring describing purpose: `"""PII redaction using regex pre-pass + Microsoft Presidio NER."""`
+- Every test module starts with a docstring referencing the requirement IDs covered: `"""Tests for GATE-02: Auth via API key..."""`
 
-**JSDoc/TSDoc:**
-- Not applicable; shell scripts use no documentation generation
+**Section dividers:**
+- Use `# ---------------------------------------------------------------------------` comment blocks to separate logical sections within files
+- Section headers follow the divider: `# Fixtures`, `# Input rail tests`, `# Edge cases`
 
-**Example from `start-vllm.sh` (lines 1-6):**
-```bash
-#!/usr/bin/env bash
-# vLLM OpenAI-compatible inference server
-# Usage: start-vllm.sh [model_name] [extra_args...]
-#   If no model_name is given, reads from ~/.vllm-model
-# Example: start-vllm.sh meta-llama/Llama-3.1-8B-Instruct
-# Example: start-vllm.sh unsloth/Llama-3.1-8B-Instruct --max-model-len 4096
-```
+**Shell script headers:**
+- Every `.sh` file starts with a comment describing purpose: `# modelstore/lib/common.sh - Shared safety and logging functions`
+- Usage documentation in script header comments for launcher scripts: `# Usage: start-vllm.sh [model_name] [extra_args...]`
 
-## Argument Handling
+**Inline comments:**
+- Used sparingly for non-obvious logic
+- Comments explain "why" not "what"
 
-**Parameter passing:**
-- First positional argument captured as `MODEL="${1:-}"` (empty string default)
-- Remaining arguments shifted and collected: `shift 2>/dev/null || true` then `EXTRA_ARGS="$*"`
-- Optional arguments with defaults: `TAG="${1:-latest}"` uses bash parameter expansion
+## Function Design
 
-**Validation:**
-- Mandatory parameters checked with string test: `if [ -z "$MODEL" ]; then exit 1; fi`
-- Fallback to config files: `if [ ! -f "$HOME/.vllm-model" ]` pattern in `start-vllm.sh`
+**Size:**
+- Functions generally kept small (under 30 lines for Python, under 20 lines for Shell)
+- Larger functions broken into private helpers: `_regex_redact()` called by `redact()`
 
-## Docker Integration Patterns
+**Parameters (Python):**
+- Use type hints on all function signatures: `def redact(text: str, strictness: str = "balanced") -> str:`
+- Use keyword arguments with defaults for optional params
+- Pydantic `BaseModel` for structured config objects: `TenantConfig`, `RailConfig`
 
-**Container management:**
-- Variables for reusability: `CONTAINER_NAME`, `IMAGE`, `PORT` defined at script start
-- Status checks: `docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"` to detect running containers
-- Cleanup: `docker rm -f "$CONTAINER_NAME" 2>/dev/null` for safe removal
-- Idempotent checks: conditional logic to start existing or create new containers (see `start-litellm.sh`, `start-open-webui.sh`)
+**Parameters (Shell):**
+- Use `local` for all function-scoped variables: `local cold_path="$1"`
+- Document parameters in comments: `# Usage: check_space <destination_path> <required_bytes>`
 
-**Volume mounting:**
-- Host directories created before mount: `mkdir -p "$HOME/data/raw" "$HOME/data/processed" ...`
-- Model cache shared across containers: `-v "$HOME/.cache/huggingface:/root/.cache/huggingface"`
-- Configuration mounted read-only: `-v "file:/path" -v "file:/path:ro"`
-- Workspace mounts: `-v "${PWD}:/workspace" -w /workspace` for interactive containers
+**Return values (Python):**
+- Use `| None` union types for nullable returns: `-> dict | None`
+- Use type hints for return types consistently
+
+## Module Design
+
+**Exports (Python):**
+- Each package has an `__init__.py` (mostly empty for namespace)
+- Specific imports from modules, not wildcard
+
+**Barrel files:**
+- Not used; imports reference specific modules directly
+
+**Package structure (Python):**
+- Feature-oriented packages under `harness/`: `auth/`, `config/`, `pii/`, `guards/`, `traces/`, `proxy/`, `critique/`, `eval/`, `redteam/`, `hitl/`
+- Each package contains implementation module(s) and `__init__.py`
+- `__main__.py` for CLI entry points: `harness/critique/__main__.py`, `harness/eval/__main__.py`, `harness/hitl/__main__.py`
+
+**Shell module structure:**
+- `lib/` for shared functions: `modelstore/lib/common.sh`, `modelstore/lib/config.sh`
+- `cmd/` for command implementations: `modelstore/cmd/init.sh`, `modelstore/cmd/status.sh`
+- `test/` for test scripts: `modelstore/test/test-config.sh`
+- `cron/` for scheduled jobs: `modelstore/cron/migrate_cron.sh`
+
+## Configuration Conventions
 
 **Environment variables:**
-- Passed via `-e VAR=value` flags for individual settings
-- Bulk via `--env-file "$FILE"` with `.env` files (see `start-litellm.sh`)
-- Conditional mounting: `--env-file ... 2>/dev/null ||` pattern allows missing env file
+- Env vars read with fallback defaults: `os.environ.get("HARNESS_CONFIG_DIR", default_path)`
+- Config paths: `HARNESS_CONFIG_DIR`, `LITELLM_BASE_URL`, `HARNESS_DATA_DIR`
+- Never hardcode secrets; use env vars or config files
 
-## Special Patterns
+**YAML configuration:**
+- Tenant config in `tenants.yaml` validated by Pydantic: `harness/config/loader.py`
+- Rail config in `rails/rails.yaml` validated by custom loader: `harness/config/rail_loader.py`
+- Constitution config in `constitution.yaml`: `harness/config/constitution.yaml`
 
-**Polling/Readiness checks:**
-- `setup-litellm-config.sh`: Curl polling with retry loop to detect service availability:
-  ```bash
-  while IFS= read -r model; do
-      [ -n "$model" ] && OLLAMA_MODELS+=("$model")
-  done < <(curl -sf http://localhost:11434/api/tags 2>/dev/null | python3 -c "...")
-  ```
-
-**Python inline execution:**
-- Python one-liners embedded in docker run bash commands for JSON parsing (see `setup-litellm-config.sh` lines 37-44)
-- Parse JSON responses from service APIs via `python3 -c "import json; ..."`
-
-**Idempotency:**
-- Guard blocks check existence before modifying state: `if [ -d "$MINICONDA_DIR" ]; then ... else ... fi`
-- Append patterns for `.bashrc` check for presence before adding: `if ! grep -q "conda init bash" "$HOME/.bashrc" 2>/dev/null; then ...`
-- Safe rm with -f flag and stderr suppression for cleanup
+**JSON configuration (Shell):**
+- Modelstore config stored as JSON at `MODELSTORE_CONFIG` path
+- Written with `write_config()`, read with `config_read()` using `jq`
+- Config files set to `chmod 600` for security: `modelstore/test/test-config.sh` line 89
 
 ---
 
-*Convention analysis: 2026-03-19*
+*Convention analysis: 2026-04-01*

@@ -1,187 +1,258 @@
 # External Integrations
 
-**Analysis Date:** 2026-03-19
+**Analysis Date:** 2026-04-01
 
 ## APIs & External Services
 
-**Cloud LLM Providers:**
-- OpenAI - GPT-4o, GPT-4o-mini models
-  - SDK/Client: `openai` Python package
-  - Auth: `OPENAI_API_KEY` env var
-  - Used via: LiteLLM proxy at `http://host.docker.internal:4000/v1`
+**LLM Inference (self-hosted):**
+- vLLM - OpenAI-compatible API at `http://localhost:8020/v1`
+  - Docker image: `vllm/vllm-openai:latest`
+  - Launcher: `inference/start-vllm.sh`
+  - Model config: `~/.vllm-model` (single line with HuggingFace model ID)
+  - HuggingFace cache: `~/.cache/huggingface` mounted at `/root/.cache/huggingface`
 
-- Anthropic - Claude Sonnet, Claude Haiku models
-  - SDK/Client: `openai` SDK (via LiteLLM compatibility layer)
-  - Auth: `ANTHROPIC_API_KEY` env var
-  - Used via: LiteLLM proxy at `http://host.docker.internal:4000/v1`
+- Ollama - Local LLM server at `http://localhost:11434`
+  - Runs as systemd service on host (not Docker)
+  - Checked via `systemctl is-active ollama` in `status.sh`
 
-- Google Gemini - Gemini 2.5 Pro, Flash, 2.0 Flash models
-  - SDK/Client: `openai` SDK (via LiteLLM compatibility layer)
-  - Auth: `GEMINI_API_KEY` env var
-  - Used via: LiteLLM proxy at `http://host.docker.internal:4000/v1`
+- LiteLLM - Unified proxy at `http://localhost:4000`
+  - Docker image: `ghcr.io/berriai/litellm:main-latest`
+  - Routes to Ollama, vLLM, and optional cloud APIs
+  - Config: `~/.litellm/config.yaml` (model routing)
+  - API keys: `~/.litellm/.env` (optional, for cloud model routing)
+  - Default models: `ollama/llama3.1`, `ollama/gemma3`
 
-**HuggingFace:**
-- Model and dataset hub integration
-  - SDK/Client: `datasets`, `huggingface_hub` packages
+- Triton TRT-LLM - Inference at `http://localhost:8010`
+  - Scripts: `eval/triton-trtllm.sh`, `eval/triton-trtllm-sync.sh`
+  - Client: `tritonclient[all]` (eval-toolbox)
+  - Metrics: `http://localhost:8012/metrics`
+
+**Cloud LLM Providers (optional, via LiteLLM):**
+- OpenAI - GPT-4o and other models
+  - Auth: `OPENAI_API_KEY` in `~/.litellm/.env`
+- Anthropic - Claude models
+  - Auth: `ANTHROPIC_API_KEY` in `~/.litellm/.env`
+- Google Gemini - Gemini models
+  - Auth: `GEMINI_API_KEY` in `~/.litellm/.env`
+- All accessed via LiteLLM's unified OpenAI-compatible endpoint
+
+**Safety Harness Gateway:**
+- FastAPI gateway at `http://localhost:5000` (configurable via `HARNESS_PORT`)
+  - Proxies `/v1/chat/completions` to LiteLLM
+  - Pipeline: auth -> rate limit -> unicode normalize -> input guardrails -> proxy -> output guardrails -> CAI critique -> PII redact -> trace write
+  - Launcher: `harness/start-harness.sh`
+  - Entry: `harness/main.py` (FastAPI app with lifespan)
+  - Main proxy: `harness/proxy/litellm.py`
+
+**NeMo Guardrails:**
+- NVIDIA NeMo LLMRails for input/output safety rails
+  - SDK: `nemoguardrails>=0.21`
+  - Config: `harness/config/rails/` (rails.yaml, config.yml)
+  - Uses LiteLLM-backed LLM via `langchain_openai.ChatOpenAI` (`harness/guards/engine.py`)
+  - Input rails: `self_check_input`, `jailbreak_detection`, `sensitive_data_input`, `injection_heuristic`
+  - Output rails: `self_check_output`, `jailbreak_output`, `sensitive_data_output`
+  - Three refusal modes: `hard_block`, `soft_steer`, `informative`
+  - Gracefully degrades to regex-only mode when NeMo unavailable
+
+**HuggingFace Hub:**
+- Model downloads via `huggingface_hub` and `huggingface-cli`
+  - Cache: `~/.cache/huggingface/hub/`
   - Auth: `HUGGING_FACE_HUB_TOKEN` (optional, for private models)
-  - Cache location: `~/.cache/huggingface` (mounted across all containers)
-  - Purpose: Model downloads, dataset loading, evaluation benchmarks
+  - Used in autoresearch launcher for model selection
+
+**Kaggle API:**
+- Dataset downloads via `kaggle` CLI
+  - Config: `~/.kaggle/kaggle.json`
+  - Used in autoresearch data source selection (`karpathy-autoresearch/launch-autoresearch.sh`)
+  - Setup: `setup/dgx-global-base-setup.sh`
+
+**karpathy/autoresearch:**
+- External repo cloned at `~/autoresearch/`
+  - Launcher: `karpathy-autoresearch/launch-autoresearch.sh`
+  - DGX Spark tuning: `karpathy-autoresearch/spark-config.sh`
+  - Data sources: built-in, local, HuggingFace, GitHub, Kaggle
+  - Uses `uv` for dependency management
 
 ## Data Storage
 
 **Databases:**
-- DuckDB - In-process SQL database
-  - Connection: Local files in `/data/` directories
-  - Client: `duckdb` Python package + CLI v1.2.2
-  - Used for: Fast analytics on curated data
+- SQLite (via aiosqlite, WAL mode) - Safety Harness trace storage
+  - Location: `harness/data/traces.db`
+  - Schema: `harness/traces/schema.sql`
+  - Tables: `traces`, `eval_runs`, `redteam_jobs`, `corrections`
+  - Client: `harness/traces/store.py` (async `TraceStore` class)
+  - All PII redacted before storage
 
-- Argilla - Data annotation database (PostgreSQL-backed, containerized)
-  - Connection: Internal to argilla Docker container
-  - Client: `argilla` Python SDK
-  - Port: 6900
+- DuckDB - Data processing and analytics
+  - CLI: v1.2.2 (installed in `data-toolbox/Dockerfile`)
+  - Python: `duckdb` package (data-toolbox)
 
-- Label Studio - Data annotation database (SQLite-backed)
-  - Connection: Persistent volume at `~/label-studio-data`
+- Label Studio - Annotation database (SQLite-backed, containerized)
+  - Persistent volume: `~/label-studio-data`
   - Client: `label-studio-sdk` Python package
   - Port: 8081
 
+- Argilla - Annotation database (containerized)
+  - Client: `argilla` Python package
+  - Port: 6900
+
 **File Storage:**
-- Local filesystem only (no S3 integration at runtime)
-- Cloud storage libraries installed but not actively used:
-  - `boto3` (AWS S3 / compatible)
-  - `azure-storage-blob` (Azure Blob Storage)
-  - `google-cloud-storage` (Google Cloud Storage)
-  - `smart-open[all]` (Unified cloud I/O interface)
+- Local filesystem only (no cloud storage in core toolbox)
 - Host directories mounted into containers:
-  - `~/data/raw` → `/data/raw` (raw ingested data)
-  - `~/data/processed` → `/data/processed` (cleaned/transformed)
-  - `~/data/curated` → `/data/curated` (deduplicated quality-filtered)
-  - `~/data/synthetic` → `/data/synthetic` (generated synthetic data)
-  - `~/data/exports` → `/data/exports` (final training exports)
-  - `~/eval/datasets` → `/datasets` (evaluation datasets)
-  - `~/eval/models` → `/models` (fine-tuned checkpoints)
-  - `~/.cache/huggingface` → `/root/.cache/huggingface` (HF cache)
-  - `~/unsloth-data` → `/workspace/work` (Unsloth fine-tuning data)
-  - `~/triton/engines` → `/engines` (Triton compiled models)
-  - `~/triton/model_repo` → `/triton_model_repo` (Triton model configs)
+  - `~/data/` - Training and raw datasets
+  - `~/eval/models/` - Model checkpoints (mounted at `/models` in vLLM)
+  - `~/unsloth-data/` - Unsloth training workspace
+  - `~/label-studio-data/` - Label Studio data
+  - `~/.n8n/` - n8n workflow persistence
+  - `~/.cache/huggingface/` - Model weights and tokenizers
+- Docker volumes: `open-webui`, `open-webui-ollama` (external, declared in `docker-compose.inference.yml`)
+
+**Cloud Storage Clients (data-toolbox only, not used by core):**
+- `boto3` - AWS S3
+- `azure-storage-blob` - Azure Blob Storage
+- `google-cloud-storage` - GCS
+- `smart-open[all]` - Unified cloud I/O
 
 **Caching:**
-- None configured at runtime
-- HuggingFace model cache shared across all containers
+- HuggingFace cache at `~/.cache/huggingface/` shared across all containers
+- In-memory sliding window rate limiter (`harness/ratelimit/sliding_window.py`)
+- No Redis or Memcached
 
-## Authentication & Identity
+## Authentication & Authorization
 
-**Auth Provider:**
-- Custom: LiteLLM proxy handles all authentication
-  - OpenAI, Anthropic, Gemini: API keys stored in `~/.litellm/.env`
-  - Ollama, vLLM: No auth (local-only services)
-- Label Studio: Built-in user accounts (no LDAP/OAuth)
-- Argilla: Built-in user accounts (default: `argilla` / `1234`)
-- Open-WebUI: Built-in user accounts (no external auth)
-- n8n: Built-in user accounts (no external auth)
-- Unsloth Studio: No authentication required
+**Safety Harness Tenant Auth:**
+- Bearer token authentication (`harness/auth/bearer.py`)
+- API keys hashed with Argon2id (`argon2-cffi>=25.1`)
+- Tenant config: `harness/config/tenants.yaml`
+  - Per-tenant fields: `api_key_hash`, `rpm_limit`, `tpm_limit`, `allowed_models`, `bypass`, `pii_strictness`, `rail_overrides`
+  - Example tenants: `dev-team` (full guardrails, balanced PII), `ci-runner` (bypass mode, minimal PII)
+- Rate limiting: In-memory sliding window per-tenant (RPM + TPM)
+  - Implementation: `harness/ratelimit/sliding_window.py`
 
-**Implementation:** All cloud API keys managed via `setup-litellm-config.sh` interactive script. Keys stored in `~/.litellm/.env` and loaded into LiteLLM container via `--env-file`.
+**LiteLLM Auth:**
+- Cloud API keys stored in `~/.litellm/.env`
+- Loaded via Docker `--env-file` flag
+
+**Other Services:**
+- Label Studio, Argilla, Open WebUI, n8n: Built-in user accounts (no external identity provider)
+- Unsloth Studio: No authentication
+- vLLM, Ollama: No auth (local-only)
 
 ## Monitoring & Observability
 
 **Error Tracking:**
-- None integrated at infrastructure level
-- Optional: mlflow available for experiment tracking (local file store)
+- None (no Sentry, Datadog, or similar)
 
-**Logs:**
-- Docker logs (via `docker logs -f`)
-- LiteLLM: Verbose logging to stdout (setverbose: false in config)
-- Triton: HTTP metrics endpoint at `http://localhost:8012/metrics`
-- n8n: Built-in execution logs
-- Unsloth Studio: Container logs via `docker logs unsloth-studio`
+**Logging:**
+- Python `logging` module: `logging.getLogger("harness.proxy")` in `harness/proxy/litellm.py`
+- Docker container logs: All services stream via `docker logs -f`
+- Modelstore audit log: `modelstore/lib/audit.sh`
+- LiteLLM: `set_verbose: false` in config
 
-**Experiment Tracking:**
-- mlflow - MLflow experiment tracking (eval toolbox has SDK pre-installed, local file store)
+**Tracing:**
+- Custom SQLite-based trace store (`harness/traces/store.py`)
+  - Every proxied request recorded: tenant, model, redacted prompt/response, latency_ms, guardrail decisions, CAI critique, refusal events
+  - PII redacted before any SQLite write (never persists raw PII)
+  - HITL review queue with priority scoring (`compute_priority` in `harness/traces/store.py`)
 
-## CI/CD & Deployment
+**Metrics/Dashboards:**
+- Gradio HITL dashboard (`harness/hitl/ui.py`): Review queue with filtering by rail/tenant/time, approve/reject/edit corrections, side-by-side diff view
+- MLflow: Experiment tracking (eval-toolbox, local file store)
+- Eval metrics: F1, precision, recall, correct/false refusal rates, P50/P95 latency (`harness/eval/metrics.py`)
+- Eval trend tracking with baseline comparison (`harness/eval/trends.py`)
+- Triton: Prometheus metrics at `http://localhost:8012/metrics`
+
+**Health Checks:**
+- `status.sh` - Checks all Docker containers and systemd services, reports disk usage
+- No formal healthcheck endpoints in FastAPI app
+
+## CI/CD & DevOps
 
 **Hosting:**
-- Local: NVIDIA DGX Spark (aarch64)
-- Remote: NVIDIA Sync for client-side port forwarding and command execution
+- Self-hosted on NVIDIA DGX Spark hardware
+- No cloud deployment target
+- Remote access via NVIDIA Sync
 
-**CI Pipeline:**
-- None built-in; scripts are standalone bash executables
-- Deployment model: Manual execution of shell scripts on target machine
+**CI Pipeline (`.github/workflows/test.yml`):**
+- **shellcheck** - Lint all `.sh` files with `--severity=error` (excludes `karpathy-autoresearch/`)
+- **harness-tests** - `pytest harness/tests/ -x -q` on Python 3.13
+- **bash-syntax** - `bash -n` parse check on all scripts
+- **secrets-scan** - Regex scan for leaked API keys (Kaggle `KGAT_`, Anthropic `sk-ant-`, OpenAI `sk-proj-`, Google `AIza`, GitHub `ghp_`/`gho_`, AWS `AKIA`, HuggingFace `hf_`)
+- **vulnerability-scan** - `pip-audit` for fixable dependency vulnerabilities
+- Triggered on push/PR to `main`
 
-**Build/Image Management:**
-- Scripts reference stable base images: NGC PyTorch 26.02, Triton 26.02-trtllm
-- Image versions for user services pinned:
-  - vLLM: `vllm/vllm-openai:latest`
-  - LiteLLM: `ghcr.io/berriai/litellm:main-latest`
-  - Open-WebUI: `ghcr.io/open-webui/open-webui:ollama`
-  - n8n: `n8nio/n8n` (latest)
-  - Label Studio: `heartexlabs/label-studio:latest`
-  - Argilla: `argilla/argilla-quickstart:latest`
-  - Unsloth Studio: `nvcr.io/nvidia/pytorch:25.11-py3` (base image, custom startup)
-
-## Environment Configuration
-
-**Required env vars:**
-- `NGC_API_KEY` - For pulling NGC images during setup
-- `OPENAI_API_KEY` - (optional, for OpenAI access via LiteLLM)
-- `ANTHROPIC_API_KEY` - (optional, for Anthropic access via LiteLLM)
-- `GEMINI_API_KEY` - (optional, for Google Gemini access via LiteLLM)
-- `HUGGING_FACE_HUB_TOKEN` - (optional, for private HuggingFace model access)
-
-**Secrets location:**
-- `~/.litellm/.env` - LiteLLM cloud API keys (created by `setup-litellm-config.sh`)
-  - Format: `KEY=value` pairs
-  - Loaded into LiteLLM container via `--env-file`
-- `~/.n8n/` - n8n encrypted credentials and workflows
-- System environment: NGC_API_KEY configured during initial DGX setup
-
-**Docker host.docker.internal:**
-- All containers configured with `--add-host=host.docker.internal:host-gateway`
-- Enables container-to-host service discovery:
-  - `http://host.docker.internal:11434` → Host Ollama
-  - `http://host.docker.internal:8020/v1` → Host vLLM
-  - `http://host.docker.internal:4000/v1` → Host LiteLLM proxy
+**Deployment Automation:**
+- `build-toolboxes.sh` - Builds Docker images: base-toolbox -> eval-toolbox + data-toolbox
+- `setup/dgx-global-base-setup.sh` - Idempotent system setup: apt packages, Miniconda, pyenv, harness install, spaCy model, bash aliases
+- Docker Compose files:
+  - `docker-compose.inference.yml` - Open WebUI + LiteLLM + vLLM (vLLM in `with-vllm` profile)
+  - `docker-compose.data.yml` - Label Studio + Argilla
+- Individual launcher scripts with sync variants (`*-sync.sh`) for headless operation
 
 ## Webhooks & Callbacks
 
-**Incoming:**
-- n8n: HTTP endpoints configurable via workflow design
-- Label Studio: Webhook export options (not configured by default)
-- Argilla: No built-in webhooks
+**Incoming (Safety Harness API routes):**
+- `POST /v1/chat/completions` - Main proxy endpoint (`harness/proxy/litellm.py`)
+- `POST /probe` - Auth verification (`harness/main.py`)
+- Admin endpoints via `harness/proxy/admin.py`
+- Red team endpoints via `harness/redteam/router.py`
+- HITL endpoints via `harness/hitl/router.py`
 
 **Outgoing:**
-- None configured
-- Distilabel: Can call cloud APIs (OpenAI, Anthropic, etc.) via LiteLLM
-- mlflow: Log data to local file store if configured
+- Safety Harness -> LiteLLM at `LITELLM_BASE_URL` (httpx async client, 120s timeout, 50 max connections)
+- NeMo guardrails -> LiteLLM for rail evaluation via `LLMRails`
+- CAI critique engine -> LiteLLM for constitutional AI revision loops (`harness/critique/engine.py`)
+- garak -> Safety Harness gateway for red team probing (`harness/redteam/garak_runner.py`)
+
+**Cron/Scheduled:**
+- Modelstore migration cron: `modelstore/cron/migrate_cron.sh`
+- Modelstore disk check cron: `modelstore/cron/disk_check_cron.sh`
+
+## Environment Configuration
+
+**Required env vars for Safety Harness:**
+- `HARNESS_API_KEY` - Client API key (set in `~/.bashrc` by setup script, default: `sk-devteam-test`)
+
+**Optional env vars:**
+- `HARNESS_PORT` - Gateway port (default: 5000)
+- `HARNESS_CONFIG_DIR` - Config directory path
+- `HARNESS_DATA_DIR` - Data/traces directory path
+- `LITELLM_BASE_URL` - LiteLLM backend URL (default: `http://localhost:4000`)
+- `VLLM_MODEL` - Model for vLLM to serve
+- `VLLM_GPU_MEM` - GPU memory fraction for vLLM (default: 0.5)
+- `EXTRA_MOUNTS` - Additional Docker bind mounts (comma-separated `host:container` pairs)
+- `AUTORESEARCH_BASE_MODEL` - HF model snapshot path for autoresearch
+- `AUTORESEARCH_HF_DATASET` - HF dataset identifier for autoresearch
+- `NGC_API_KEY` - For pulling NGC images during setup
+
+**Secrets location:**
+- `~/.litellm/.env` - LiteLLM cloud API keys (optional)
+- `~/.kaggle/kaggle.json` - Kaggle API credentials
+- `harness/config/tenants.yaml` - Argon2id-hashed API keys (safe to commit, hashes only)
+- All `.env` files are gitignored
 
 ## Service Discovery & Networking
 
 **Inter-service Communication:**
-- vLLM, Ollama, LiteLLM listen on `0.0.0.0` (accessible from containers and LAN)
-- Containers communicate via `host.docker.internal` hostname
-- All services use HTTP (no TLS within local network)
-- Shared GPU via `--gpus all` (no multi-tenant isolation)
+- Containers use `host.docker.internal` (via `--add-host=host.docker.internal:host-gateway`)
+- All services bind to `0.0.0.0` (accessible from containers and LAN)
+- All HTTP, no TLS within local network
+- Shared GPU via `--gpus all`, `--ipc=host`
 
 **Port Registry:**
-| Port | Service | Protocol | Purpose |
-|------|---------|----------|---------|
-| 4000 | LiteLLM Proxy | HTTP | Unified OpenAI-compatible endpoint |
-| 5678 | n8n | HTTP | Workflow automation UI |
-| 6900 | Argilla | HTTP | Data annotation UI |
-| 8000 | Unsloth Studio | HTTP | Fine-tuning UI |
-| 8010 | Triton (HTTP) | HTTP | Inference server |
-| 8011 | Triton (gRPC) | gRPC | Inference server (binary protocol) |
-| 8012 | Triton (metrics) | HTTP | Prometheus metrics |
-| 8020 | vLLM | HTTP | OpenAI-compatible inference API |
-| 8080 | code-server | HTTP | VS Code in browser (not launched by default) |
-| 8081 | Label Studio | HTTP | Data labeling UI |
-| 8888 | Jupyter Lab (NGC) | HTTP | Interactive Python (NGC PyTorch base) |
-| 8889 | Jupyter Lab (eval) | HTTP | Interactive Python (eval-toolbox) |
-| 8890 | Jupyter Lab (data) | HTTP | Interactive Python (data-toolbox) |
-| 11434 | Ollama | HTTP | Local LLM API (systemd service) |
-| 12000 | Open-WebUI | HTTP | Chat interface with bundled Ollama |
+| Port | Service | Launcher |
+|------|---------|----------|
+| 4000 | LiteLLM Proxy | `inference/start-litellm.sh` |
+| 5000 | Safety Harness | `harness/start-harness.sh` |
+| 5678 | n8n | `containers/start-n8n.sh` |
+| 6900 | Argilla | `data/start-argilla.sh` |
+| 8000 | Unsloth Studio | `containers/unsloth-studio.sh` |
+| 8010 | Triton HTTP | `eval/triton-trtllm.sh` |
+| 8020 | vLLM | `inference/start-vllm.sh` |
+| 8081 | Label Studio | `data/start-label-studio.sh` |
+| 11434 | Ollama | systemd service |
+| 12000 | Open WebUI | `inference/start-open-webui.sh` |
 
 ---
 
-*Integration audit: 2026-03-19*
+*Integration audit: 2026-04-01*

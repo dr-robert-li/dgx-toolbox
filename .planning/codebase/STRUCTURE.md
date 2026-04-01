@@ -1,219 +1,401 @@
 # Codebase Structure
 
-**Analysis Date:** 2026-03-19
+**Analysis Date:** 2026-04-01
 
 ## Directory Layout
 
 ```
 dgx-toolbox/
-├── data-toolbox/           # Data processing toolbox (Docker image)
-│   └── Dockerfile          # Layered PyTorch + data tools
-├── eval-toolbox/           # Evaluation toolbox (Docker image)
-│   └── Dockerfile          # Layered PyTorch + eval tools
-├── .planning/              # GSD planning documents
-│   └── codebase/           # Architecture/conventions analysis
-├── README.md               # Main documentation (43KB)
-├── CHANGELOG.md            # Version history
-├── .gitignore              # Git exclusions
-├── dgx-global-base-setup.sh # System bootstrap (idempotent)
-├── data-toolbox-build.sh   # Build data-toolbox image
-├── data-toolbox.sh         # Interactive data-toolbox shell
-├── data-toolbox-jupyter.sh # Jupyter Lab in data-toolbox
-├── eval-toolbox-build.sh   # Build eval-toolbox image
-├── eval-toolbox.sh         # Interactive eval-toolbox shell
-├── eval-toolbox-jupyter.sh # Jupyter Lab in eval-toolbox
-├── ngc-pytorch.sh          # Interactive NGC PyTorch shell
-├── ngc-jupyter.sh          # Jupyter Lab in NGC PyTorch
-├── ngc-quickstart.sh       # In-container setup guide
-├── start-vllm.sh           # vLLM inference server launcher
-├── start-vllm-sync.sh      # vLLM with NVIDIA Sync (detached)
-├── start-litellm.sh        # LiteLLM proxy launcher
-├── start-litellm-sync.sh   # LiteLLM with NVIDIA Sync (detached)
-├── setup-litellm-config.sh # Auto-generate LiteLLM config.yaml
-├── start-open-webui.sh     # Open-WebUI chat interface launcher
-├── start-open-webui-sync.sh # Open-WebUI with NVIDIA Sync (detached)
-├── setup-ollama-remote.sh  # Enable Ollama remote/LAN access (sudo)
-├── start-n8n.sh            # n8n workflow automation launcher
-├── start-label-studio.sh   # Label Studio launcher
-├── start-argilla.sh        # Argilla labeling launcher
-├── triton-trtllm.sh        # Triton TRT-LLM inference server launcher
-├── triton-trtllm-sync.sh   # Triton with NVIDIA Sync (detached)
-├── unsloth-studio.sh       # Unsloth fine-tuning UI launcher
-├── unsloth-studio-sync.sh  # Unsloth with NVIDIA Sync (detached)
-├── example.vllm-model      # Template config for vLLM default model
-├── example.bash_aliases    # Optional shell aliases for convenience
-└── (host directories expected)
-    ├── ~/data/raw/         # Ingested raw data
-    ├── ~/data/processed/   # Cleaned/transformed data
-    ├── ~/data/curated/     # Deduplicated quality data
-    ├── ~/data/synthetic/   # Generated synthetic data
-    ├── ~/data/exports/     # Final training data exports
-    ├── ~/eval/datasets/    # Evaluation datasets
-    ├── ~/eval/models/      # Fine-tuned model checkpoints
-    ├── ~/eval/runs/        # Evaluation logs and results
-    ├── ~/triton/engines/   # TensorRT-LLM compiled engines
-    ├── ~/triton/model_repo # Triton model repository configs
-    ├── ~/.cache/huggingface/ # HF model/dataset cache (shared)
-    ├── ~/.litellm/config.yaml # LiteLLM proxy routing config
-    ├── ~/.litellm/.env     # LiteLLM API keys (credentials)
-    ├── ~/.vllm-model       # vLLM default model name
-    ├── ~/.n8n/             # n8n workflow data and configs
-    ├── ~/label-studio-data/ # Label Studio annotation storage
-    ├── ~/.ollama/          # Ollama systemd service config
-    └── ~/unsloth-data/     # Unsloth fine-tuning session data
+├── base-toolbox/               # Base Docker image (NGC PyTorch + common deps)
+│   └── Dockerfile
+├── containers/                 # GPU container launchers (Unsloth, NGC, n8n)
+│   ├── unsloth-studio.sh
+│   ├── unsloth-studio-sync.sh
+│   ├── unsloth-headless.sh
+│   ├── unsloth-headless-sync.sh
+│   ├── ngc-pytorch.sh
+│   ├── ngc-jupyter.sh
+│   ├── ngc-quickstart.sh
+│   └── start-n8n.sh
+├── data/                       # Data engineering launchers
+│   ├── data-toolbox.sh
+│   ├── data-toolbox-build.sh
+│   ├── data-toolbox-jupyter.sh
+│   ├── start-label-studio.sh
+│   └── start-argilla.sh
+├── data-toolbox/               # Data toolbox Docker image
+│   └── Dockerfile
+├── eval/                       # Evaluation launchers
+│   ├── eval-toolbox.sh
+│   ├── eval-toolbox-build.sh
+│   ├── eval-toolbox-jupyter.sh
+│   ├── triton-trtllm.sh
+│   └── triton-trtllm-sync.sh
+├── eval-toolbox/               # Eval toolbox Docker image
+│   └── Dockerfile
+├── examples/                   # Programmatic Python interface
+│   └── dgx_toolbox.py
+├── harness/                    # Safety Harness (Python/FastAPI)
+│   ├── main.py                 # App factory + lifespan
+│   ├── start-harness.sh        # Launcher script
+│   ├── auth/                   # Bearer token auth
+│   │   ├── __init__.py
+│   │   └── bearer.py
+│   ├── config/                 # Tenant + rail config loading
+│   │   ├── __init__.py
+│   │   ├── loader.py           # TenantConfig Pydantic model
+│   │   ├── rail_loader.py      # RailConfig loading
+│   │   └── rails/              # NeMo rails YAML configs
+│   │       └── config.yml
+│   ├── critique/               # Constitutional AI engine
+│   │   ├── __init__.py
+│   │   ├── __main__.py
+│   │   ├── analyzer.py         # Trace analysis for tuning suggestions
+│   │   ├── constitution.py     # Constitution YAML loading
+│   │   └── engine.py           # CritiqueEngine
+│   ├── data/                   # Runtime data (traces.db, garak runs)
+│   │   └── garak-runs/
+│   ├── eval/                   # Eval framework within harness
+│   │   ├── __init__.py
+│   │   ├── __main__.py
+│   │   ├── datasets/           # Eval datasets
+│   │   │   └── pending/        # Pending red team variants
+│   │   ├── gate.py             # Eval gate (pass/fail)
+│   │   ├── lm_model.py         # HarnessLM for lm-eval
+│   │   ├── metrics.py          # Metric computation
+│   │   ├── replay.py           # Trace replay evaluation
+│   │   ├── runner.py           # lm-eval wrapper
+│   │   └── trends.py           # Eval trend analysis
+│   ├── guards/                 # Guardrail engine
+│   │   ├── __init__.py
+│   │   ├── engine.py           # GuardrailEngine
+│   │   ├── nemo_compat.py      # NeMo compatibility
+│   │   ├── normalizer.py       # Unicode normalization
+│   │   └── types.py            # GuardrailDecision, RailResult
+│   ├── hitl/                   # Human-in-the-loop review
+│   │   ├── __init__.py
+│   │   ├── __main__.py
+│   │   ├── calibrate.py        # Threshold calibration
+│   │   ├── export.py           # Data export
+│   │   ├── router.py           # HITL API routes
+│   │   └── ui.py               # HITL dashboard UI
+│   ├── pii/                    # PII redaction
+│   │   ├── __init__.py
+│   │   └── redactor.py         # spaCy NER redactor
+│   ├── proxy/                  # API proxy routes
+│   │   ├── __init__.py
+│   │   ├── admin.py            # Admin endpoints
+│   │   └── litellm.py          # Main chat completions proxy
+│   ├── ratelimit/              # Rate limiting
+│   │   ├── __init__.py
+│   │   └── sliding_window.py   # In-memory sliding window
+│   ├── redteam/                # Red team testing
+│   │   ├── __init__.py
+│   │   ├── __main__.py
+│   │   ├── balance.py          # Test suite balance scoring
+│   │   ├── engine.py           # Deepteam adversarial generation
+│   │   ├── garak_runner.py     # Garak integration
+│   │   └── router.py           # Red team API routes
+│   ├── scripts/                # Harness utility scripts
+│   │   └── validate_aarch64.sh
+│   ├── tests/                  # Pytest test suite
+│   │   ├── __init__.py
+│   │   ├── conftest.py
+│   │   ├── test_auth.py
+│   │   ├── test_constitution.py
+│   │   ├── test_critique.py
+│   │   ├── test_eval_gate.py
+│   │   ├── test_eval_lm_model.py
+│   │   ├── test_eval_replay.py
+│   │   ├── test_eval_store.py
+│   │   ├── test_eval_trends.py
+│   │   ├── test_guardrails.py
+│   │   ├── test_hitl.py
+│   │   ├── test_nemo_compat.py
+│   │   ├── test_normalizer.py
+│   │   ├── test_pii.py
+│   │   ├── test_proxy.py
+│   │   ├── test_rail_config.py
+│   │   ├── test_ratelimit.py
+│   │   ├── test_redteam.py
+│   │   ├── test_redteam_data.py
+│   │   └── test_traces.py
+│   └── traces/                 # Trace storage
+│       ├── __init__.py
+│       └── store.py            # TraceStore (async SQLite)
+├── inference/                  # Inference server launchers
+│   ├── start-vllm.sh
+│   ├── start-vllm-sync.sh
+│   ├── start-litellm.sh
+│   ├── start-litellm-sync.sh
+│   ├── start-open-webui.sh
+│   ├── start-open-webui-sync.sh
+│   ├── setup-litellm-config.sh
+│   └── setup-ollama-remote.sh
+├── karpathy-autoresearch/      # Autoresearch integration
+│   ├── launch-autoresearch.sh
+│   ├── launch-autoresearch-sync.sh
+│   └── spark-config.sh         # DGX Spark GPU tuning
+├── modelstore/                 # Tiered model storage CLI
+│   ├── cmd/                    # Subcommands
+│   │   ├── init.sh
+│   │   ├── migrate.sh
+│   │   ├── recall.sh
+│   │   ├── revert.sh
+│   │   └── status.sh
+│   ├── cron/                   # Cron jobs
+│   │   ├── disk_check_cron.sh
+│   │   └── migrate_cron.sh
+│   ├── hooks/                  # Event hooks
+│   │   └── watcher.sh
+│   ├── lib/                    # Shared libraries
+│   │   ├── audit.sh
+│   │   ├── common.sh
+│   │   ├── config.sh
+│   │   ├── hf_adapter.sh
+│   │   ├── notify.sh
+│   │   └── ollama_adapter.sh
+│   └── test/                   # Bash test suite
+│       ├── run-all.sh
+│       ├── fixtures/
+│       ├── smoke.sh
+│       ├── test-audit.sh
+│       ├── test-common.sh
+│       ├── test-config.sh
+│       ├── test-disk-check.sh
+│       ├── test-fs-validation.sh
+│       ├── test-hf-adapter.sh
+│       ├── test-init.sh
+│       ├── test-migrate.sh
+│       ├── test-ollama-adapter.sh
+│       ├── test-recall.sh
+│       ├── test-revert.sh
+│       ├── test-status.sh
+│       └── test-watcher.sh
+├── scripts/                    # Utility and demo scripts
+│   ├── _litellm_register.py    # LiteLLM config helper
+│   ├── autoresearch-deregister.sh
+│   ├── demo-autoresearch.sh
+│   ├── eval-checkpoint.sh
+│   ├── screen-data.sh
+│   ├── test-data-integration.sh
+│   └── test-eval-register.sh
+├── setup/                      # System provisioning
+│   └── dgx-global-base-setup.sh
+├── .github/
+│   └── workflows/
+│       └── test.yml            # CI pipeline
+├── .planning/
+│   └── codebase/               # GSD architecture docs
+├── build-toolboxes.sh          # Build all Docker images
+├── docker-compose.data.yml     # Data stack compose
+├── docker-compose.inference.yml # Inference stack compose
+├── example.bash_aliases        # Shell aliases template
+├── example.vllm-model          # vLLM model config template
+├── lib.sh                      # Shared shell library
+├── modelstore.sh               # ModelStore CLI router
+├── status.sh                   # Service status dashboard
+├── CHANGELOG.md                # Version history
+├── README.md                   # Main documentation
+└── .gitignore                  # Git exclusions
 ```
 
 ## Directory Purposes
 
-**data-toolbox/:**
-- Purpose: Container image build context for data processing toolbox
-- Contains: Single Dockerfile that layers data-specific Python packages on NGC PyTorch base
-- Key files: `data-toolbox/Dockerfile` (95 lines, 16 pip install steps)
+**`base-toolbox/`:**
+- Purpose: Base Docker image build context (NGC PyTorch + common Python deps)
+- Contains: Single `Dockerfile` inheriting from `nvcr.io/nvidia/pytorch:26.02-py3`
+- Key deps: datasets, pandas, pyarrow, scikit-learn, openai, huggingface_hub, typer, rich
 
-**eval-toolbox/:**
-- Purpose: Container image build context for evaluation toolbox
-- Contains: Single Dockerfile that layers eval-specific Python packages on NGC PyTorch base
-- Key files: `eval-toolbox/Dockerfile` (36 lines, 1 pip install step with 15 packages)
+**`containers/`:**
+- Purpose: Specialized GPU container launchers
+- Contains: Unsloth Studio (fine-tuning UI), Unsloth headless (autonomous training), NGC PyTorch (interactive), NGC Jupyter, n8n (workflow automation)
+- Pattern: Each script manages its own Docker container lifecycle with `source ../lib.sh`
 
-**.planning/codebase/:**
-- Purpose: GSD-generated architecture and convention documentation
-- Contains: ARCHITECTURE.md, STRUCTURE.md, CONVENTIONS.md, TESTING.md, CONCERNS.md (as generated)
-- Key files: Auto-generated by /gsd:map-codebase and /gsd:plan-phase
+**`data/`:**
+- Purpose: Data engineering service launchers
+- Contains: data-toolbox (interactive + Jupyter), Label Studio, Argilla launchers
+- Pattern: Build scripts (`*-build.sh`) and launch scripts (`*.sh`) are co-located
+
+**`data-toolbox/`:**
+- Purpose: Docker image for data processing (inherits from `base-toolbox`)
+- Contains: Dockerfile with polars, DuckDB, datatrove, distilabel, cleanlab, cloud storage clients, document extraction tools
+
+**`eval/`:**
+- Purpose: Evaluation service launchers
+- Contains: eval-toolbox (interactive + Jupyter), Triton TRT-LLM server launchers
+
+**`eval-toolbox/`:**
+- Purpose: Docker image for evaluation (inherits from `base-toolbox`)
+- Contains: Dockerfile with evaluate, torchmetrics, mlflow, lm-eval, ragas, tritonclient
+
+**`examples/`:**
+- Purpose: Programmatic Python interface for external projects to use dgx-toolbox
+- Contains: `dgx_toolbox.py` -- DGXToolbox class with validation, container lifecycle, execution engine
+
+**`harness/`:**
+- Purpose: Safety Harness FastAPI application -- the most complex subsystem
+- Contains: 12 Python submodules covering auth, config, critique, eval, guards, hitl, pii, proxy, ratelimit, redteam, traces
+- Key files: `main.py` (app factory), `proxy/litellm.py` (main proxy logic), `guards/engine.py` (guardrail engine)
+- Tests: `harness/tests/` with 21 test files
+
+**`inference/`:**
+- Purpose: LLM inference server launchers
+- Contains: vLLM, LiteLLM, Open-WebUI launchers + config generators + Ollama remote setup
+
+**`karpathy-autoresearch/`:**
+- Purpose: Integration with karpathy/autoresearch for autonomous ML experiments
+- Contains: Launch scripts + DGX Spark GPU config tuning (`spark-config.sh`)
+
+**`modelstore/`:**
+- Purpose: Tiered model storage management (hot/cold)
+- Contains: CLI subcommands (`cmd/`), shared libraries (`lib/`), cron jobs (`cron/`), hooks (`hooks/`), tests (`test/`)
+- Architecture: CLI router in `modelstore.sh` dispatches to `modelstore/cmd/*.sh`
+
+**`scripts/`:**
+- Purpose: Utility scripts, integration tests, demos
+- Contains: LiteLLM registration helper, autoresearch demo, eval checkpoint scripts
+
+**`setup/`:**
+- Purpose: One-time host provisioning
+- Contains: `dgx-global-base-setup.sh` (apt packages, Miniconda, pyenv, harness pip install, bash aliases)
 
 ## Key File Locations
 
 **Entry Points:**
-
-- `dgx-global-base-setup.sh`: Host system initialization (idempotent)
-  - Installs system packages via apt, Miniconda (aarch64), pyenv, sets up PATH
-  - Run once per DGX Spark host: `bash ~/dgx-toolbox/dgx-global-base-setup.sh`
-
-- `data-toolbox-build.sh`: Build data-toolbox Docker image (one-time)
-  - Invokes `docker build -t data-toolbox:latest ./data-toolbox`
-
-- `data-toolbox.sh`: Enter interactive data-toolbox container
-  - Checks for running container, reuses if exists, otherwise creates with GPU + directory mounts
-  - Mounts: `~/.cache/huggingface`, `~/data/raw`, `~/data/processed`, `~/data/curated`, `~/data/synthetic`, `~/data/exports`, `~/eval/models` (read-only)
-
-- `start-vllm.sh`: Start vLLM inference server (model specified or from `~/.vllm-model`)
-  - Creates persistent container at :8020 with GPU access
-  - Mounts: `~/.cache/huggingface`, `~/eval/models`
-
-- `start-litellm.sh`: Start LiteLLM proxy (detects Ollama/vLLM, uses `~/.litellm/config.yaml`)
-  - Creates persistent container at :4000
-  - Mounts: `~/.litellm/config.yaml` (RO), `~/.litellm/.env` (credentials)
-
-- `setup-litellm-config.sh`: Auto-generate `~/.litellm/config.yaml` by detecting services
-  - Queries running Ollama/vLLM via HTTP, generates YAML routing config
-  - Prompts for cloud API keys (OpenAI, Anthropic, Gemini)
-
-- `start-open-webui.sh`: Start Open-WebUI chat interface at :12000
-  - Persistent container with bundled Ollama
-  - Mounts: Docker volumes `open-webui` (data), `open-webui-ollama` (Ollama state)
+- `lib.sh`: Shared bash library sourced by all launchers
+- `modelstore.sh`: CLI router for model store commands
+- `status.sh`: Service status dashboard
+- `build-toolboxes.sh`: Build all Docker images (base -> eval + data)
+- `harness/main.py`: FastAPI app factory
+- `harness/start-harness.sh`: Uvicorn launcher
+- `examples/dgx_toolbox.py`: Programmatic Python interface
 
 **Configuration:**
+- `docker-compose.inference.yml`: Inference stack (Open-WebUI + LiteLLM + vLLM)
+- `docker-compose.data.yml`: Data stack (Label Studio + Argilla)
+- `harness/config/rails/config.yml`: NeMo guardrails configuration
+- `example.bash_aliases`: Shell aliases template (68 aliases)
+- `example.vllm-model`: Default vLLM model template
+- `.github/workflows/test.yml`: CI pipeline (shellcheck, pytest, syntax, secrets, vulns)
 
-- `~/.litellm/config.yaml`: LiteLLM proxy routing rules (YAML)
-  - Generated by `setup-litellm-config.sh` or manually edited
-  - Contains model_list with ollama/openai/anthropic/gemini entries
-
-- `~/.litellm/.env`: Cloud API keys (plain text, chmod 600)
-  - OPENAI_API_KEY=sk-...
-  - ANTHROPIC_API_KEY=sk-ant-...
-  - GEMINI_API_KEY=AI...
-
-- `~/.vllm-model`: Default vLLM model name (single line)
-  - Fallback when no model argument passed to start-vllm.sh
-  - Example: `nvidia/Llama-3.1-Nemotron-Nano-8B-v1`
-
-**Core Logic (Scripts):**
-
-- `data-toolbox/Dockerfile`: Python packages for data engineering (pandas, polars, duckdb, datatrove, distilabel, etc.)
-
-- `eval-toolbox/Dockerfile`: Python packages for evaluation (lm-eval, ragas, torchmetrics, mlflow, etc.)
-
-- `start-litellm.sh`: Proxy initialization, container creation, config mounting, log streaming
-
-- `setup-litellm-config.sh`: Service detection via curl/Docker API, YAML generation, credential prompting
+**Core Logic:**
+- `harness/proxy/litellm.py`: Main proxy route with 8-step pipeline (auth -> rate limit -> guardrails -> proxy -> output rails -> critique -> PII -> trace)
+- `harness/guards/engine.py`: GuardrailEngine with input/output rails, three refusal modes
+- `harness/critique/engine.py`: CritiqueEngine for Constitutional AI critique-revise loop
+- `harness/traces/store.py`: TraceStore async SQLite with traces, eval_runs, redteam_jobs, corrections
+- `harness/config/loader.py`: TenantConfig Pydantic model
+- `harness/auth/bearer.py`: Argon2 bearer token verification
+- `harness/redteam/engine.py`: Deepteam adversarial prompt generation
+- `modelstore/cmd/migrate.sh`: Hot-to-cold model migration with interrupt safety
+- `modelstore/lib/common.sh`: Mount verification, space checks, filesystem validation
 
 **Testing:**
-
-- Not detected (no test files, test directories, or test frameworks in codebase)
+- `harness/tests/`: 21 pytest test files for Safety Harness
+- `modelstore/test/`: 16 bash test files for ModelStore
+- `modelstore/test/run-all.sh`: ModelStore test runner
+- `harness/tests/conftest.py`: Shared pytest fixtures
 
 ## Naming Conventions
 
 **Files:**
+- Launcher scripts: `start-{service}.sh` (e.g., `start-vllm.sh`, `start-label-studio.sh`)
 - Build scripts: `{toolbox}-build.sh` (e.g., `data-toolbox-build.sh`)
-- Launcher scripts: `{service}.sh` or `start-{service}.sh` (e.g., `data-toolbox.sh`, `start-vllm.sh`)
-- Config generators: `setup-{service}.sh` (e.g., `setup-litellm-config.sh`)
-- Sync variants: `{script}-sync.sh` (e.g., `start-vllm-sync.sh` for remote NVIDIA Sync)
-- Documentation: `README.md`, `CHANGELOG.md`
-- Config examples: `example.{filename}` (e.g., `example.vllm-model`, `example.bash_aliases`)
+- Toolbox shells: `{toolbox}.sh` (e.g., `data-toolbox.sh`)
+- Jupyter launchers: `{toolbox}-jupyter.sh` (e.g., `data-toolbox-jupyter.sh`)
+- Sync variants: `{script}-sync.sh` (e.g., `start-vllm-sync.sh`)
+- Config generators: `setup-{service}-config.sh` or `setup-{service}.sh`
+- Example configs: `example.{name}` (e.g., `example.bash_aliases`)
+- Python modules: `snake_case.py` (e.g., `sliding_window.py`, `rail_loader.py`)
+- Test files (Python): `test_{module}.py` (e.g., `test_proxy.py`)
+- Test files (Bash): `test-{module}.sh` (e.g., `test-config.sh`)
 
 **Directories:**
-- Docker contexts: `{toolbox}/` (e.g., `data-toolbox/`, `eval-toolbox/`)
-- Planning docs: `.planning/codebase/` (hidden, GSD-generated)
-- Host directories (user-created): `~/{domain}/{category}/` (e.g., `~/data/raw`, `~/eval/models`, `~/triton/engines`)
+- Docker images: `{name}-toolbox/` (e.g., `base-toolbox/`, `data-toolbox/`)
+- Service groups: `{domain}/` (e.g., `inference/`, `data/`, `eval/`, `containers/`)
+- Python packages: `{name}/` with `__init__.py` (e.g., `harness/auth/`, `harness/guards/`)
+- CLI subcommands: `cmd/` (in `modelstore/`)
+- Shared libraries: `lib/` (in `modelstore/`)
 
 ## Where to Add New Code
 
 **New Inference Backend:**
-- Launcher script: Create `start-{backend}.sh` following pattern in `start-vllm.sh`
-  - Check for running container, create if needed, mount configs, expose port, stream logs
-- Config integration: Integrate with `setup-litellm-config.sh` to auto-detect and route
-- Update README.md port reference table (line 416+)
-- Example: `start-vllm.sh` (79 lines, launches container, detects model from ~/.vllm-model)
+- Launcher script: `inference/start-{backend}.sh` following pattern in `inference/start-vllm.sh`
+- Sync variant: `inference/start-{backend}-sync.sh`
+- Integration: Add to `inference/setup-litellm-config.sh` for auto-detection
+- Status: Add `check_service` line to `status.sh`
+- Aliases: Add to `example.bash_aliases`
+- Docker compose: Add service to `docker-compose.inference.yml`
 
-**New Toolbox (Domain-Specific Tools):**
-- Dockerfile: Create `{toolbox}/Dockerfile` inheriting from `nvcr.io/nvidia/pytorch:26.02-py3`
-  - Copy pattern from `data-toolbox/Dockerfile` (system deps, pip installs)
-  - Set WORKDIR, ENTRYPOINT
-- Build script: Create `{toolbox}-build.sh` (invoke `docker build -t {toolbox} ./{toolbox}`)
-- Launcher scripts: Create `{toolbox}.sh` (interactive) and `{toolbox}-jupyter.sh` (Jupyter Lab)
-  - Copy pattern from `data-toolbox.sh`: mkdir host dirs, check for running container, mount volumes, GPU access
-- Update README.md with new toolbox entry
+**New Harness Module:**
+- Create directory: `harness/{module}/` with `__init__.py`
+- Router: Add `{module}/router.py` with APIRouter, include in `harness/main.py`
+- Tests: Add `harness/tests/test_{module}.py`
+- Follow existing pattern: see `harness/hitl/router.py` for router pattern, `harness/redteam/engine.py` for engine pattern
 
-**New Labeling Platform:**
-- Launcher script: Create `start-{platform}.sh` following pattern in `start-label-studio.sh`
-- Host directory: Create `~/{platform}-data/` for persistent storage
-- Update README.md Labeling Platforms section (line 308+)
+**New Harness Guardrail:**
+- Add rail name to `harness/guards/engine.py` `_input_rails` or `_output_rails` list
+- Add rail config entry to `harness/config/rails/rails.yaml`
+- Add suggestion text to `_RAIL_SUGGESTIONS` dict in `harness/guards/engine.py`
+- Add test in `harness/tests/test_guardrails.py`
 
-**New System Setup Step:**
-- Location: Add to `dgx-global-base-setup.sh`
-- Requirement: Must be idempotent (rerun safely without errors)
-- Pattern: Check if already present (`if [ -d ... ]`), only install if missing
-- Example: Miniconda (line 42-50), pyenv (line 85-90)
+**New ModelStore Subcommand:**
+- Create: `modelstore/cmd/{command}.sh`
+- Source: `${SCRIPT_DIR}/../lib/common.sh` and `${SCRIPT_DIR}/../lib/config.sh`
+- Register: Add `case` entry in `modelstore.sh`
+- Test: Create `modelstore/test/test-{command}.sh`
 
-**Utilities:**
-- No shared utility modules (all logic in shell scripts)
-- If needed: Create `lib/common.sh` with shared functions, source in scripts
+**New Container/Toolbox:**
+- Dockerfile: Create `{name}-toolbox/Dockerfile` inheriting from `base-toolbox:latest`
+- Build: Add to `build-toolboxes.sh`
+- Launcher: Create `{domain}/{name}-toolbox.sh` following `data/data-toolbox.sh` pattern
+- Jupyter: Optionally add `{domain}/{name}-toolbox-jupyter.sh`
+
+**New Utility Script:**
+- Location: `scripts/{name}.sh` or `scripts/{name}.py`
+- Pattern: See `scripts/_litellm_register.py` for Python utilities, `scripts/demo-autoresearch.sh` for bash demos
+
+**New Data Labeling Platform:**
+- Launcher: `data/start-{platform}.sh` following `data/start-label-studio.sh` pattern
+- Docker compose: Add to `docker-compose.data.yml`
+- Status: Add to `status.sh`
+- Aliases: Add to `example.bash_aliases`
 
 ## Special Directories
 
-**data-toolbox/ and eval-toolbox/:**
-- Purpose: Docker image build contexts
-- Generated: No (committed source)
+**`harness/data/`:**
+- Purpose: Runtime data for Safety Harness (SQLite traces.db, garak run outputs)
+- Generated: Yes (at runtime)
+- Committed: Directory structure only (data files gitignored)
+
+**`harness/eval/datasets/pending/`:**
+- Purpose: Pending red team adversarial variants awaiting human review
+- Generated: Yes (by deepteam engine)
+- Committed: No (generated at runtime)
+
+**`modelstore/test/fixtures/`:**
+- Purpose: Test data for ModelStore bash tests
+- Generated: No (committed)
 - Committed: Yes
-- Only modified when updating Python packages or base image version
 
-**.planning/codebase/:**
+**`.planning/codebase/`:**
 - Purpose: GSD-generated architecture documentation
-- Generated: Yes (by `/gsd:map-codebase` command)
-- Committed: Yes (checked into repo)
-- Updated: Whenever codebase architecture or conventions change
+- Generated: Yes (by `/gsd:map-codebase`)
+- Committed: Yes
 
-**Host User Directories (~/data/*, ~/eval/*, etc.):**
-- Purpose: Persistent state across container runs
-- Generated: Created by scripts if missing (`mkdir -p`)
-- Committed: No (gitignored, user-specific)
-- Structure: Flat directory per domain (raw/processed/curated/synthetic/exports for data)
+**`.github/workflows/`:**
+- Purpose: CI pipeline definitions
+- Contains: `test.yml` -- shellcheck, harness pytest, bash syntax, secrets scan, vulnerability scan
+- Committed: Yes
 
-**Docker Volumes (open-webui, open-webui-ollama, etc.):**
-- Purpose: Container-managed persistent storage
-- Generated: Created by Docker on first `docker run`
-- Committed: No (managed by Docker daemon)
-- Access: Only from within containers (unless manually extracted)
+**Host directories (not in repo):**
+- `~/.modelstore/` -- ModelStore config, usage tracking, audit logs
+- `~/.litellm/` -- LiteLLM proxy config and env vars
+- `~/.cache/huggingface/` -- HuggingFace model/dataset cache
+- `~/data/` -- Training data (raw, processed, curated, synthetic, exports)
+- `~/eval/` -- Evaluation datasets, models, runs
+- `~/unsloth-data/` -- Fine-tuning session data
 
 ---
 
-*Structure analysis: 2026-03-19*
+*Structure analysis: 2026-04-01*
