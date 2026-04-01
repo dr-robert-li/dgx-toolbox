@@ -8,8 +8,6 @@ v1.1 adds six more phases (5–10) delivering a full AI safety harness: gateway 
 
 v1.2 adds two more phases (11–12) integrating Karpathy autoresearch into the existing DGX Spark stack: glue scripts connecting autoresearch to local data and models, a post-training safety eval hook, LiteLLM model registration, and a runnable end-to-end demo.
 
-v1.3 adds one phase (13) delivering a self-contained Python telemetry package with hardware sampling primitives, UMA memory modeling, effective scale classification, anchor persistence, probe protocol, and failure classification — giving any training script on DGX Spark a hardware-aware foundation without implementing raw NVML or /proc calls itself.
-
 ## Phases
 
 **Phase Numbering:**
@@ -34,14 +32,10 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 9: Red Teaming** - Trace-driven adversarial prompt generation, garak scanning, deepteam feedback loop, Celery async dispatch (completed 2026-03-23)
 - [x] **Phase 10: HITL Dashboard** - Gradio review UI, priority-sorted review queue, correction feedback loop, API-only headless mode (completed 2026-03-23)
 
-### v1.2 Autoresearch Integration (Complete)
+### v1.2 Autoresearch Integration
 
 - [x] **Phase 11: Pipeline Wiring** - Autoresearch config and glue scripts connecting local datasets, HF cache models, post-training safety eval hook, and LiteLLM model registration (completed 2026-03-24)
 - [x] **Phase 12: Demo and Documentation** - Runnable end-to-end demo script with a sample dataset and step-by-step README walkthrough (completed 2026-03-24)
-
-### v1.3 GPU Telemetry and Adaptive Training Support
-
-- [ ] **Phase 13: GPU Telemetry Primitives** - Installable telemetry package with GPUSampler, UMA memory model, effective scale formula, anchor store, probe protocol, failure classifier, and dgx_toolbox.py/status.sh integration
 
 ## Phase Details
 
@@ -231,7 +225,7 @@ Plans:
 **Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 12-01-PLAN.md — End-to-end demo script and README walkthrough with CHANGELOG v1.2 entry
+- [x] 12-01-PLAN.md — End-to-end demo script and README walkthrough with CHANGELOG v1.2 entry
 
 ### Phase 13: GPU Telemetry Primitives
 **Goal**: Any project training on DGX Spark can import the telemetry package to sample hardware state, calculate UMA memory headroom, classify failures, and anchor proven batch configurations — without implementing any NVML or /proc calls themselves
@@ -243,17 +237,17 @@ Plans:
   3. `uma_model.calculate_headroom()` returns a `safe_threshold` that correctly accounts for the 5 GB jitter margin, and `effective_scale.compute()` maps the result to the correct tier batch cap and headroom percentage for the model size in use
   4. An anchor record written by a COMPLETED training run raises the batch ceiling to `max(tier_cap, N + step_size)` on the next probe; a record written by an OOM or WATCHDOG run sets a hard cap at `N - step_size`; a HANG record never produces a batch cap field
   5. `dgx_toolbox.py status_report()` includes a `gpu_telemetry` section when pynvml is available and omits it gracefully when not; `status.sh` displays a GPU TELEMETRY block with current watts, temperature, and utilization, or prints "sampler not installed" when the package is absent
-**Plans:** 3 plans
+**Plans:** 1/3 plans complete
 
 Plans:
-- [ ] 13-01-PLAN.md — Package scaffold, FailureClassifier, GPUSampler with mock mode and JSONL append
+- [x] 13-01-PLAN.md — Package scaffold, FailureClassifier, GPUSampler with mock mode and JSONL append
 - [ ] 13-02-PLAN.md — UMAMemModel, EffectiveScale, AnchorStore, ProbeProtocol
 - [ ] 13-03-PLAN.md — dgx_toolbox.py bridge and status.sh GPU TELEMETRY integration
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10 -> 11 -> 12 -> 13
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12 → 13
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -267,6 +261,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 8. Eval Harness and CI Gate | 2/2 | Complete | 2026-03-23 |
 | 9. Red Teaming | 2/2 | Complete | 2026-03-23 |
 | 10. HITL Dashboard | 3/3 | Complete | 2026-03-23 |
-| 11. Pipeline Wiring | 2/2 | Complete | 2026-03-24 |
-| 12. Demo and Documentation | 1/1 | Complete | 2026-03-24 |
-| 13. GPU Telemetry Primitives | 0/3 | Not started | - |
+| 11. Pipeline Wiring | 2/2 | Complete    | 2026-03-24 |
+| 12. Demo and Documentation | 1/1 | Complete    | 2026-03-24 |
+| 13. GPU Telemetry Primitives | 1/3 | In Progress | - |

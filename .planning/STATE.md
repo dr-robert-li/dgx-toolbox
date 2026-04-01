@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.3
-milestone_name: GPU Telemetry and Adaptive Training Support
-status: "Roadmap ready — awaiting plan-phase 13"
-stopped_at: null
-last_updated: "2026-04-01"
-last_activity: 2026-04-01 — Roadmap created for v1.3 (Phase 13)
+milestone: v1.1
+milestone_name: Safety Harness
+status: "Roadmap created, ready for `/gsd:plan-phase 11`"
+stopped_at: Completed 13-01-PLAN.md
+last_updated: "2026-04-01T03:19:03.802Z"
+last_activity: "2026-03-28 — Completed quick task 260328-fkw: flexible extra bind mount support"
 progress:
-  total_phases: 1
-  completed_phases: 0
-  total_plans: 3
-  completed_plans: 0
+  total_phases: 13
+  completed_phases: 12
+  total_plans: 27
+  completed_plans: 28
   percent: 0
 ---
 
@@ -18,19 +18,19 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-01)
+See: .planning/PROJECT.md (updated 2026-03-24)
 
 **Core value:** Models are always accessible regardless of which tier they're on while the hot drive never fills up with stale models.
-**Current focus:** v1.3 GPU Telemetry and Adaptive Training Support — Phase 13 ready for planning
+**Current focus:** v1.2 Autoresearch Integration — Phase 11 ready for planning
 
 ## Current Position
 
-Phase: 13 — GPU Telemetry Primitives
-Plan: —
-Status: Not started
-Last activity: 2026-04-01 — Roadmap created for v1.3
+Phase: 13 (GPU Telemetry Primitives) — in progress
+Plan: 13-01 complete, 13-02 next
+Status: Completed 13-01-PLAN.md
+Last activity: 2026-04-01 — Completed 13-01-PLAN.md: GPU telemetry package scaffold, FailureClassifier, GPUSampler
 
-Progress: [░░░░░░░░░░] 0% (v1.3 Phase 13)
+Progress: [█░░░░░░░░░] 33% (v1.3, 1/3 plans)
 
 ## Accumulated Context
 
@@ -116,6 +116,9 @@ Recent decisions affecting current work:
 - [Phase 11-pipeline-wiring]: String-append for LiteLLM config registration preserves comments; pyyaml round-trip for deregistration with timestamped backup
 - [Phase 11-pipeline-wiring]: set +e/-e guards around subprocess calls when exit code capture is needed inside set -euo pipefail test scripts
 - [Phase 12-demo-and-documentation]: Cycle-limiting via background log monitor plus time-based fallback avoids patching autoresearch train.py
+- [Phase 13]: Root conftest.py path injection fixes namespace package collision between dgx-toolbox/telemetry/ directory and the installable telemetry package
+- [Phase 13]: HANG classification never contains batch_cap per TELEM-14; prevents incorrect batch backoff on dataloader deadlocks
+- [Phase 13]: nvmlDeviceGetMemoryInfo never called; /proc/meminfo MemAvailable is the authoritative memory source for GB10 UMA architecture
 
 ### v1.1 Architecture Decisions (Pre-Phase 5)
 
@@ -138,26 +141,12 @@ Recent decisions affecting current work:
 - Training data screening routes through existing Phase 6 guardrail input check API — not a separate screening pipeline
 - Model registration targets vLLM serving path — autoresearch checkpoints assumed HF-format
 
-### v1.3 Architecture Decisions (Pre-Phase 13)
-
-- Telemetry package lives at `dgx-toolbox/telemetry/` (repo root level, not inside `harness/`) — importable independently by dgx_toolbox.py, status.sh, and training containers without safety harness running
-- `nvidia-ml-py>=13.595,<14` pinned in pyproject.toml; deprecated `pynvml` package must not be co-installed (both expose `import pynvml` and shadow each other)
-- `nvmlDeviceGetMemoryInfo` raises NVMLError_NotSupported on GB10 UMA — this is the primary code path, not an edge case; `/proc/meminfo` MemAvailable is the authoritative memory source
-- Always parse MemAvailable, never MemFree — MemFree can show 1-2 GB while MemAvailable shows 40 GB under normal load
-- PyTorch OOM reference leak: all probe retry logic must be outside the `except OOM` block using a flag — code inside except cannot free CUDA memory
-- Anchor store key schema must be fixed before first write (config_hash of model_id + quant_mode + framework + grad_ckpt + lora_rank + seq_len + optimizer + batch_size + grad_accum)
-- HANG classification never produces a batch_cap field — prevents callers from applying batch backoff on a hang outcome
-- Build order: FailureClassifier → GPUSampler → UMAMemModel → EffectiveScale → AnchorStore → ProbeProtocol → status.sh GPU block → dgx_toolbox.py bridge
-- Mock mode required from day one — tests must pass in CI without physical GPU hardware
-
 ### Pending Todos
 
 - ~~Verify NeMo Guardrails aarch64 pip install on DGX Spark in fresh venv before Phase 5 planning (Annoy C++ build risk)~~ RESOLVED 2026-03-22 — PASS on DGX Spark hardware
 - Confirm port 8080 is not in use by code-server in target deployment
 - Benchmark 7B judge model P95 latency on aarch64 before committing CAI async/sync split in Phase 7
 - Confirm autoresearch checkpoint format (HF format assumed) before writing vLLM registration in Phase 11
-- Validate GB10 dmesg OOM line format against a real OOM event before finalizing FailureClassifier dmesg parser (pattern should be configurable)
-- Verify `nvmlDeviceGetCurrentClocksThrottleReasons` bitmask behavior on GB10 — implement with graceful NVMLError fallback
 
 ### Quick Tasks Completed
 
@@ -175,11 +164,10 @@ Recent decisions affecting current work:
 - Phase 7: CAI judge model latency on DGX Spark aarch64 is unknown — async timeout values depend on actual hardware numbers
 - Phase 9: deepteam 1.0.6 (March 2026) is newly released — feedback-loop red-teaming pattern is research-frontier; plan Phase 9 with a research step
 - Phase 11: Confirm autoresearch checkpoint output format matches HF format expected by vLLM before writing registration script
-- Phase 13 (Plan 13-02): GB10 dmesg OOM line format not confirmed — FailureClassifier dmesg parser pattern must be configurable and validated against a real OOM event on DGX OS
 
 ## Session Continuity
 
-Last session: 2026-04-01
-Stopped at: Roadmap created for v1.3 Phase 13
+Last session: 2026-04-01T03:19:03.800Z
+Stopped at: Completed 13-01-PLAN.md
 Resume file: None
-Next action: `/gsd:plan-phase 13`
+Next action: `/gsd:plan-phase 11`
