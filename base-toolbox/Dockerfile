@@ -13,6 +13,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /workspace
 
+# Remove keras_nlp/keras backend conflict before installing transformers
+# (NGC PyTorch 26.02 ships a keras_nlp stub that conflicts with transformers 4.56+)
+RUN pip uninstall -y keras-nlp keras keras-core 2>/dev/null || true
+
 # Common Python packages used by both eval and data toolboxes
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir \
@@ -25,6 +29,15 @@ RUN pip install --upgrade pip && \
       "huggingface_hub" \
       "typer[all]" \
       "rich" \
-      "tqdm"
+      "tqdm" \
+      \
+      # ML training stack (inherited by eval-toolbox, data-toolbox, unsloth-headless)
+      "transformers" \
+      "accelerate" \
+      "peft" \
+      "trl" \
+      "sentencepiece" \
+      "hf_transfer" \
+      "pyyaml"
 
 ENTRYPOINT ["/bin/bash"]
