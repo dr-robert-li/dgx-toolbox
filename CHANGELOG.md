@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-04-03 — Base Toolbox ML Deps (v1.3.1)
+
+### Changed
+
+- **base-toolbox Dockerfile** — Added ML training stack (`transformers`, `accelerate`, `peft`, `trl`, `sentencepiece`, `hf_transfer`, `pyyaml`) to the shared base image so eval-toolbox, data-toolbox, and unsloth-headless containers inherit a working ML environment without per-container workarounds
+
+### Fixed
+
+- **keras_nlp backend conflict** — Added `pip uninstall -y keras-nlp keras keras-core` layer before pip install to remove the NGC PyTorch 26.02 keras stub that conflicts with transformers 4.56+
+
 ## 2026-04-01 — GPU Telemetry and Adaptive Training Support (v1.3.0)
 
 ### Added

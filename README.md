@@ -1,6 +1,6 @@
 # DGX Spark Toolbox
 
-![Version](https://img.shields.io/badge/version-1.3.0-blue)
+![Version](https://img.shields.io/badge/version-1.3.1-blue)
 ![Tests](https://github.com/dr-robert-li/dgx-toolbox/actions/workflows/test.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![Bash](https://img.shields.io/badge/bash-5.0%2B-4EAA25?logo=gnubash&logoColor=white)
@@ -82,7 +82,8 @@ dgx-status
 
 ```
 nvcr.io/nvidia/pytorch:26.02-py3  (21GB, CUDA + PyTorch)
-  └─ base-toolbox                 (shared: pandas, pyarrow, datasets, openai, scikit-learn, typer, rich)
+  └─ base-toolbox                 (shared: pandas, pyarrow, datasets, openai, scikit-learn, typer, rich,
+                                    transformers, accelerate, peft, trl, sentencepiece, hf_transfer, pyyaml)
        ├─ eval-toolbox            (+lm-eval, ragas, torchmetrics, mlflow, tritonclient)
        └─ data-toolbox            (+polars, duckdb, datatrove, distilabel, cleanlab, trafilatura, pdfplumber)
 ```

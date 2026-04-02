@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-03-24)
 Phase: 13
 Plan: Not started
 Status: Completed 13-01-PLAN.md
-Last activity: 2026-04-01
+Last activity: 2026-04-03 - Completed quick task 260403-cx2: Fix base-toolbox Dockerfile to include missing ML deps and remove keras_nlp conflict
 
 Progress: [█░░░░░░░░░] 33% (v1.3, 1/3 plans)
 
@@ -158,6 +158,7 @@ Recent decisions affecting current work:
 |---|-------------|------|--------|--------|-----------|
 | 260322-m8z | autoresearch launcher with DGX Spark tuning and data source selection | 2026-03-22 | 5a8bb7e | Verified | [260322-m8z-autoresearch-launcher-with-dgx-spark-tun](./quick/260322-m8z-autoresearch-launcher-with-dgx-spark-tun/) |
 | 260328-fkw | flexible extra bind mount support via EXTRA_MOUNTS env var in all container scripts | 2026-03-28 | 523ff20 | Verified | [260328-fkw-add-flexible-extra-bind-mount-support-to](./quick/260328-fkw-add-flexible-extra-bind-mount-support-to/) |
+| 260403-cx2 | Fix base-toolbox Dockerfile to include missing ML deps and remove keras_nlp conflict | 2026-04-03 | 626269e | | [260403-cx2-fix-base-toolbox-dockerfile-to-include-m](./quick/260403-cx2-fix-base-toolbox-dockerfile-to-include-m/) |
 
 ### Blockers/Concerns
 
