@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-04-03 — MLflow in Base Toolbox (v1.3.3)
+
+### Changed
+
+- **base-toolbox Dockerfile** — Added `mlflow` to base image so all containers (eval-toolbox, data-toolbox, unsloth-headless) inherit it. Previously only eval-toolbox had mlflow, but training (`train_model.py`) also requires it for experiment tracking
+- **eval-toolbox Dockerfile** — Removed `mlflow` from eval-specific layer (now inherited from base)
+
 ## 2026-04-03 — vLLM User Namespace Fix (v1.3.2)
 
 ### Fixed

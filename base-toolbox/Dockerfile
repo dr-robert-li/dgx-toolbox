@@ -38,6 +38,7 @@ RUN pip install --upgrade pip && \
       "trl" \
       "sentencepiece" \
       "hf_transfer" \
-      "pyyaml"
+      "pyyaml" \
+      "mlflow"
 
 ENTRYPOINT ["/bin/bash"]

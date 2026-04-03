@@ -6,7 +6,6 @@ RUN pip install --no-cache-dir \
       "torchmetrics" \
       "pycocotools" \
       "albumentations" \
-      "mlflow" \
       "lm-eval" \
       "ragas" \
       "tritonclient[all]"
