@@ -34,6 +34,7 @@ docker run -d \
     --name "$CONTAINER_NAME" \
     --gpus all \
     --ipc=host \
+    --user "$(id -u):$(id -g)" \
     -p 0.0.0.0:${PORT}:8000 \
     -v "$HOME/.cache/huggingface:/root/.cache/huggingface" \
     -v "$HOME/eval/models:/models" \

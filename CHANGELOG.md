@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-04-03 — vLLM User Namespace Fix (v1.3.2)
+
+### Fixed
+
+- **start-vllm.sh / start-vllm-sync.sh** — Added `--user "$(id -u):$(id -g)"` to `docker run` so container-created files on mounted volumes match host user ownership. Previously, vLLM containers created output directories as root, blocking host-side eval scripts from writing to them
+
 ## 2026-04-03 — Base Toolbox ML Deps (v1.3.1)
 
 ### Changed
