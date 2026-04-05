@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-04-05 — Revert vLLM --user Flag (v1.3.4)
+
+### Fixed
+
+- **start-vllm.sh / start-vllm-sync.sh** — Removed `--user "$(id -u):$(id -g)"` from `docker run`. The vLLM image calls `getpwuid()` during startup and crashes with `KeyError: uid not found` when given a host uid that doesn't exist in the container's `/etc/passwd`
+
 ## 2026-04-03 — MLflow in Base Toolbox (v1.3.3)
 
 ### Changed
