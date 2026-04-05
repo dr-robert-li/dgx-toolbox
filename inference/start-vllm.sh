@@ -6,6 +6,9 @@
 # Example: start-vllm.sh unsloth/Llama-3.1-8B-Instruct --max-model-len 4096
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../lib.sh"
+
 PORT=8020
 CONTAINER_NAME="vllm"
 IMAGE="vllm/vllm-openai:latest"
@@ -51,6 +54,7 @@ docker run -d \
     -p 0.0.0.0:${PORT}:8000 \
     -v "$HOME/.cache/huggingface:/root/.cache/huggingface" \
     -v "$HOME/eval/models:/models" \
+    $(build_extra_mounts) \
     --restart unless-stopped \
     "$IMAGE" \
     --model "$MODEL" \
