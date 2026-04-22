@@ -128,6 +128,7 @@ declare -A MUST_REFERENCE=(
   [setup/dgx-global-base-setup.sh]="vendor/sparkrun"
   [setup/dgx-mode.sh]="mode.env"
   [setup/dgx-mode-picker.sh]="dgx-mode"
+  [setup/dgx-recipes.sh]="sparkrun registry"
 )
 for file in "${!MUST_REFERENCE[@]}"; do
   if [ -f "$file" ]; then
@@ -166,7 +167,8 @@ if [ -f example.bash_aliases ]; then
     "alias litellm='sparkrun proxy start'" \
     "alias litellm-stop='sparkrun proxy stop'" \
     "alias claude-litellm='source ~/dgx-toolbox/scripts/claude-litellm.sh'" \
-    "alias dgx-mode="
+    "alias dgx-mode=" \
+    "alias dgx-recipes="
   do
     if grep -Fq "$needle" example.bash_aliases; then
       pass "example.bash_aliases contains \"${needle}\""

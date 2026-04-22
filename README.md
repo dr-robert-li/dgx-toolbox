@@ -129,83 +129,32 @@ export HF_XET_HIGH_PERFORMANCE=1
 The model lands at `~/.cache/huggingface/hub/models--<org>--<name>/`. sparkrun
 reuses whatever is already there — no explicit import step.
 
-#### 3a. Serve it via an existing recipe (recommended — stability, reliability)
+#### 3. Serve it via a registered recipe
 
-Before writing your own recipe, check whether one already exists. Sparkrun has
-two upstream registries, both Git-based:
+Sparkrun resolves recipes by name from registered registries. Two upstream
+registries are provisioned automatically during `setup/dgx-global-base-setup.sh`
+and can be refreshed any time via the `dgx-recipes` alias:
 
 - [**Official recipes**](https://github.com/spark-arena/recipe-registry) — maintained and Blackwell-tested by the Spark Arena team.
 - [**Community recipes**](https://github.com/spark-arena/community-recipe-registry) — contributed by users; benchmark entries are surfaced at [Spark Arena](https://spark-arena.com).
 
-Register them once, then run any recipe by name:
-
 ```bash
-sparkrun registry add official  https://github.com/spark-arena/recipe-registry --type git
-sparkrun registry add community https://github.com/spark-arena/community-recipe-registry --type git
-sparkrun registry list
+dgx-recipes add      # register defaults (idempotent — safe to re-run)
+dgx-recipes list     # show what's registered
+dgx-recipes update   # git-pull every enabled registry; restore missing defaults
+dgx-recipes status   # summary + the URLs this script installs
 
-# Run a recipe (sparkrun pulls the model on first launch if it's not cached)
-sparkrun run qwen3-1.7b-vllm
-# or via this repo's `vllm` alias, which also searches the local recipes/ dir:
+# Run any recipe by name — sparkrun pulls the model on first launch if needed:
 vllm qwen3-1.7b-vllm
+# or directly via sparkrun:
+sparkrun run qwen3-1.7b-vllm
 ```
 
-Prefer an upstream recipe when one exists — you inherit maintained container
-pins, tested `tensor_parallel` / `pipeline_parallel` defaults, and community
-benchmark data.
-
-#### 3b. Author a custom recipe for a model that isn't in a registry
-
-Drop a YAML file into `~/dgx-toolbox/recipes/` and it's immediately reachable
-via `vllm <recipe-name>` (the alias is already wired to `--recipe-path
-~/dgx-toolbox/recipes`). Use `recipes/nemotron-3-nano-4b-bf16-vllm.yaml` as
-the template:
-
-```yaml
-# ~/dgx-toolbox/recipes/qwen3-8b-vllm.yaml
-recipe_version: "2"
-model: Qwen/Qwen3-8B                                          # Hugging Face repo id
-runtime: vllm
-container: ghcr.io/spark-arena/dgx-vllm-eugr-nightly:latest   # Blackwell-tested (sm_121)
-
-metadata:
-  description: Qwen3-8B (BF16) on DGX Spark
-  source: https://huggingface.co/Qwen/Qwen3-8B
-
-defaults:
-  port: 8000
-  host: 0.0.0.0
-  tensor_parallel: 1          # single-node DGX Spark
-  pipeline_parallel: 1
-  gpu_memory_utilization: 0.6 # ≤ 0.8 — leave headroom for harness + Open-WebUI in UMA
-  max_model_len: 8192         # size to your KV-cache budget, not the model's max
-  trust_remote_code: true
-
-env:
-  HF_HUB_ENABLE_HF_TRANSFER: "1"   # ignored in hub v1.x but harmless; Xet knobs above override
-
-command: |
-  vllm serve {model} \
-    --host {host} --port {port} \
-    --max-model-len {max_model_len} \
-    --gpu-memory-utilization {gpu_memory_utilization} \
-    --trust-remote-code \
-    --enable-prefix-caching \
-    -tp {tensor_parallel} -pp {pipeline_parallel}
-```
-
-Then:
-
-```bash
-vllm qwen3-8b-vllm                         # launches your recipe
-sparkrun show qwen3-8b-vllm                # dry-run config + VRAM estimate
-litellm-models                             # confirm the proxy picked up the new endpoint
-```
-
-Naming: file basename = recipe name. Keep the filename in kebab-case matching
-the model + runtime (`<model-slug>-<runtime>.yaml`) to stay consistent with the
-registries. See `recipes/README.md` for authoring conventions and the
-sm_121 container guidance.
+For anything not in those registries, drop a YAML file into
+`~/dgx-toolbox/recipes/` (the local recipe directory the `vllm` alias already
+searches) and use `recipes/nemotron-3-nano-4b-bf16-vllm.yaml` as a template.
+See [`recipes/README.md`](recipes/README.md) for the schema and sm_121
+container guidance.
 
 #### 4. Route the model through the proxy
 
@@ -1326,6 +1275,7 @@ Key aliases:
 | `litellm` / `litellm-stop` / `litellm-status` | Start / stop / inspect the sparkrun OpenAI-compatible proxy |
 | `litellm-models` / `litellm-alias` | Refresh proxy routing table / manage model aliases |
 | `dgx-mode` | Switch between single- and multi-node sparkrun modes |
+| `dgx-recipes` | Register / list / update sparkrun recipe registries (official + community) |
 | `eval-toolbox` / `data-toolbox` | Interactive toolbox shells |
 | `harness` / `harness-stop` | Start/stop safety harness gateway |
 | `hitl` | Launch HITL review dashboard |

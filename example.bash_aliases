@@ -44,6 +44,9 @@ alias litellm-alias='sparkrun proxy alias'                                    # 
 # --- DGX mode (single vs. cluster) ---
 alias dgx-mode='~/dgx-toolbox/setup/dgx-mode.sh'                              # dgx-mode single | cluster <host1,host2,...> | status
 
+# --- Recipe registries (official + community, via sparkrun) ---
+alias dgx-recipes='~/dgx-toolbox/setup/dgx-recipes.sh'                        # dgx-recipes add | list | update | status
+
 # --- Fine-Tuning ---
 alias unsloth-studio='~/dgx-toolbox/containers/unsloth-studio.sh'             # Unsloth fine-tuning UI (:8000)
 alias unsloth-stop='docker stop unsloth-studio'                               # Stop Unsloth Studio

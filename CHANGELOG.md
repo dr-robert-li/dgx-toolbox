@@ -1,10 +1,18 @@
 # Changelog
 
-## 2026-04-22 — README: HF model onboarding + LAN URL (docs-only)
+## 2026-04-22 — Default recipe registries + HF model onboarding + LAN URL
+
+### Added
+
+- **`setup/dgx-recipes.sh` + `dgx-recipes` alias** — Idempotent wrapper for registering the [official](https://github.com/spark-arena/recipe-registry) and [community](https://github.com/spark-arena/community-recipe-registry) Spark Arena recipe registries via `sparkrun registry add <URL>` (which reads each repo's `.sparkrun/registry.yaml` manifest). Subcommands: `add` (default), `list`, `update` (restores missing defaults too), `status`. Safe to re-run — already-registered URLs are skipped with a “skip” message; transient failures report clearly and can be retried.
+- **`setup/dgx-global-base-setup.sh`** — Now invokes `setup/dgx-recipes.sh add` immediately after the sparkrun install and PATH export, before the mode picker. Gated on `command -v sparkrun` so setup degrades gracefully if the install step skipped. Failures are reported but non-fatal (the mode picker still runs).
+- **`scripts/test-sparkrun-integration.sh`** — Three new assertions: `setup/dgx-recipes.sh` references `sparkrun registry`; `example.bash_aliases` defines `dgx-recipes`; and the existing `bash -n` sweep now also lints the new script. Suite total: 114 passing (was 111).
 
 ### Changed
 
-- **`README.md`** — Quick Start now prints both `http://localhost:4000/v1` and `http://<LAN_IP>:4000/v1` after `litellm`, so other devices on the local network know where to point. Added a new **Downloading new models from Hugging Face** subsection covering: `hf` CLI install + `hf auth login`, `hf download` (full repo + `--include` patterns), the Xet-based fast-download knobs (`HF_XET_HIGH_PERFORMANCE`) that replace the deprecated `hf_transfer` path in `huggingface_hub` v1.x, serving a downloaded model via an existing upstream recipe (with `sparkrun registry add` for the [official](https://github.com/spark-arena/recipe-registry) and [community](https://github.com/spark-arena/community-recipe-registry) registries), authoring a custom recipe under `recipes/`, and wiring it through the `:4000` proxy with a stable alias. Also called out the `sparkrun proxy start --host 127.0.0.1` / `--master-key` hardening options since the default bind is `0.0.0.0` with no auth.
+- **`README.md`** — Quick Start now prints both `http://localhost:4000/v1` and `http://<LAN_IP>:4000/v1` after `litellm`, so other devices on the local network know where to point. Added a new **Downloading new models from Hugging Face** subsection covering: `hf` CLI install + `hf auth login`, `hf download` (full repo + `--include` patterns), the Xet-based fast-download knobs (`HF_XET_HIGH_PERFORMANCE`) that replace the deprecated `hf_transfer` path in `huggingface_hub` v1.x, and serving via `dgx-recipes add` + `vllm <recipe>`. Stopped embedding a full custom-recipe walkthrough in favour of a short pointer to `recipes/README.md`. Also called out the `sparkrun proxy start --host 127.0.0.1` / `--master-key` hardening options since the default bind is `0.0.0.0` with no auth.
+- **`recipes/README.md`** — Replaced the outdated `sparkrun registry add <name> <path> --type local` incantation (that CLI form was removed in the current sparkrun release — registry add now only takes a repo URL + manifest) with a `vllm <recipe>` example that uses the alias's pre-wired `--recipe-path`. Cross-linked `dgx-recipes` for upstream registries.
+- **`example.bash_aliases`** — New `dgx-recipes` alias under the existing `dgx-mode` grouping.
 
 ## 2026-04-22 — sparkrun Integration (v1.5.0)
 
