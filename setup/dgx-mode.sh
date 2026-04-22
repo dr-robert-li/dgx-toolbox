@@ -29,10 +29,24 @@ mkdir -p "$CONFIG_DIR"
 _write_mode() {
     # $1 = single|cluster, $2 = cluster name (optional)
     local mode="$1" cluster_name="${2:-}"
+    # Preserve a pre-existing DGX_PROXY_AUTOREGISTER so re-running dgx-mode
+    # doesn't silently flip a user's opt-out.
+    local autoreg=1
+    if [ -f "$MODE_FILE" ]; then
+        local existing
+        # shellcheck disable=SC1090
+        existing="$(. "$MODE_FILE" && echo "${DGX_PROXY_AUTOREGISTER:-}")"
+        if [ -n "$existing" ]; then
+            autoreg="$existing"
+        fi
+    fi
     {
         echo "# Managed by dgx-toolbox setup/dgx-mode.sh — edit via 'dgx-mode' CLI"
         echo "DGX_MODE=${mode}"
         [ -n "$cluster_name" ] && echo "DGX_DEFAULT_CLUSTER=${cluster_name}"
+        echo "# Auto-register vllm workloads with the LiteLLM proxy after launch."
+        echo "# Set to 0 to disable; the vllm() wrapper reads this on each call."
+        echo "DGX_PROXY_AUTOREGISTER=${autoreg}"
     } > "$MODE_FILE"
 }
 

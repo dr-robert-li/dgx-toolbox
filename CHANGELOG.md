@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-04-22 — Feat: auto-register `vllm` workloads with the LiteLLM proxy
+
+### Added
+
+- **`example.bash_aliases`** — The `vllm()` wrapper now spawns a background watchdog after launching a recipe. The watchdog polls `sparkrun proxy status --json` every 5s (up to 20 min), and once the proxy reports running, issues `sparkrun proxy models --refresh` to register the new endpoint. Prints a single `[vllm] Registered new workload with LiteLLM proxy (:4000)` line on success. Removes the manual `litellm-models` step that users previously had to run before `claude-litellm` could see a freshly-launched model.
+- **`setup/dgx-mode.sh`** — `_write_mode()` now writes `DGX_PROXY_AUTOREGISTER=1` to `mode.env` for both `single` and `cluster` modes, and **preserves** a pre-existing `DGX_PROXY_AUTOREGISTER=0` across re-runs so users don't lose their opt-out.
+- **`scripts/test-sparkrun-integration.sh`** — Seven new assertions: watchdog success path (calls both `proxy status --json` and `proxy models --refresh`, prints the user-facing line); watchdog does not call `proxy models --refresh` when proxy is stopped; `DGX_PROXY_AUTOREGISTER=0` prevents the watchdog from spawning; `--dry-run` suppresses it; `--foreground` suppresses it; and `dgx-mode single` preserves a pre-existing opt-out. All stubbed via tempfile-based test harness — runs in CI without real sparkrun or LiteLLM.
+
+### Design notes
+
+- Default is **on** — auto-registration is what 95% of `vllm`+`claude-litellm` users want, and the watchdog silently no-ops when the proxy isn't running, so it adds no friction to users who don't use LiteLLM.
+- Watchdog runs concurrently with sparkrun's foreground log-follow so there's no change to the user's interactive experience. It backgrounds itself with `&` + `disown` so it survives a Ctrl-C of `sparkrun run`.
+- Skipped on `--dry-run` (nothing launched) and `--foreground` (would interleave output with streamed container logs).
+- Per-invocation override: `DGX_PROXY_AUTOREGISTER=0 vllm <recipe>`.
+
 ## 2026-04-22 — Fix: single-node `vllm` fails with "No hosts specified"
 
 ### Fixed
