@@ -130,6 +130,20 @@ declare -A MUST_REFERENCE=(
   [setup/dgx-mode-picker.sh]="dgx-mode"
   [setup/dgx-recipes.sh]="sparkrun registry"
 )
+
+# Hugging Face onboarding wiring: dgx-global-base-setup.sh must install the
+# `hf` CLI with hf_xet and export HF_XET_HIGH_PERFORMANCE=1 idempotently.
+for needle in \
+  'uv tool install --force --with hf_xet "huggingface_hub\[cli\]"' \
+  'export HF_XET_HIGH_PERFORMANCE=1' \
+  'hf auth login'
+do
+  if grep -qE "$needle" setup/dgx-global-base-setup.sh; then
+    pass "dgx-global-base-setup.sh contains '$needle'"
+  else
+    fail "dgx-global-base-setup.sh missing '$needle'"
+  fi
+done
 for file in "${!MUST_REFERENCE[@]}"; do
   if [ -f "$file" ]; then
     if grep -q "${MUST_REFERENCE[$file]}" "$file"; then

@@ -150,6 +150,11 @@ if [ -f "$HARNESS_DIR/pyproject.toml" ]; then
 
   echo "=== Installing Kaggle CLI (user-level) ==="
   uv tool install --force kaggle
+
+  echo "=== Installing Hugging Face CLI with hf_xet (user-level) ==="
+  # `hf` is the modern CLI (huggingface_hub v1.x); `hf_xet` enables the
+  # Xet-backed fast-download path that replaces the deprecated hf_transfer.
+  uv tool install --force --with hf_xet "huggingface_hub[cli]"
 else
   echo "=== Safety Harness not found at $HARNESS_DIR, skipping ==="
 fi
@@ -160,6 +165,16 @@ if ! grep -q "HARNESS_API_KEY" "$HOME/.bashrc" 2>/dev/null; then
   echo 'export HARNESS_API_KEY="sk-devteam-test"' >> "$HOME/.bashrc"
 else
   echo "=== HARNESS_API_KEY already set in .bashrc ==="
+fi
+
+# Ensure HF_XET_HIGH_PERFORMANCE is in .bashrc (idempotent)
+# Turns on the Xet fast-download path for both the `hf` CLI and every
+# recipe-triggered download (sparkrun uses huggingface_hub internally).
+if ! grep -q "HF_XET_HIGH_PERFORMANCE" "$HOME/.bashrc" 2>/dev/null; then
+  echo "=== Adding HF_XET_HIGH_PERFORMANCE=1 to .bashrc ==="
+  echo 'export HF_XET_HIGH_PERFORMANCE=1' >> "$HOME/.bashrc"
+else
+  echo "=== HF_XET_HIGH_PERFORMANCE already set in .bashrc ==="
 fi
 
 # -----------------------------------------------------------------------------
@@ -282,4 +297,9 @@ echo "     mkdir -p ~/.kaggle && chmod 700 ~/.kaggle"
 echo "     echo '{\"username\":\"YOUR_USERNAME\",\"key\":\"KGAT_your_key\"}' > ~/.kaggle/kaggle.json"
 echo "     chmod 600 ~/.kaggle/kaggle.json"
 echo "     Both username and key required — get from https://www.kaggle.com/settings → API"
+echo ""
+echo "  3. (Optional) Log in to Hugging Face for gated/private models:"
+echo "     hf auth login"
+echo "     Create a read token at https://huggingface.co/settings/tokens → New token"
+echo "     Public models work anonymously — only needed for gated repos (Llama, Nemotron, etc.)"
 echo ""
