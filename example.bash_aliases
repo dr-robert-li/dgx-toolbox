@@ -34,6 +34,12 @@ alias ollama-remote='~/dgx-toolbox/inference/setup-ollama-remote.sh'          # 
 #   vllm qwen3.6                                 # resolves from registered registries
 #   vllm ~/my-recipes/custom.yaml                # direct path to any recipe YAML
 #
+# Sparkrun resolves hosts BEFORE loading the recipe and exits if none are
+# configured. `dgx-mode single` registers a `solo` cluster (hosts=localhost)
+# as sparkrun's default to satisfy this. As a defensive fallback for users on
+# installs that pre-date that fix, this wrapper also injects --hosts localhost
+# when DGX_MODE=single and the caller hasn't passed any host flag.
+#
 # NOTE: `unalias` first so re-sourcing this file after an older install
 # (where vllm was an alias) does not trip a syntax error when the alias is
 # expanded inside the function definition.
@@ -45,12 +51,35 @@ vllm() {
   fi
   local _recipe="$1"; shift
   local _local="$HOME/dgx-toolbox/recipes/${_recipe}.yaml"
+
+  # Defensive fallback: if the user is in single-node mode and passed no host
+  # flag, inject --hosts localhost so sparkrun's pre-recipe host check passes.
+  # Normally dgx-mode single registers a default cluster, but older installs
+  # may not have re-run it.
+  local _mode_env="${DGX_TOOLBOX_CONFIG_DIR:-$HOME/.config/dgx-toolbox}/mode.env"
+  local _dgx_mode="${DGX_MODE:-}"
+  if [ -z "$_dgx_mode" ] && [ -f "$_mode_env" ]; then
+    # shellcheck disable=SC1090
+    _dgx_mode="$(. "$_mode_env" && echo "${DGX_MODE:-}")"
+  fi
+  local _has_host_flag=0 _arg
+  for _arg in "$@"; do
+    case "$_arg" in
+      --hosts|--hosts=*|-H|--hosts-file|--hosts-file=*|--cluster|--cluster=*|--solo)
+        _has_host_flag=1; break ;;
+    esac
+  done
+  local _host_args=()
+  if [ "$_dgx_mode" = "single" ] && [ "$_has_host_flag" -eq 0 ]; then
+    _host_args=(--hosts localhost)
+  fi
+
   if [ -f "$_recipe" ]; then
-    sparkrun run "$_recipe" "$@"
+    sparkrun run "$_recipe" "${_host_args[@]}" "$@"
   elif [ -f "$_local" ]; then
-    sparkrun run "$_local" "$@"
+    sparkrun run "$_local" "${_host_args[@]}" "$@"
   else
-    sparkrun run "$_recipe" "$@"
+    sparkrun run "$_recipe" "${_host_args[@]}" "$@"
   fi
 }
 alias vllm-stop='sparkrun stop'                                               # Stop the active sparkrun workload

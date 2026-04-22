@@ -206,6 +206,72 @@ else
   fail "example.bash_aliases fails to redefine vllm when an alias already exists"
 fi
 
+# Single-node host injection: with DGX_MODE=single and no host flag from the
+# caller, the vllm() wrapper must inject --hosts localhost so sparkrun's
+# pre-recipe host check doesn't bail with "No hosts specified". Stub
+# `sparkrun` as a function that echoes its argv, source the aliases, and
+# check what gets forwarded.
+_SPARKRUN_STUB='sparkrun() { echo "STUB:$*"; }; export -f sparkrun'
+OUT=$(bash -ic "$_SPARKRUN_STUB; export DGX_MODE=single; source ./example.bash_aliases; vllm qwen3.6" 2>/dev/null)
+if echo "$OUT" | grep -q '^STUB:run ' && echo "$OUT" | grep -q 'qwen3.6' && echo "$OUT" | grep -q -- '--hosts localhost'; then
+  pass "vllm() injects --hosts localhost in single mode when no host flag given"
+else
+  fail "vllm() did not inject --hosts localhost in single mode (got: $OUT)"
+fi
+
+# When the caller passes --hosts explicitly, the wrapper must NOT inject
+# --hosts localhost on top (would duplicate the flag).
+OUT=$(bash -ic "$_SPARKRUN_STUB; export DGX_MODE=single; source ./example.bash_aliases; vllm qwen3.6 --hosts 10.0.0.1" 2>/dev/null)
+if echo "$OUT" | grep -q 'STUB:run qwen3.6 --hosts 10.0.0.1' && ! echo "$OUT" | grep -q -- '--hosts localhost'; then
+  pass "vllm() skips host injection when caller passes --hosts explicitly"
+else
+  fail "vllm() wrongly injected host flag when caller already specified one (got: $OUT)"
+fi
+
+# When the caller passes --solo, the wrapper must also skip injection.
+OUT=$(bash -ic "$_SPARKRUN_STUB; export DGX_MODE=single; source ./example.bash_aliases; vllm qwen3.6 --solo" 2>/dev/null)
+if echo "$OUT" | grep -q 'STUB:run qwen3.6 --solo' && ! echo "$OUT" | grep -q -- '--hosts'; then
+  pass "vllm() skips host injection when caller passes --solo"
+else
+  fail "vllm() wrongly injected --hosts when caller passed --solo (got: $OUT)"
+fi
+
+# When DGX_MODE is not set (fresh install, picker not run), the wrapper must
+# NOT inject anything so we don't mask legitimate "no mode configured" errors.
+OUT=$(bash -ic "$_SPARKRUN_STUB; unset DGX_MODE; export DGX_TOOLBOX_CONFIG_DIR=/nonexistent-$$; source ./example.bash_aliases; vllm qwen3.6" 2>/dev/null)
+if echo "$OUT" | grep -q 'STUB:run qwen3.6' && ! echo "$OUT" | grep -q -- '--hosts'; then
+  pass "vllm() does not inject --hosts when DGX_MODE is unset"
+else
+  fail "vllm() injected --hosts with no mode configured (got: $OUT)"
+fi
+
+# dgx-mode single must call through to sparkrun to register a localhost
+# cluster as the default. Stub `sparkrun` and capture its calls to confirm.
+STUB_DIR=$(mktemp -d)
+cat > "$STUB_DIR/sparkrun" <<'EOF_STUB'
+#!/usr/bin/env bash
+echo "STUB_SPARKRUN $*" >> "$STUB_CALLS"
+# emulate empty cluster list
+if [ "$1" = "cluster" ] && [ "$2" = "list" ]; then exit 0; fi
+exit 0
+EOF_STUB
+chmod +x "$STUB_DIR/sparkrun"
+STUB_CALLS="$STUB_DIR/calls.log"
+TMP_CFG=$(mktemp -d)
+PATH="$STUB_DIR:$PATH" STUB_CALLS="$STUB_CALLS" DGX_TOOLBOX_CONFIG_DIR="$TMP_CFG" \
+  bash setup/dgx-mode.sh single >/dev/null 2>&1
+if grep -q 'cluster create solo --hosts localhost --default' "$STUB_CALLS" 2>/dev/null; then
+  pass "dgx-mode single creates a 'solo' default cluster pointed at localhost"
+else
+  fail "dgx-mode single did not register solo/localhost cluster (calls: $(cat "$STUB_CALLS" 2>/dev/null | tr '\n' ';'))"
+fi
+if [ -f "$TMP_CFG/mode.env" ] && grep -q 'DGX_MODE=single' "$TMP_CFG/mode.env"; then
+  pass "dgx-mode single writes DGX_MODE=single to mode.env"
+else
+  fail "dgx-mode single did not write DGX_MODE=single to mode.env"
+fi
+rm -rf "$STUB_DIR" "$TMP_CFG"
+
 # dgx-discover script
 if [ -x setup/dgx-discover.sh ]; then
   pass "setup/dgx-discover.sh is executable"
