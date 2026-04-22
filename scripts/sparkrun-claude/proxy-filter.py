@@ -47,9 +47,27 @@ def dbg(msg: str) -> None:
 
 
 class FilterHandler(http.server.BaseHTTPRequestHandler):
-    # Silence default access log
+    # HTTP/1.1 is required for Claude Code's undici client to accept the
+    # stream — HTTP/1.0 has no keep-alive and no chunked encoding, which
+    # causes the SSE stream to be silently ignored.
+    protocol_version = "HTTP/1.1"
+
+    # Silence default access log; we emit our own via dbg().
     def log_message(self, fmt, *args):
         return
+
+    # Chunked-encoding helper for streaming responses.
+    def _write_chunk(self, data: bytes) -> None:
+        if not data:
+            return
+        self.wfile.write(f"{len(data):X}\r\n".encode("ascii"))
+        self.wfile.write(data)
+        self.wfile.write(b"\r\n")
+        self.wfile.flush()
+
+    def _write_chunk_terminator(self) -> None:
+        self.wfile.write(b"0\r\n\r\n")
+        self.wfile.flush()
 
     def _forward(self):
         body = None
@@ -57,10 +75,25 @@ class FilterHandler(http.server.BaseHTTPRequestHandler):
         if cl:
             body = self.rfile.read(int(cl))
 
+        dbg(
+            f"→ {self.command} {self.path}  "
+            f"ct={self.headers.get('Content-Type','?')}  "
+            f"len={cl or 0}"
+        )
+
         # Copy request headers, stripping hop-by-hop
         fwd_headers = {}
         for k, v in self.headers.items():
-            if k.lower() in ("host", "content-length", "connection", "accept-encoding"):
+            if k.lower() in (
+                "host",
+                "content-length",
+                "connection",
+                "accept-encoding",
+                "proxy-connection",
+                "te",
+                "trailer",
+                "upgrade",
+            ):
                 continue
             fwd_headers[k] = v
 
@@ -74,19 +107,52 @@ class FilterHandler(http.server.BaseHTTPRequestHandler):
         except urllib.error.HTTPError as e:
             resp = e
         except Exception as e:
+            dbg(f"upstream error: {e}")
             self.send_response(502)
             self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Length", "0")
+            self.send_header("Connection", "close")
             self.end_headers()
-            try:
-                self.wfile.write(f"filter upstream error: {e}".encode())
-            except BrokenPipeError:
-                pass
             return
 
         content_type = resp.headers.get("Content-Type", "")
         is_sse = "text/event-stream" in content_type.lower()
+        dbg(
+            f"← upstream status={resp.status} "
+            f"ct={content_type!r} is_sse={is_sse}"
+        )
 
-        # Send response line + headers (drop hop-by-hop)
+        # Non-streaming: buffer fully so we can send a proper Content-Length.
+        # This is the simplest way to avoid Transfer-Encoding issues for
+        # short JSON responses.
+        if not is_sse:
+            try:
+                payload = resp.read()
+            except Exception as e:
+                dbg(f"error reading upstream body: {e}")
+                payload = b""
+            self.send_response(resp.status)
+            for k, v in resp.headers.items():
+                if k.lower() in (
+                    "content-length",
+                    "transfer-encoding",
+                    "connection",
+                    "content-encoding",
+                ):
+                    continue
+                self.send_header(k, v)
+            self.send_header("Content-Length", str(len(payload)))
+            self.send_header("Connection", "close")
+            self.end_headers()
+            try:
+                self.wfile.write(payload)
+                self.wfile.flush()
+            except BrokenPipeError:
+                pass
+            dbg(f"  non-SSE forwarded {len(payload)} bytes")
+            return
+
+        # Streaming SSE: use HTTP/1.1 chunked transfer encoding explicitly.
         self.send_response(resp.status)
         for k, v in resp.headers.items():
             if k.lower() in (
@@ -97,19 +163,10 @@ class FilterHandler(http.server.BaseHTTPRequestHandler):
             ):
                 continue
             self.send_header(k, v)
+        self.send_header("Transfer-Encoding", "chunked")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
         self.end_headers()
-
-        if not is_sse:
-            try:
-                while True:
-                    chunk = resp.read(8192)
-                    if not chunk:
-                        break
-                    self.wfile.write(chunk)
-                    self.wfile.flush()
-            except BrokenPipeError:
-                pass
-            return
 
         # ── SSE filter state machine ───────────────────────────────────
         #
@@ -134,12 +191,33 @@ class FilterHandler(http.server.BaseHTTPRequestHandler):
         # orig_idx → out_idx  (only recorded for blocks we emit)
         index_map: dict[int, int] = {}
         next_out_idx = 0
+        # Track which out_idx blocks are currently open (emitted
+        # content_block_start but not yet content_block_stop).  LiteLLM
+        # occasionally drops the final content_block_stop before
+        # message_delta; Claude Code's parser requires the stop to
+        # finalise the block, so we synthesize any missing ones at
+        # message_delta / message_stop time.
+        open_out_blocks: set[int] = set()
 
         # Buffering state for the current in-flight thinking block.
         # None when not buffering.
         buffering_idx: int | None = None
         buffered_events: list[str] = []  # raw event strings (with trailing data)
         buffered_had_content = False
+
+        def close_open_blocks(reason: str):
+            """Emit synthetic content_block_stop for every block we opened
+            but never saw a matching stop for.  LiteLLM sometimes drops
+            the final stop before message_delta."""
+            if not open_out_blocks:
+                return
+            for idx in sorted(open_out_blocks):
+                dbg(f"synthesize content_block_stop idx={idx} ({reason})")
+                emit_event(
+                    "content_block_stop",
+                    {"type": "content_block_stop", "index": idx},
+                )
+            open_out_blocks.clear()
 
         def parse_event(raw: str):
             ev_name = None
@@ -151,14 +229,13 @@ class FilterHandler(http.server.BaseHTTPRequestHandler):
                     data_str = line[5:].strip()
             return ev_name, data_str
 
+        # All event emission goes through chunked encoding now.
         def emit_event(ev_name: str, data_obj):
             out = f"event: {ev_name}\ndata: {json.dumps(data_obj)}\n\n"
-            self.wfile.write(out.encode())
-            self.wfile.flush()
+            self._write_chunk(out.encode("utf-8"))
 
         def emit_raw(raw: str):
-            self.wfile.write((raw + "\n\n").encode())
-            self.wfile.flush()
+            self._write_chunk((raw + "\n\n").encode("utf-8"))
 
         def flush_buffer_with_remap(orig_idx: int):
             """Flush buffered thinking block, renumbering to next_out_idx."""
@@ -173,14 +250,13 @@ class FilterHandler(http.server.BaseHTTPRequestHandler):
                         d = json.loads(ds)
                         if d.get("index") == orig_idx:
                             d["index"] = out_idx
-                        self.wfile.write(
-                            f"event: {ev}\ndata: {json.dumps(d)}\n\n".encode()
+                        self._write_chunk(
+                            f"event: {ev}\ndata: {json.dumps(d)}\n\n".encode("utf-8")
                         )
                     except json.JSONDecodeError:
-                        self.wfile.write((raw + "\n\n").encode())
+                        self._write_chunk((raw + "\n\n").encode("utf-8"))
                 else:
-                    self.wfile.write((raw + "\n\n").encode())
-            self.wfile.flush()
+                    self._write_chunk((raw + "\n\n").encode("utf-8"))
 
         buf = b""
         try:
@@ -225,6 +301,7 @@ class FilterHandler(http.server.BaseHTTPRequestHandler):
                         # Non-thinking block → emit with remapped index
                         index_map[orig_idx] = next_out_idx
                         d["index"] = next_out_idx
+                        open_out_blocks.add(next_out_idx)
                         next_out_idx += 1
                         emit_event(ev_name, d)
                         continue
@@ -271,9 +348,12 @@ class FilterHandler(http.server.BaseHTTPRequestHandler):
                                     f"({len(buffered_events)} buffered events)"
                                 )
                                 flush_buffer_with_remap(orig_idx)
-                                # Now emit the stop event with remapped index
+                                # The flush emitted the content_block_start.
+                                # Mark it open so we can stop it now.
+                                open_out_blocks.add(index_map[orig_idx])
                                 d["index"] = index_map[orig_idx]
                                 emit_event(ev_name, d)
+                                open_out_blocks.discard(index_map[orig_idx])
                             else:
                                 dbg(
                                     f"drop empty thinking block idx={orig_idx} "
@@ -285,8 +365,18 @@ class FilterHandler(http.server.BaseHTTPRequestHandler):
                             continue
                         if orig_idx in index_map:
                             d["index"] = index_map[orig_idx]
+                            open_out_blocks.discard(index_map[orig_idx])
                             emit_event(ev_name, d)
                             continue
+                        emit_raw(raw)
+                        continue
+
+                    # 5. message_delta / message_stop — synthesize any
+                    # missing content_block_stop events first.  LiteLLM
+                    # sometimes drops the final block_stop before these.
+                    if ev_name in ("message_delta", "message_stop"):
+                        if open_out_blocks:
+                            close_open_blocks(f"before {ev_name}")
                         emit_raw(raw)
                         continue
 
@@ -304,8 +394,18 @@ class FilterHandler(http.server.BaseHTTPRequestHandler):
                     f"upstream closed with unbuffered thinking block "
                     f"idx={buffering_idx} — dropped"
                 )
+
+            # Emit the zero-length chunk terminator per HTTP/1.1 chunked spec.
+            try:
+                self._write_chunk_terminator()
+                dbg("SSE stream closed cleanly")
+            except BrokenPipeError:
+                dbg("client disconnected before terminator")
         except BrokenPipeError:
-            dbg("client disconnected")
+            dbg("client disconnected mid-stream")
+            return
+        except Exception as e:
+            dbg(f"SSE forward error: {type(e).__name__}: {e}")
             return
 
     # Route every HTTP method through _forward
