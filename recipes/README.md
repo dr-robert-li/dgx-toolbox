@@ -5,16 +5,22 @@ Sparkrun recipes maintained by dgx-toolbox for models and workloads that are not
 
 ## Using recipes from this directory
 
-The `vllm` alias in `example.bash_aliases` is already wired to
-`sparkrun run --recipe-path ~/dgx-toolbox/recipes`, so any YAML dropped in
-this directory is reachable by its basename:
+Sparkrun does not expose a `--recipe-path` flag. Recipe names are resolved
+against registered registries (see `dgx-recipes list`) and the current
+directory, or a direct path to a recipe YAML can be passed. The `vllm`
+shell function in `example.bash_aliases` wraps `sparkrun run` and looks for
+`~/dgx-toolbox/recipes/<name>.yaml` first, then falls back to sparkrun's
+normal resolution:
 
 ```bash
-# Via the `vllm` alias (which pre-passes --recipe-path)
+# Via the `vllm` wrapper (resolves local recipes/ first, then registries)
 vllm nemotron-3-nano-4b-bf16-vllm
 
-# Or directly with sparkrun, specifying the path ad-hoc
-sparkrun run nemotron-3-nano-4b-bf16-vllm --recipe-path ~/dgx-toolbox/recipes/
+# Pointing sparkrun directly at a recipe file
+sparkrun run ~/dgx-toolbox/recipes/nemotron-3-nano-4b-bf16-vllm.yaml
+
+# Recipe name resolved from a registered registry
+sparkrun run qwen3.6
 ```
 
 For upstream registries (official + community), use `dgx-recipes add` — that

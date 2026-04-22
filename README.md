@@ -293,7 +293,7 @@ It is vendored as a git submodule at `vendor/sparkrun` and installed by `setup/d
 | `vendor/sparkrun/recipes/` (read-only) | Official recipes maintained upstream (`minimax-m2.7`, `qwen3-coder-next`, `qwen3-vl`, `qwen3.6`, …) |
 | `recipes/` (this repo) | Project-specific recipes: `nemotron-3-nano-4b-bf16-vllm` (default model, replaces the old `example.vllm-model`) and `eval-checkpoint` (ephemeral eval workload used by `scripts/eval-checkpoint.sh`) |
 
-Both directories are passed on the command line via `--recipe-path` when needed.
+Sparkrun does not have a `--recipe-path` flag: recipes are resolved either by name (via registered registries and the CWD) or by direct path. The `vllm` function in `example.bash_aliases` looks up recipes in `~/dgx-toolbox/recipes/` first, then falls back to sparkrun's registry resolution. Official + community registries can be registered via `dgx-recipes add`.
 
 **Model serving (`vllm` alias → `sparkrun run`):**
 
@@ -1137,7 +1137,7 @@ nvidia-sync exec -- bash ~/dgx-toolbox/inference/start-open-webui-sync.sh
 nvidia-sync forward 12000
 
 # sparkrun workload (model serving)
-nvidia-sync exec -- sparkrun run nemotron-3-nano-4b-bf16-vllm --recipe-path ~/dgx-toolbox/recipes
+nvidia-sync exec -- sparkrun run ~/dgx-toolbox/recipes/nemotron-3-nano-4b-bf16-vllm.yaml
 nvidia-sync forward 8000
 
 # sparkrun proxy (OpenAI-compatible on :4000 — same as legacy LiteLLM)
@@ -1210,7 +1210,7 @@ Register these tools as custom apps in NVIDIA Sync so they appear in the Sync UI
 | Data Jupyter | `bash ~/dgx-toolbox/data/data-toolbox-jupyter.sh` | 8890 | Yes |
 | NGC Jupyter | `bash ~/dgx-toolbox/containers/ngc-jupyter.sh` | 8888 | Yes |
 | Triton TRT-LLM | `bash ~/dgx-toolbox/eval/triton-trtllm-sync.sh` | 8010 | No |
-| sparkrun workload | `sparkrun run nemotron-3-nano-4b-bf16-vllm --recipe-path ~/dgx-toolbox/recipes` | 8000 | No |
+| sparkrun workload | `sparkrun run ~/dgx-toolbox/recipes/nemotron-3-nano-4b-bf16-vllm.yaml` | 8000 | No |
 | Autoresearch | `bash ~/dgx-toolbox/karpathy-autoresearch/launch-autoresearch-sync.sh` | -- | No |
 | Safety Harness | `bash ~/dgx-toolbox/harness/start-harness.sh` | 5000 | No |
 | HITL Dashboard | `python -m harness.hitl ui --port 8501` | 8501 | Yes |

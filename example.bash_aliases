@@ -23,12 +23,31 @@ alias open-webui-stop='docker stop open-webui'                                # 
 alias ollama-remote='~/dgx-toolbox/inference/setup-ollama-remote.sh'          # Enable Ollama LAN access (sudo)
 
 # --- Model serving (sparkrun) ---
-# `sparkrun run` launches a recipe (vLLM container by default). Pass a recipe
-# name registered in vendor/sparkrun + this repo's recipes/ directory, e.g.:
-#   vllm nemotron-3-nano-4b-bf16-vllm            # single-node (honours dgx-mode default)
+# `sparkrun run` launches a recipe (vLLM container by default). Sparkrun does
+# not expose a --recipe-path flag: recipe names are resolved against the
+# registered registries (see `dgx-recipes list`) and the CWD, or a direct
+# path to a recipe YAML can be passed. The `vllm` function below is a thin
+# wrapper that first looks for the recipe in this repo's local recipes/
+# directory, then falls back to sparkrun's normal resolution. Examples:
+#   vllm nemotron-3-nano-4b-bf16-vllm            # local recipes/ first, then registries
 #   vllm nemotron-3-nano-4b-bf16-vllm --solo     # force single-node
-#   vllm nemotron-3-nano-4b-bf16-vllm --cluster my-cluster
-alias vllm='sparkrun run --recipe-path ~/dgx-toolbox/recipes'                 # Start a recipe-defined model (:8000 default)
+#   vllm qwen3.6                                 # resolves from registered registries
+#   vllm ~/my-recipes/custom.yaml                # direct path to any recipe YAML
+vllm() {
+  if [ "$#" -lt 1 ]; then
+    echo "Usage: vllm <recipe-name|path/to/recipe.yaml> [sparkrun run options...]" >&2
+    return 1
+  fi
+  local _recipe="$1"; shift
+  local _local="$HOME/dgx-toolbox/recipes/${_recipe}.yaml"
+  if [ -f "$_recipe" ]; then
+    sparkrun run "$_recipe" "$@"
+  elif [ -f "$_local" ]; then
+    sparkrun run "$_local" "$@"
+  else
+    sparkrun run "$_recipe" "$@"
+  fi
+}
 alias vllm-stop='sparkrun stop'                                               # Stop the active sparkrun workload
 alias vllm-logs='sparkrun logs'                                               # Tail logs of the active workload
 alias vllm-status='sparkrun status'                                           # Show running workload + proxy status

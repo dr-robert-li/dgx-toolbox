@@ -176,7 +176,7 @@ section "5. Aliases + docker-compose"
 if [ -f example.bash_aliases ]; then
   pass "example.bash_aliases present"
   for needle in \
-    "alias vllm='sparkrun run" \
+    "vllm() {" \
     "alias vllm-stop='sparkrun stop'" \
     "alias litellm='sparkrun proxy start'" \
     "alias litellm-stop='sparkrun proxy stop'" \
