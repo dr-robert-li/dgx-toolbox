@@ -362,7 +362,9 @@ dgx-mode cluster host-a,host-b,host-c   # multi-node, writes DGX_HOSTS
 dgx-mode status                         # show resolved mode + hosts
 ```
 
-`dgx-mode single` registers a sparkrun cluster named `solo` with `hosts=localhost` and marks it as the default. Sparkrun's `run` command resolves hosts before loading the recipe and exits if none are configured, so single-node users need this even for `sparkrun run <recipe>` or the `vllm` wrapper to work. If you skipped `dgx-mode single` on an older install, the `vllm` wrapper also injects `--hosts localhost` defensively when `DGX_MODE=single`.
+`dgx-mode single` registers a sparkrun cluster named `solo` with `hosts=localhost` and marks it as the default. Sparkrun's `run`, `stop`, `logs`, `status`, and `show` commands all resolve hosts before doing anything and exit if none are configured, so single-node users need this even for `sparkrun run <recipe>` or the `vllm*` wrappers to work. If you skipped `dgx-mode single` on an older install, the `vllm`, `vllm-stop`, `vllm-logs`, `vllm-status`, and `vllm-show` wrappers all inject `--hosts localhost` defensively when `DGX_MODE=single`.
+
+`vllm-stop` with no argument defaults to `--all` — "stop everything" — so the common "I'm done, shut it all down" flow is a single command. Pass a recipe name to stop a specific workload (`vllm-stop my-recipe`) or `--all` explicitly; both work.
 
 Every sparkrun invocation inherits this setting but can still be overridden on the fly with `--solo`, `--cluster NAME`, or `--hosts h1,h2,…`.
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-04-22 — Fix: `vllm-stop` / `vllm-logs` / `vllm-status` / `vllm-show` fail with "No hosts specified"
+
+### Fixed
+
+- **`example.bash_aliases`** — `vllm-stop`, `vllm-logs`, `vllm-status`, and `vllm-show` were bare aliases (`sparkrun stop`, `sparkrun logs`, ...). That skipped the host-injection logic the `vllm()` function uses, so running `vllm-stop` on a single-node install where no default sparkrun cluster is registered yet produced `Error: Must specify TARGET or --all.` (no args) or `Error: No hosts specified.` (`--all`) — sparkrun's `_stop_all()` calls `_resolve_hosts_or_exit()` *before* looking at the target. Converted all four to shell functions that:
+  - Inject `--hosts localhost` when `DGX_MODE=single` (env or `~/.config/dgx-toolbox/mode.env`) and the caller hasn't passed `--hosts`, `--hosts-file`, `-H`, `--cluster`, or `--solo` — matching the existing `vllm()` behavior.
+  - Default `vllm-stop` to `--all` when the user passes no positional target and no `--all` flag, so the common "I'm done, shut it all down" case is a single command.
+  - Forward every user-supplied flag and positional arg verbatim; explicit `--hosts` / `--cluster` / `--solo` still wins and is never duplicated.
+  - Use `unalias` guards so re-sourcing over an older install's bare aliases doesn't syntax-error.
+- Host injection logic is factored into a single internal `_dgx_host_args` helper so all five wrappers (`vllm`, `vllm-stop`, `vllm-logs`, `vllm-status`, `vllm-show`) share one source of truth — the `vllm()` body was refactored to call the helper instead of inlining host-flag detection, keeping PR #9's autoregister / `--foreground` / `--dry-run` logic intact.
+
+### Added
+
+- **`scripts/test-sparkrun-integration.sh`** — Twenty-three new assertions validated via execution against a PATH-stubbed `sparkrun`: presence of each new wrapper function; removal of the old bare aliases; `vllm-stop` with no args injects `--hosts localhost` and adds `--all`; `vllm-stop --all` doesn't duplicate `--all`; `vllm-stop <target>` injects host but omits `--all`; `vllm-stop --hosts` doesn't duplicate `--hosts`; `vllm-stop --cluster` skips host injection; `vllm-stop` with no `DGX_MODE` still defaults to `--all` but skips injection; `vllm-logs` / `vllm-status` / `vllm-show` all inject and forward correctly; each wrapper is a function (not an alias) after sourcing; re-source safety over pre-existing aliases. 137 → 160 assertions on top of PR #9.
+- **`README.md`** — Updated the "DGX mode" section to document that `vllm-stop`/`vllm-logs`/`vllm-status`/`vllm-show` inject `--hosts localhost` the same way `vllm` does, and that bare `vllm-stop` defaults to `--all`.
+
 ## 2026-04-22 — Feat: auto-register `vllm` workloads with the LiteLLM proxy
 
 ### Added
