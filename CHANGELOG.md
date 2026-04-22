@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-04-22 — Fix: single-node `vllm` fails with "No hosts specified"
+
+### Fixed
+
+- **`setup/dgx-mode.sh`** — `dgx-mode single` only wrote a local `mode.env` marker and never registered any hosts with sparkrun. Sparkrun's `sparkrun run` resolves hosts *before* loading the recipe and exits with `Error: No hosts specified. Use --hosts or configure defaults.` if it finds none — so every single-node user hit this the moment they ran `vllm <recipe>`, including the simplest cases like `vllm qwen3.6`. `cmd_single` now creates (or updates) a sparkrun cluster named `solo` with `hosts=localhost` and sets it as the default. Idempotent — re-running `dgx-mode single` updates the existing `solo` cluster in place. Validated with a stubbed `sparkrun` binary on the happy path and the re-run path.
+- **`example.bash_aliases`** — The `vllm()` wrapper now injects `--hosts localhost` defensively when `DGX_MODE=single` (either exported, or read from `~/.config/dgx-toolbox/mode.env`) and the caller hasn't passed `--hosts`, `--hosts-file`, `--cluster`, or `--solo`. Covers users on installs that pre-date the `dgx-mode` fix above, and avoids any regression in the normal `sparkrun cluster set-default` path. Does NOT inject when `DGX_MODE` is unset (so fresh installs that haven't run the mode picker still surface sparkrun's real error message).
+
+### Added
+
+- **`scripts/test-sparkrun-integration.sh`** — Six new assertions: single-mode injects `--hosts localhost` when no host flag is given; injection is skipped when the caller passes `--hosts`; injection is skipped when the caller passes `--solo`; no injection when `DGX_MODE` is unset; `dgx-mode single` calls `sparkrun cluster create solo --hosts localhost --default`; and `dgx-mode single` writes `DGX_MODE=single` to `mode.env`. The case-match in the wrapper also handles `--hosts-file`, `--hosts=...`, `--cluster`, `--cluster=...`, and `-H`. All stubbed — runs in CI without touching real sparkrun.
+
 ## 2026-04-22 — Fix: re-source safety for `vllm()` + `dgx-discover` recipe discovery
 
 ### Added

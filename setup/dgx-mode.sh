@@ -19,6 +19,10 @@ set -euo pipefail
 CONFIG_DIR="${DGX_TOOLBOX_CONFIG_DIR:-$HOME/.config/dgx-toolbox}"
 MODE_FILE="$CONFIG_DIR/mode.env"
 DEFAULT_CLUSTER_NAME="dgx-default"
+# Single-node mode registers this cluster (hosts=localhost) as sparkrun's
+# default so `sparkrun run <recipe>` works without --hosts.
+SOLO_CLUSTER_NAME="solo"
+SOLO_CLUSTER_HOST="localhost"
 
 mkdir -p "$CONFIG_DIR"
 
@@ -41,22 +45,25 @@ _require_sparkrun() {
 
 cmd_single() {
     _require_sparkrun
-    # If a default cluster was previously configured, demote it (keep the
-    # definition, just drop the default pointer) so ad-hoc `sparkrun run
-    # --cluster NAME` still works.
-    if sparkrun cluster list 2>/dev/null | grep -q '(default)'; then
-        local current
-        current=$(sparkrun cluster list 2>/dev/null | awk '/\(default\)/ {print $1; exit}')
-        if [ -n "$current" ]; then
-            echo "Demoting default cluster: $current"
-            # Sparkrun's update supports a --default flag; we don't have an
-            # explicit "undefault". Simplest approach: leave cluster defined
-            # but clear the mode marker so scripts don't auto-pass --cluster.
-            :
-        fi
+    # Register (or update) a local-only cluster pointed at localhost and set
+    # it as sparkrun's default. sparkrun's `run` command resolves hosts before
+    # loading the recipe and exits if none are configured, so single-node
+    # users MUST have a default cluster registered for bare `sparkrun run
+    # <recipe>` and for the `vllm` wrapper to work.
+    if sparkrun cluster list 2>/dev/null | awk '{print $1}' | grep -qx "$SOLO_CLUSTER_NAME"; then
+        echo "Updating solo cluster: $SOLO_CLUSTER_NAME -> $SOLO_CLUSTER_HOST (default)"
+        sparkrun cluster update "$SOLO_CLUSTER_NAME" --hosts "$SOLO_CLUSTER_HOST" >/dev/null
+        sparkrun cluster set-default "$SOLO_CLUSTER_NAME" >/dev/null
+    else
+        echo "Creating solo cluster: $SOLO_CLUSTER_NAME -> $SOLO_CLUSTER_HOST (default)"
+        sparkrun cluster create "$SOLO_CLUSTER_NAME" \
+            --hosts "$SOLO_CLUSTER_HOST" \
+            --default \
+            -d "Single-node mode — managed by dgx-toolbox dgx-mode" >/dev/null
     fi
-    _write_mode single
+    _write_mode single "$SOLO_CLUSTER_NAME"
     echo "Mode → single-node"
+    echo "  Cluster:  $SOLO_CLUSTER_NAME ($SOLO_CLUSTER_HOST, default)"
     echo "  mode.env: $MODE_FILE"
 }
 

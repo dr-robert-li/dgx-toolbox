@@ -357,10 +357,12 @@ export GEMINI_API_KEY=AI...
 The first time `setup/dgx-global-base-setup.sh` runs, `setup/dgx-mode-picker.sh` prompts for single-node vs. multi-node usage and writes `~/.config/dgx-toolbox/mode.env`. Change it any time with:
 
 ```bash
-dgx-mode single                         # one DGX Spark, default cluster = solo
+dgx-mode single                         # one DGX Spark, registers cluster = solo (localhost, default)
 dgx-mode cluster host-a,host-b,host-c   # multi-node, writes DGX_HOSTS
 dgx-mode status                         # show resolved mode + hosts
 ```
+
+`dgx-mode single` registers a sparkrun cluster named `solo` with `hosts=localhost` and marks it as the default. Sparkrun's `run` command resolves hosts before loading the recipe and exits if none are configured, so single-node users need this even for `sparkrun run <recipe>` or the `vllm` wrapper to work. If you skipped `dgx-mode single` on an older install, the `vllm` wrapper also injects `--hosts localhost` defensively when `DGX_MODE=single`.
 
 Every sparkrun invocation inherits this setting but can still be overridden on the fly with `--solo`, `--cluster NAME`, or `--hosts h1,h2,…`.
 
