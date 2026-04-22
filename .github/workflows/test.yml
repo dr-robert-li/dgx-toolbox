@@ -12,11 +12,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - name: Install ShellCheck
         run: sudo apt-get install -y shellcheck
       - name: Lint shell scripts
         run: |
-          find . -name '*.sh' -not -path './.git/*' -not -path './karpathy-autoresearch/*' \
+          find . -name '*.sh' \
+            -not -path './.git/*' \
+            -not -path './karpathy-autoresearch/*' \
+            -not -path './vendor/sparkrun/*' \
             -exec shellcheck --severity=error --exclude=SC1087 {} +
 
   harness-tests:
@@ -24,6 +29,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
@@ -40,10 +47,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - name: Check all scripts parse
         run: |
-          find . -name '*.sh' -not -path './.git/*' -print0 | \
-            xargs -0 -I{} bash -n {} && echo "All scripts parse OK"
+          find . -name '*.sh' \
+            -not -path './.git/*' \
+            -not -path './vendor/sparkrun/*' \
+            -print0 | xargs -0 -I{} bash -n {} && echo "All scripts parse OK"
+
+  sparkrun-integration:
+    name: sparkrun integration smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install PyYAML (recipe parseability)
+        run: pip install --quiet pyyaml
+      - name: Run sparkrun integration smoke tests
+        run: bash scripts/test-sparkrun-integration.sh
 
   secrets-scan:
     name: Secret leak check
@@ -52,6 +78,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          submodules: true
       - name: Scan for secrets
         run: |
           echo "Scanning for leaked secrets..."
@@ -69,6 +96,7 @@ jobs:
             . 2>/dev/null \
             | grep -v '\.git/' \
             | grep -v '\.planning/' \
+            | grep -v 'vendor/sparkrun/' \
             | grep -v 'YOUR_' \
             | grep -v 'your_key' \
             | grep -v 'sk-ant-\.\.\.' \
@@ -109,6 +137,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'

@@ -1,14 +1,20 @@
-# Inference stack: Open-WebUI + LiteLLM + vLLM
-# Ollama runs as a systemd service on the host
+# Inference stack (GUI only): Open-WebUI
 #
-# Usage:
-#   docker compose -f docker-compose.inference.yml up -d
+# Model serving and the OpenAI-compatible proxy are now handled by sparkrun
+# (https://github.com/spark-arena/sparkrun), invoked directly on the host.
+# See example.bash_aliases (`inference-up` / `inference-down`) and the
+# project README for the full workflow.
+#
+# Quick start:
+#   docker compose -f docker-compose.inference.yml up -d     # Open-WebUI only
+#   sparkrun proxy start                                     # LiteLLM on :4000
+#   sparkrun run <recipe>                                    # start a model
+#
+# Stop:
+#   sparkrun proxy stop
 #   docker compose -f docker-compose.inference.yml down
-#   docker compose -f docker-compose.inference.yml logs -f
 #
-# Prerequisites:
-#   - ~/.vllm-model must exist with model name
-#   - ~/.litellm/config.yaml must exist (run setup-litellm-config.sh)
+# Ollama runs as a systemd service on the host.
 
 services:
   open-webui:
@@ -31,42 +37,6 @@ services:
               count: all
               capabilities: [gpu]
     restart: unless-stopped
-
-  litellm:
-    image: ghcr.io/berriai/litellm:main-latest
-    container_name: litellm
-    ports:
-      - "0.0.0.0:4000:4000"
-    volumes:
-      - ${HOME}/.litellm/config.yaml:/app/config.yaml:ro
-    env_file:
-      - path: ${HOME}/.litellm/.env
-        required: false
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    command: --config /app/config.yaml --host 0.0.0.0 --port 4000
-    restart: unless-stopped
-
-  vllm:
-    image: vllm/vllm-openai:latest
-    container_name: vllm
-    ports:
-      - "0.0.0.0:8020:8000"
-    volumes:
-      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
-      - ${HOME}/eval/models:/models
-    ipc: host
-    command: --model ${VLLM_MODEL:-nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16} --host 0.0.0.0 --port 8000 --trust-remote-code --gpu-memory-utilization ${VLLM_GPU_MEM:-0.5}
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-    restart: unless-stopped
-    profiles:
-      - with-vllm
 
 volumes:
   open-webui:

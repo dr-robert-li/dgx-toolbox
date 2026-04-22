@@ -1,6 +1,6 @@
 # DGX Spark Toolbox
 
-![Version](https://img.shields.io/badge/version-1.3.1-blue)
+![Version](https://img.shields.io/badge/version-1.5.0-blue)
 ![Tests](https://github.com/dr-robert-li/dgx-toolbox/actions/workflows/test.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![Bash](https://img.shields.io/badge/bash-5.0%2B-4EAA25?logo=gnubash&logoColor=white)
@@ -19,6 +19,21 @@ Battle-tested scripts for spinning up ML/AI tools on the **NVIDIA DGX Spark**, d
 - Docker with NVIDIA Container Toolkit (`--gpus all` support)
 - NGC container registry access (`nvcr.io`)
 - For remote use: [NVIDIA Sync](https://docs.nvidia.com/dgx/dgx-spark/nvidia-sync.html#spark-nvidia-sync) configured on your client machine
+- [sparkrun](https://github.com/spark-arena/sparkrun) — vendored as a git submodule at `vendor/sparkrun` and installed by `setup/dgx-global-base-setup.sh` (requires Python 3.12+ and [uv](https://github.com/astral-sh/uv), which the setup script installs on first run)
+
+### Cloning with submodules
+
+This repo tracks sparkrun as a submodule. Always clone recursively, or initialise the submodule after a plain clone:
+
+```bash
+# Recommended
+git clone --recurse-submodules <repo-url> ~/dgx-toolbox
+
+# If you already cloned without --recurse-submodules
+cd ~/dgx-toolbox && git submodule update --init --recursive
+```
+
+The pinned sparkrun commit is stored in `.sparkrun-pin` for reproducibility; the submodule itself tracks `main` so you can bump forward at your discretion (`cd vendor/sparkrun && git pull origin main`).
 
 ## Quick Start
 
@@ -29,9 +44,15 @@ git clone <repo-url> ~/dgx-toolbox
 # Copy aliases
 cp ~/dgx-toolbox/example.bash_aliases ~/.bash_aliases && source ~/.bash_aliases
 
-# One-time system setup (Python, Miniconda, pyenv, harness, kaggle)
+# One-time system setup (Python, Miniconda, pyenv, uv, sparkrun, harness, kaggle)
+# Also runs the DGX mode picker (single vs. cluster) on first launch.
 bash ~/dgx-toolbox/setup/dgx-global-base-setup.sh
 source ~/.bashrc
+
+# Change DGX mode later (or on the fly via --solo / --cluster flags on `vllm`)
+dgx-mode single
+dgx-mode cluster host-a,host-b,host-c
+dgx-mode status
 
 # Optional: configure Kaggle API (for downloading Kaggle datasets)
 # Get your key from https://www.kaggle.com/settings → API → Create New Token
@@ -46,8 +67,11 @@ build-all
 # Enable Ollama for remote/LAN access
 ollama-remote
 
-# Configure LiteLLM (auto-detects services, prompts for API keys)
-litellm-config
+# Start the OpenAI-compatible proxy (sparkrun wraps LiteLLM, binds :4000)
+litellm
+
+# Serve a model via a sparkrun recipe (single-node by default, or --cluster NAME)
+vllm nemotron-3-nano-4b-bf16-vllm
 
 # Check what's running
 dgx-status
@@ -63,8 +87,8 @@ dgx-status
 │              │              │              │                 │
 │ Open-WebUI   │ data-toolbox │ eval-toolbox │ Unsloth Studio  │
 │ Ollama       │ Label Studio │ lm-eval      │                 │
-│ vLLM         │ Argilla      │ Triton       │                 │
-│ LiteLLM      │ distilabel   │ tritonclient │                 │
+│ sparkrun     │ Argilla      │ Triton       │                 │
+│ (vLLM+proxy) │ distilabel   │ tritonclient │                 │
 ├──────────────┴──────────────┴──────────────┴─────────────────┤
 │  Safety Harness (FastAPI :5000)                               │
 │  Auth │ Guardrails │ Critique │ Evals │ Red Team │ HITL      │
@@ -120,21 +144,22 @@ Docker does not follow host symlinks, so bind-mounting is the correct way to mak
 
 Tools for serving models and interacting with them — chat, code, agentic workflows. Covers both web UIs for non-technical users and CLI/API access for technical users.
 
-#### Docker Compose (recommended for multi-service stacks)
+#### Docker Compose (Open-WebUI only) + sparkrun
+
+The compose file now ships only the Open-WebUI GUI container. Model serving and the OpenAI-compatible proxy are delegated to [sparkrun](https://github.com/spark-arena/sparkrun), vendored at `vendor/sparkrun`. The `inference-up` / `inference-down` aliases start/stop both layers together:
 
 ```bash
-# Start Open-WebUI + LiteLLM (inference stack without vLLM)
+# Start Open-WebUI (:12000) + sparkrun proxy (:4000)
 inference-up
 
-# Start Open-WebUI + LiteLLM + vLLM
-VLLM_MODEL=nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16 docker compose -f ~/dgx-toolbox/docker-compose.inference.yml --profile with-vllm up -d
-
-# View logs / stop
-inference-logs
+# Stop both
 inference-down
+
+# Stream Open-WebUI logs (sparkrun has its own: vllm-logs)
+inference-logs
 ```
 
-Individual scripts still work for standalone use and NVIDIA Sync custom apps.
+Individual helpers (`open-webui`, `open-webui-stop`, `sparkrun ...`) still work for standalone use and NVIDIA Sync custom apps.
 
 #### Open-WebUI (Chat Interface)
 
@@ -156,115 +181,88 @@ open-webui-stop
 |---------|----------------|-----|---------|
 | Bundled Ollama | Ollama (pre-configured) | — | — |
 | Host Ollama | Ollama | `http://host.docker.internal:11434` | — |
-| vLLM | OpenAI API | `http://host.docker.internal:8020/v1` | `none` |
-| LiteLLM | OpenAI API | `http://host.docker.internal:4000/v1` | `none` |
+| sparkrun workload (vLLM) | OpenAI API | `http://host.docker.internal:8000/v1` | `none` |
+| sparkrun proxy (LiteLLM) | OpenAI API | `http://host.docker.internal:4000/v1` | `none` |
 
-Once added, all models from all backends appear in Open-WebUI's model dropdown. If you're running LiteLLM, you only need to add LiteLLM — it already routes to both Ollama and vLLM (plus cloud APIs), so one connection covers everything.
+Once added, all models from all backends appear in Open-WebUI's model dropdown. If you're running the sparkrun proxy, you only need to add the proxy — it already routes to Ollama and the active sparkrun workload (plus cloud APIs), so one connection covers everything.
 
-#### vLLM (High-Throughput Inference Server)
+#### sparkrun (model serving + OpenAI-compatible proxy)
 
-| Script | Purpose | Port |
-|--------|---------|------|
-| `inference/start-vllm.sh` | vLLM OpenAI-compatible server — streams logs | 8020 |
-| `inference/start-vllm-sync.sh` | NVIDIA Sync variant — returns immediately | 8020 |
+[sparkrun](https://github.com/spark-arena/sparkrun) is the replacement for this repo's hand-rolled `start-vllm.sh` / `start-litellm.sh` launchers. It's an Apache-2.0 Python CLI that starts recipe-defined vLLM workloads (single-node or multi-node) and manages a LiteLLM-backed OpenAI-compatible proxy on `:4000` — the same port the legacy LiteLLM launcher used, so downstream tools (harness, eval, Open-WebUI) need no changes.
 
-OpenAI-compatible API server optimized for high-throughput batched inference. Faster than Ollama for production workloads and batch evaluation.
+It is vendored as a git submodule at `vendor/sparkrun` and installed by `setup/dgx-global-base-setup.sh` via `uv tool install --force --editable vendor/sparkrun`.
 
-**Setting the default model:**
+**Recipes live in two places:**
 
-```bash
-# Copy the example and edit with your preferred model
-cp ~/dgx-toolbox/example.vllm-model ~/.vllm-model
+| Path | Purpose |
+|------|---------|
+| `vendor/sparkrun/recipes/` (read-only) | Official recipes maintained upstream (`minimax-m2.7`, `qwen3-coder-next`, `qwen3-vl`, `qwen3.6`, …) |
+| `recipes/` (this repo) | Project-specific recipes: `nemotron-3-nano-4b-bf16-vllm` (default model, replaces the old `example.vllm-model`) and `eval-checkpoint` (ephemeral eval workload used by `scripts/eval-checkpoint.sh`) |
 
-# Or set it directly
-echo 'nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16' > ~/.vllm-model
-```
+Both directories are passed on the command line via `--recipe-path` when needed.
 
-Both scripts read from `~/.vllm-model` when no model argument is passed. This is how the NVIDIA Sync custom app knows which model to serve — change the file to switch models.
+**Model serving (`vllm` alias → `sparkrun run`):**
 
 ```bash
-# Start with default model from ~/.vllm-model
-vllm
+# Default recipe (honours dgx-mode: single or cluster)
+vllm nemotron-3-nano-4b-bf16-vllm
 
-# Or pass a model explicitly (overrides ~/.vllm-model)
-vllm nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16
+# Force single-node on this invocation
+vllm nemotron-3-nano-4b-bf16-vllm --solo
 
-# Serve a local fine-tuned model from ~/eval/models/
-vllm /models/my-finetuned-model
+# Use a named cluster or an explicit host list
+vllm nemotron-3-nano-4b-bf16-vllm --cluster my-cluster
+vllm nemotron-3-nano-4b-bf16-vllm --hosts host-a,host-b
 
-# With extra args
-vllm unsloth/Llama-3.1-8B-Instruct --max-model-len 4096
+# Manage the workload
+vllm-status    # sparkrun status
+vllm-logs      # sparkrun logs
+vllm-show      # sparkrun show  (resolved recipe config)
+vllm-stop      # sparkrun stop
 
-# Query the API
-curl http://localhost:8020/v1/chat/completions \
+# Query the OpenAI-compatible endpoint (port defaults to the recipe's value, :8000)
+curl http://localhost:8000/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -d '{"model": "nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16", "messages": [{"role": "user", "content": "Hello"}]}'
-
-# Stop
-vllm-stop
 ```
 
-**Finding models:** Browse compatible models at [vLLM Supported Models](https://docs.vllm.ai/en/latest/models/supported_models.html) and on [HuggingFace](https://huggingface.co/models?apps=vllm&sort=trending). Any HuggingFace model with a supported architecture (Llama, Mistral, Qwen, Gemma, Phi, etc.) works out of the box.
+Host selection precedence: CLI flag > `~/.config/dgx-toolbox/mode.env` (written by `dgx-mode`) > `sparkrun`'s named cluster > `sparkrun`'s default cluster.
 
-HuggingFace cache (`~/.cache/huggingface`) and model checkpoints (`~/eval/models`) are mounted automatically.
+**OpenAI-compatible proxy (`litellm` alias → `sparkrun proxy`):**
 
-#### LiteLLM (Unified API Proxy)
-
-| Script | Purpose | Port |
-|--------|---------|------|
-| `inference/start-litellm.sh` | LiteLLM proxy — streams logs | 4000 |
-| `inference/start-litellm-sync.sh` | NVIDIA Sync variant — returns immediately | 4000 |
-| `inference/setup-litellm-config.sh` | Interactive config generator | — |
-
-Unified OpenAI-compatible proxy that routes to Ollama, vLLM, and cloud APIs (OpenAI, Anthropic, Gemini) through a single endpoint. All tools — Open-WebUI, eval toolbox, data toolbox, n8n, custom code — can point to `localhost:4000` and access any backend.
+The proxy is sparkrun's supervised `litellm[proxy]` instance. It binds `:4000` by default and auto-routes to the active sparkrun workload plus any aliases you add.
 
 ```bash
-litellm             # http://localhost:4000
-litellm-stop
+litellm                       # sparkrun proxy start  (http://localhost:4000)
+litellm-status                # sparkrun proxy status
+litellm-models                # sparkrun proxy models --refresh
+litellm-alias add claude-sonnet anthropic/claude-sonnet-4-20250514
+litellm-stop                  # sparkrun proxy stop
 ```
 
-**Quick setup:** Run the interactive config generator to auto-detect local services and set API keys:
+**Custom aliases / cloud routing:** Use `sparkrun proxy alias add` to register additional upstreams. Cloud API keys live in the environment sparkrun inherits (e.g. in `~/.bashrc`):
 
 ```bash
-litellm-config      # detects Ollama models + vLLM, prompts for cloud API keys
+export OPENAI_API_KEY=sk-...
+export ANTHROPIC_API_KEY=sk-ant-...
+export GEMINI_API_KEY=AI...
 ```
 
-This creates `~/.litellm/config.yaml` and `~/.litellm/.env` automatically. Re-run anytime to regenerate.
+**Finding models:** Browse compatible models at [vLLM Supported Models](https://docs.vllm.ai/en/latest/models/supported_models.html) and on [HuggingFace](https://huggingface.co/models?apps=vllm&sort=trending). Any HuggingFace model with a supported architecture (Llama, Mistral, Qwen, Gemma, Phi, etc.) works out of the box when referenced from a recipe. HuggingFace cache (`~/.cache/huggingface`) and model checkpoints (`~/eval/models`) are mounted automatically by sparkrun's default Blackwell-tested image, `ghcr.io/spark-arena/dgx-vllm-eugr-nightly:latest`.
 
-**Manual config:** Edit `~/.litellm/config.yaml` directly:
+**Authoring a new recipe:** Copy `recipes/nemotron-3-nano-4b-bf16-vllm.yaml` as a starting point — `recipe_version: "2"`, fill in `model`, `runtime`, `container`, and `defaults.{port,gpu_memory_utilization,max_model_len}`. Run `sparkrun show <name>` to validate before launching.
 
-```yaml
-model_list:
-  # Local models
-  - model_name: llama3.1
-    litellm_params:
-      model: ollama/llama3.1
-      api_base: http://host.docker.internal:11434
-  - model_name: nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16
-    litellm_params:
-      model: openai/nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16
-      api_base: http://host.docker.internal:8020/v1
-      api_key: "none"
+**DGX mode (single vs. cluster):**
 
-  # Cloud models
-  - model_name: claude-sonnet
-    litellm_params:
-      model: anthropic/claude-sonnet-4-20250514
-  - model_name: gemini-2.5-pro
-    litellm_params:
-      model: gemini/gemini-2.5-pro-preview-06-05
-  - model_name: gpt-4o
-    litellm_params:
-      model: openai/gpt-4o
-```
-
-Cloud API keys go in `~/.litellm/.env`:
+The first time `setup/dgx-global-base-setup.sh` runs, `setup/dgx-mode-picker.sh` prompts for single-node vs. multi-node usage and writes `~/.config/dgx-toolbox/mode.env`. Change it any time with:
 
 ```bash
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
-GEMINI_API_KEY=AI...
+dgx-mode single                         # one DGX Spark, default cluster = solo
+dgx-mode cluster host-a,host-b,host-c   # multi-node, writes DGX_HOSTS
+dgx-mode status                         # show resolved mode + hosts
 ```
+
+Every sparkrun invocation inherits this setting but can still be overridden on the fly with `--solo`, `--cluster NAME`, or `--hosts h1,h2,…`.
 
 #### Ollama (Local LLM Server)
 
@@ -293,29 +291,29 @@ curl http://localhost:11434/api/generate -d '{"model": "llama3.1", "prompt": "He
     │                        │                         │
     ▼                        ▼                         ▼
 ┌────────┐           ┌────────────┐            ┌────────────┐
-│ Ollama │ :11434    │  LiteLLM   │ :4000      │   vLLM     │ :8020
-│ (local │           │  (proxy)   │            │ (OpenAI    │
-│  LLMs) │           │            │            │  compat)   │
-└────────┘           └─────┬──────┘            └────────────┘
-                           │
-              routes to any backend:
-              Ollama, vLLM, OpenAI,
-              Anthropic, Gemini, etc.
+│ Ollama │ :11434    │  sparkrun  │ :4000      │ sparkrun   │ :8000
+│ (local │           │   proxy    │            │ workload   │
+│  LLMs) │           │ (LiteLLM)  │            │ (vLLM,     │
+└────────┘           └─────┬──────┘            │ OpenAI     │
+                           │                 │ compat)    │
+              routes to any backend:            └────────────┘
+              Ollama, sparkrun workload,
+              OpenAI, Anthropic, Gemini, etc.
 ```
 
 ### Cross-Tool Integrations
 
-All toolbox containers can reach host inference services (Ollama, vLLM, LiteLLM) via `host.docker.internal`. Data and model directories are cross-mounted so the toolboxes share artifacts.
+All toolbox containers can reach host inference services (Ollama, sparkrun workload, sparkrun proxy) via `host.docker.internal`. Data and model directories are cross-mounted so the toolboxes share artifacts.
 
 **Eval Toolbox → Inference backends:**
 
 ```bash
-# Inside eval-toolbox: evaluate a model served by vLLM
+# Inside eval-toolbox: evaluate a model served by the sparkrun workload
 lm_eval --model local-completions \
-  --model_args model=nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16,base_url=http://host.docker.internal:8020/v1,tokenizer_backend=huggingface \
+  --model_args model=nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16,base_url=http://host.docker.internal:8000/v1,tokenizer_backend=huggingface \
   --tasks hellaswag,arc_easy
 
-# Or evaluate via LiteLLM (any model configured there)
+# Or evaluate via the sparkrun proxy (any model routed through it)
 lm_eval --model local-completions \
   --model_args model=claude-sonnet,base_url=http://host.docker.internal:4000/v1 \
   --tasks mmlu
@@ -324,7 +322,7 @@ lm_eval --model local-completions \
 **Data Toolbox → Synthetic data generation via local models:**
 
 ```python
-# Inside data-toolbox: use distilabel with LiteLLM proxy
+# Inside data-toolbox: use distilabel with the sparkrun proxy
 from distilabel.llms import OpenAILLM
 from distilabel.steps.tasks import TextGeneration
 
@@ -335,7 +333,7 @@ llm = OpenAILLM(
 )
 ```
 
-**n8n → LiteLLM:** In n8n's OpenAI-compatible nodes, set the base URL to `http://host.docker.internal:4000/v1` to access all local and cloud models.
+**n8n → sparkrun proxy:** In n8n's OpenAI-compatible nodes, set the base URL to `http://host.docker.internal:4000/v1` to access all local and cloud models.
 
 **Cross-mounts:**
 
@@ -606,7 +604,7 @@ Expected output: autoresearch training progress showing loss and eval metrics.
 
 Automatically runs `scripts/eval-checkpoint.sh` after training completes. Supports two checkpoint formats:
 
-- **HuggingFace format** (has `config.json`): Starts a temp vLLM container, runs the 40-case safety replay, auto-registers passing models in LiteLLM
+- **HuggingFace format** (has `config.json`): Launches the ephemeral `eval-checkpoint` sparkrun recipe (vLLM container on `:8021`), runs the 40-case safety replay, auto-registers passing models with the sparkrun proxy via `sparkrun proxy alias add`
 - **PyTorch raw** (has `model.pt`): Extracts training metrics (val_bpb, steps, tokens), writes `safety-eval.json` — custom architectures can't be served via vLLM
 
 ```bash
@@ -656,7 +654,7 @@ scripts/autoresearch-deregister.sh autoresearch/<experiment-name>
 | Training OOM | Reduce batch size in `spark-config.sh` or set `AUTORESEARCH_SKIP_TUNE=1` |
 | Safety eval FAIL | Checkpoint is preserved — review `safety-eval.json`, adjust constitution or thresholds |
 | "No checkpoint found" | Check `~/autoresearch/experiments/` for the latest experiment directory |
-| Model not queryable after registration | Run `docker restart litellm` to reload config |
+| Model not queryable after registration | Run `sparkrun proxy models --refresh` — LiteLLM reads aliases via its management API, no container restart needed |
 
 #### Autonomous Agent Mode
 
@@ -694,7 +692,7 @@ curl -s -X POST http://localhost:5000/v1/chat/completions \
   -d '{"model": "autoresearch/<experiment>", "messages": [{"role": "user", "content": "Hello"}]}'
 ```
 
-**LLM API for the agent:** The agent needs an LLM API. Claude Code uses your Anthropic API key directly. Alternatively, point it at LiteLLM (`http://localhost:4000`) to use any configured model (local or cloud).
+**LLM API for the agent:** The agent needs an LLM API. Claude Code uses your Anthropic API key directly. Alternatively, point it at the sparkrun proxy (`http://localhost:4000`) to use any configured model (local or cloud).
 
 > **Tip:** To run the autonomous agent entirely on local models (no cloud API costs), connect Claude Code to Ollama first. Run `ollama pull llama3.1` (or any capable model), then configure Claude Code to use `http://localhost:11434` as its model provider. The agent loop works with any model that can read code and suggest edits — larger models (70B+) produce better experiments.
 
@@ -708,7 +706,7 @@ scripts/eval-checkpoint.sh /path/to/checkpoint
 
 ## Safety Harness
 
-A model-agnostic safety layer that sits between clients and LiteLLM. All requests are screened through guardrails, constitutional AI critique, and full trace logging before reaching the model — and all outputs are screened before delivery.
+A model-agnostic safety layer that sits between clients and the upstream OpenAI-compatible proxy (sparkrun on `:4000`). All requests are screened through guardrails, constitutional AI critique, and full trace logging before reaching the model — and all outputs are screened before delivery.
 
 ### Quick Start
 
@@ -717,12 +715,11 @@ A model-agnostic safety layer that sits between clients and LiteLLM. All request
 cd ~/dgx-toolbox/harness && pip install -e ".[test]"
 
 # 2. Start the inference backend
-inference-up                                    # LiteLLM (:4000) + Open-WebUI (:12000)
+inference-up                                    # Open-WebUI (:12000) + sparkrun proxy (:4000)
 
-# 3. Start vLLM with a model (optional — can use cloud models via LiteLLM instead)
-VLLM_MODEL=nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16 \
-  docker compose -f ~/dgx-toolbox/docker-compose.inference.yml --profile with-vllm up -d vllm
-# Wait for model load: docker logs -f vllm 2>&1 | grep -m1 "startup complete"
+# 3. Start a model workload (optional — can use cloud models via the proxy instead)
+vllm nemotron-3-nano-4b-bf16-vllm
+# Wait for model load: vllm-logs | grep -m1 "startup complete"
 
 # 4. Start the safety harness
 harness                                         # http://localhost:5000
@@ -740,7 +737,7 @@ curl -s http://localhost:5000/v1/chat/completions \
        "messages": [{"role": "user", "content": "Hello"}]}'
 ```
 
-**Using with Open-WebUI:** Point Open-WebUI at `http://localhost:5000/v1` instead of LiteLLM's `:4000` to route all chat through the safety pipeline. In Admin Panel → Settings → Connections, add an OpenAI API connection with URL `http://host.docker.internal:5000/v1` and API key `sk-devteam-test`.
+**Using with Open-WebUI:** Point Open-WebUI at `http://localhost:5000/v1` instead of the sparkrun proxy's `:4000` to route all chat through the safety pipeline. In Admin Panel → Settings → Connections, add an OpenAI API connection with URL `http://host.docker.internal:5000/v1` and API key `sk-devteam-test`.
 
 **Using with any OpenAI SDK:**
 
@@ -762,8 +759,8 @@ print(response.choices[0].message.content)
 
 ```bash
 harness-stop                # Stop safety harness
-inference-down              # Stop LiteLLM + Open-WebUI
-docker stop vllm            # Stop vLLM
+vllm-stop                   # Stop sparkrun workload
+inference-down              # Stop sparkrun proxy + Open-WebUI
 ```
 
 ### Architecture
@@ -777,14 +774,14 @@ Clients (Open-WebUI, curl, SDKs)
 │                                                   │
 │  Auth → Rate Limit → Unicode Normalize            │
 │  → Input Guardrails (content, PII, injection)     │
-│  → LiteLLM Proxy (:4000)                          │
+│  → sparkrun proxy / LiteLLM (:4000)               │
 │  → Output Guardrails (toxicity, jailbreak, PII)   │
 │  → Constitutional AI Critique (if high-risk)       │
 │  → PII-Redacted Trace → SQLite                    │
 └──────────────────────────────────────────────────┘
          │
          ▼
-    LiteLLM (:4000) → Ollama / vLLM / Cloud APIs
+    sparkrun proxy (:4000) → Ollama / sparkrun workload / Cloud APIs
 ```
 
 ### Features
@@ -892,7 +889,7 @@ python -m harness.redteam list                     # List pending datasets
 | `HARNESS_PORT` | 5000 | Gateway port |
 | `HARNESS_CONFIG_DIR` | `harness/config` | Config directory |
 | `HARNESS_DATA_DIR` | `harness/data` | SQLite trace database directory |
-| `LITELLM_BASE_URL` | `http://localhost:4000` | LiteLLM proxy URL |
+| `LITELLM_BASE_URL` | `http://localhost:4000` | Upstream OpenAI-compatible proxy URL (sparkrun by default) |
 
 ## Model Store
 
@@ -990,15 +987,15 @@ result = classify_failure(snapshot, exit_code=0, training_completed=True)
 
 | Port | Service |
 |------|---------|
-| 4000 | LiteLLM Proxy |
+| 4000 | sparkrun proxy (LiteLLM) |
 | 5000 | Safety Harness |
 | 5678 | n8n |
 | 6900 | Argilla |
-| 8000 | Unsloth Studio |
+| 8000 | Unsloth Studio **or** sparkrun workload (vLLM) — pick one at a time |
 | 8010 | Triton TRT-LLM (HTTP) |
 | 8011 | Triton TRT-LLM (gRPC) |
 | 8012 | Triton TRT-LLM (metrics) |
-| 8020 | vLLM |
+| 8021 | sparkrun eval-checkpoint workload (ephemeral) |
 | 8080 | code-server |
 | 8081 | Label Studio |
 | 8501 | HITL Dashboard (Gradio) |
@@ -1045,12 +1042,12 @@ For **background services**, launch with `nvidia-sync exec` and then forward the
 nvidia-sync exec -- bash ~/dgx-toolbox/inference/start-open-webui-sync.sh
 nvidia-sync forward 12000
 
-# vLLM
-nvidia-sync exec -- bash ~/dgx-toolbox/inference/start-vllm-sync.sh
-nvidia-sync forward 8020
+# sparkrun workload (model serving)
+nvidia-sync exec -- sparkrun run nemotron-3-nano-4b-bf16-vllm --recipe-path ~/dgx-toolbox/recipes
+nvidia-sync forward 8000
 
-# LiteLLM
-nvidia-sync exec -- bash ~/dgx-toolbox/inference/start-litellm-sync.sh
+# sparkrun proxy (OpenAI-compatible on :4000 — same as legacy LiteLLM)
+nvidia-sync exec -- sparkrun proxy start
 nvidia-sync forward 4000
 
 # Unsloth Studio
@@ -1110,7 +1107,7 @@ Register these tools as custom apps in NVIDIA Sync so they appear in the Sync UI
 | App Name | Command | Port | Auto-open |
 |----------|---------|------|-----------|
 | Open-WebUI | `bash ~/dgx-toolbox/inference/start-open-webui-sync.sh` | 12000 | Yes |
-| LiteLLM | `bash ~/dgx-toolbox/inference/start-litellm-sync.sh` | 4000 | No |
+| sparkrun proxy | `sparkrun proxy start` | 4000 | No |
 | Unsloth Studio | `bash ~/dgx-toolbox/containers/unsloth-studio-sync.sh` | 8000 | Yes |
 | n8n | `bash ~/dgx-toolbox/containers/start-n8n.sh` | 5678 | Yes |
 | Label Studio | `bash ~/dgx-toolbox/data/start-label-studio.sh` | 8081 | Yes |
@@ -1119,7 +1116,7 @@ Register these tools as custom apps in NVIDIA Sync so they appear in the Sync UI
 | Data Jupyter | `bash ~/dgx-toolbox/data/data-toolbox-jupyter.sh` | 8890 | Yes |
 | NGC Jupyter | `bash ~/dgx-toolbox/containers/ngc-jupyter.sh` | 8888 | Yes |
 | Triton TRT-LLM | `bash ~/dgx-toolbox/eval/triton-trtllm-sync.sh` | 8010 | No |
-| vLLM | `bash ~/dgx-toolbox/inference/start-vllm-sync.sh` | 8020 | No |
+| sparkrun workload | `sparkrun run nemotron-3-nano-4b-bf16-vllm --recipe-path ~/dgx-toolbox/recipes` | 8000 | No |
 | Autoresearch | `bash ~/dgx-toolbox/karpathy-autoresearch/launch-autoresearch-sync.sh` | -- | No |
 | Safety Harness | `bash ~/dgx-toolbox/harness/start-harness.sh` | 5000 | No |
 | HITL Dashboard | `python -m harness.hitl ui --port 8501` | 8501 | Yes |
@@ -1132,14 +1129,14 @@ Refer to the [NVIDIA Sync custom apps documentation](https://docs.nvidia.com/dgx
 ### Port Forwarding Summary
 
 ```bash
-nvidia-sync forward 4000    # LiteLLM Proxy
+nvidia-sync forward 4000    # sparkrun proxy (LiteLLM)
 nvidia-sync forward 5000    # Safety Harness
 nvidia-sync forward 5678    # n8n
 nvidia-sync forward 6900    # Argilla
-nvidia-sync forward 8000    # Unsloth Studio
+nvidia-sync forward 8000    # Unsloth Studio OR sparkrun workload (vLLM)
 nvidia-sync forward 8010    # Triton TRT-LLM (HTTP)
 nvidia-sync forward 8011    # Triton TRT-LLM (gRPC)
-nvidia-sync forward 8020    # vLLM
+nvidia-sync forward 8021    # sparkrun eval-checkpoint (when running)
 nvidia-sync forward 8080    # code-server
 nvidia-sync forward 8081    # Label Studio
 nvidia-sync forward 8501    # HITL Dashboard
@@ -1167,9 +1164,12 @@ Key aliases:
 | `claude-danger` | Native Claude Code + skip permissions |
 | `build-all` | Build base → eval → data toolbox images |
 | `dgx-status` | Show all services, images, and disk usage |
-| `inference-up` / `inference-down` | Start/stop inference stack (Open-WebUI + LiteLLM) |
+| `inference-up` / `inference-down` | Start/stop inference stack (Open-WebUI + sparkrun proxy) |
 | `data-stack-up` / `data-stack-down` | Start/stop data stack (Label Studio + Argilla) |
-| `litellm-config` | Interactive LiteLLM config generator |
+| `vllm` / `vllm-stop` / `vllm-status` / `vllm-logs` | Run / stop / inspect a sparkrun model workload |
+| `litellm` / `litellm-stop` / `litellm-status` | Start / stop / inspect the sparkrun OpenAI-compatible proxy |
+| `litellm-models` / `litellm-alias` | Refresh proxy routing table / manage model aliases |
+| `dgx-mode` | Switch between single- and multi-node sparkrun modes |
 | `eval-toolbox` / `data-toolbox` | Interactive toolbox shells |
 | `harness` / `harness-stop` | Start/stop safety harness gateway |
 | `hitl` | Launch HITL review dashboard |
@@ -1213,6 +1213,12 @@ datasets
 EOF
 ```
 
+## Third-Party Software
+
+This repository vendors [sparkrun](https://github.com/spark-arena/sparkrun) as a git submodule at `vendor/sparkrun`. sparkrun is distributed under the Apache License 2.0. See `NOTICE` in the repo root for attribution and `vendor/sparkrun/LICENSE` for the full upstream licence text. The pinned commit is recorded in `.sparkrun-pin`.
+
 ## License
 
-MIT
+This project is licensed under the MIT License — see [`LICENSE`](./LICENSE).
+
+By including sparkrun as a submodule, any redistribution of the combined work must also comply with the terms of the Apache License 2.0 for the files under `vendor/sparkrun/`. sparkrun's source is not relicensed — it is sublicensed to downstream users under its original Apache-2.0 terms as permitted by Section 4 of that licence. See `NOTICE` for details.

@@ -1,7 +1,13 @@
 """HarnessLM — lm-eval LM subclass with split routing.
 
 Routes generate_until to gateway URL (POST /v1/chat/completions).
-Routes loglikelihood to LiteLLM URL (raises NotImplementedError with guidance).
+Routes loglikelihood to the upstream OpenAI-compatible proxy URL (raises
+NotImplementedError with guidance). In this project that proxy is sparkrun
+(https://github.com/spark-arena/sparkrun), which binds :4000 by default — the
+same port the legacy LiteLLM launcher used — so no wire-level changes are
+required. The ``litellm_url`` kwarg is kept for backward compatibility with
+existing callers; it refers to whatever OpenAI-compatible proxy is running
+locally, sparkrun or otherwise.
 
 Import is conditional so the module loads even if lm-eval is not installed.
 """
@@ -19,7 +25,10 @@ class HarnessLM(_BaseLM):
     """lm-eval LM subclass with split routing for DGX harness.
 
     generate_until -> gateway_url/v1/chat/completions (safety guardrails)
-    loglikelihood  -> raises NotImplementedError (use LiteLLM local-completions directly)
+    loglikelihood  -> raises NotImplementedError (hit the upstream proxy's
+                      local-completions endpoint directly, e.g. sparkrun on
+                      :4000; the ``litellm_url`` kwarg is kept as the name for
+                      backward compatibility)
     """
 
     def __init__(

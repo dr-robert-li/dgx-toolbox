@@ -21,9 +21,11 @@ components:
   unsloth_studio: containers/unsloth-studio.sh
   ngc_pytorch: containers/ngc-pytorch.sh
 
-  # Inference services
-  vllm: inference/start-vllm.sh
-  litellm: inference/start-litellm.sh
+  # Inference services (sparkrun is the replacement launcher — these
+  # values are intentionally command strings, not paths, because sparkrun
+  # installs as a uv-managed CLI rather than a shell script in this repo).
+  vllm: "sparkrun run nemotron-3-nano-4b-bf16-vllm --recipe-path ~/dgx-toolbox/recipes"
+  litellm: "sparkrun proxy start"
 
   # Evaluation
   eval_toolbox: eval/eval-toolbox.sh
@@ -37,8 +39,8 @@ components:
 
 # ── Ports ────────────────────────────────────────────────────────────────────
 ports:
-  vllm: 8020
-  litellm: 4000
+  vllm: 8000      # sparkrun workload (vLLM) — was 8020 in <= v1.4.x
+  litellm: 4000   # sparkrun proxy (LiteLLM) — unchanged port
   open_webui: 12000
 
 # ── Container mapping ───────────────────────────────────────────────────────
@@ -51,10 +53,10 @@ containers:
     workdir: /workspace/my-project      # where your project is mounted
     purpose: "Model training and fine-tuning"
   inference:
-    container_name: vllm
+    container_name: vllm                # sparkrun still launches the container as "vllm" by default
     component: vllm
-    workdir: null                       # vllm manages its own workspace
-    purpose: "Model serving via vLLM"
+    workdir: null                       # sparkrun manages its own workspace
+    purpose: "Model serving via sparkrun (vLLM runtime)"
 
 # ── Extra bind mounts ───────────────────────────────────────────────────────
 # These are passed to dgx-toolbox via EXTRA_MOUNTS env var.

@@ -42,8 +42,14 @@ echo ""
 echo "INFERENCE"
 check_systemd "ollama" "11434"
 check_service "open-webui" "12000"
-check_service "litellm" "4000"
-check_service "vllm" "8020"
+if command -v sparkrun >/dev/null 2>&1; then
+  proxy_line=$(sparkrun proxy status 2>/dev/null | head -1 || true)
+  workload_line=$(sparkrun status 2>/dev/null | head -1 || true)
+  printf "  %-20s %s\n" "sparkrun proxy" "${proxy_line:-unknown} :4000"
+  printf "  %-20s %s\n" "sparkrun workload" "${workload_line:-none}"
+else
+  printf "  %-20s %s\n" "sparkrun" "NOT INSTALLED (see setup/dgx-global-base-setup.sh)"
+fi
 check_service "triton-trtllm" "8010"
 
 echo ""

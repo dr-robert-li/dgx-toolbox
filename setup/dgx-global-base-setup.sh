@@ -132,11 +132,40 @@ else
   echo "=== HARNESS_API_KEY already set in .bashrc ==="
 fi
 
+# -----------------------------------------------------------------------------
+# uv + sparkrun (user-level, idempotent)
+# -----------------------------------------------------------------------------
+if ! command -v uv >/dev/null 2>&1; then
+  echo "=== Installing uv (astral.sh) ==="
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  # shellcheck disable=SC1091
+  . "$HOME/.local/bin/env" 2>/dev/null || export PATH="$HOME/.local/bin:$PATH"
+else
+  echo "=== uv already installed ==="
+fi
+
+SPARKRUN_SUBMODULE="$(cd "$(dirname "$0")/.." && pwd)/vendor/sparkrun"
+if [ -f "$SPARKRUN_SUBMODULE/pyproject.toml" ]; then
+  echo "=== Installing sparkrun from vendor/sparkrun (editable) ==="
+  uv tool install --force --editable "$SPARKRUN_SUBMODULE"
+else
+  echo "!!! vendor/sparkrun missing — run: git submodule update --init --recursive" >&2
+fi
+
 # Copy bash aliases if not already present
 ALIASES_SRC="$(cd "$(dirname "$0")/.." && pwd)/example.bash_aliases"
 if [ -f "$ALIASES_SRC" ]; then
   cp "$ALIASES_SRC" "$HOME/.bash_aliases"
   echo "=== Bash aliases updated from example.bash_aliases ==="
+fi
+
+# -----------------------------------------------------------------------------
+# First-time mode picker (single-node vs cluster)
+# -----------------------------------------------------------------------------
+PICKER="$(cd "$(dirname "$0")" && pwd)/dgx-mode-picker.sh"
+if [ -x "$PICKER" ]; then
+  echo "=== Running mode picker ==="
+  "$PICKER" || echo "Mode picker skipped/failed — run 'dgx-mode' later to configure."
 fi
 
 echo ""

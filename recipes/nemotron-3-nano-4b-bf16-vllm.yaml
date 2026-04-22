@@ -1,0 +1,39 @@
+recipe_version: "2"
+model: nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16
+runtime: vllm
+container: ghcr.io/spark-arena/dgx-vllm-eugr-nightly:latest
+
+metadata:
+  description: >
+    NVIDIA Nemotron-3 Nano 4B (BF16). Prior default from dgx-toolbox's
+    example.vllm-model. Conservative GPU memory utilization so harness,
+    Open-WebUI, telemetry, and dev tooling share the 128 GB UMA pool
+    comfortably on a single DGX Spark.
+  maintainers:
+    - dgx-toolbox
+  source: https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16
+
+defaults:
+  port: 8000
+  host: 0.0.0.0
+  tensor_parallel: 1
+  pipeline_parallel: 1
+  gpu_memory_utilization: 0.5
+  max_model_len: 8192
+  max_num_batched_tokens: 8192
+  trust_remote_code: true
+
+env:
+  HF_HUB_ENABLE_HF_TRANSFER: "1"
+
+command: |
+  vllm serve {model} \
+    --host {host} \
+    --port {port} \
+    --max-model-len {max_model_len} \
+    --max-num-batched-tokens {max_num_batched_tokens} \
+    --gpu-memory-utilization {gpu_memory_utilization} \
+    --trust-remote-code \
+    --enable-prefix-caching \
+    -tp {tensor_parallel} \
+    -pp {pipeline_parallel}

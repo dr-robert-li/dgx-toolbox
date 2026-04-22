@@ -1,0 +1,53 @@
+DGX Spark Toolbox
+Copyright (c) 2026 Dr. Robert Li
+
+This product is licensed under the MIT License (see LICENSE in the repository
+root).
+
+================================================================================
+Third-Party Software
+================================================================================
+
+This repository incorporates the following third-party software as a git
+submodule. Submodule source code is not copied into this repository; it is
+pulled from the upstream URL at the pinned commit recorded in `.sparkrun-pin`.
+
+--------------------------------------------------------------------------------
+sparkrun
+--------------------------------------------------------------------------------
+
+  Submodule path:     vendor/sparkrun
+  Upstream URL:       https://github.com/spark-arena/sparkrun
+  Pinned commit:      d27e320c2618979d84055b380eb9a63cae16ea50  (see .sparkrun-pin)
+  Upstream licence:   Apache License, Version 2.0
+  Licence text:       vendor/sparkrun/LICENSE
+
+  sparkrun is used unmodified as a vendored dependency to provide model-serving
+  and OpenAI-compatible proxy functionality. It replaces this repository's
+  earlier hand-rolled `start-vllm.sh` / `start-litellm.sh` launchers.
+
+  You may obtain a copy of the Apache License 2.0 at:
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the Apache License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the Apache License for the specific language governing permissions and
+  limitations under the License.
+
+  As permitted by Section 4 of the Apache License 2.0, sparkrun is sublicensed
+  to downstream users under its original Apache-2.0 terms. The MIT grant in
+  LICENSE does not alter sparkrun's licence; it applies only to files
+  originating from this repository.
+
+  Attribution requirements (Apache 2.0 Section 4(c)):
+
+    - sparkrun retains its original LICENSE and any NOTICE file (see
+      vendor/sparkrun/).
+    - This NOTICE file reproduces the required notice that sparkrun is
+      Apache-2.0 licensed and is distributed without warranties.
+
+If sparkrun upstream adds a NOTICE file in the future, downstream redistributors
+of this combined work should include the contents of that NOTICE here verbatim
+per Apache 2.0 Section 4(d).
