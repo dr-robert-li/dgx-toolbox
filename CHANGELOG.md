@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-04-22 — Fix: support shell function stubs in wrappers and optimize tests
+
+### Fixed
+
+- **`scripts/_dgx_sparkrun_wrappers.sh`** — Introduced `_dgx_exec_sparkrun` helper to correctly handle shell function stubs. This allows the wrapper scripts to run successfully during tests (where `sparkrun` is mocked as a function) while maintaining the optimized `exec` path for production.
+- **`scripts/litellm-models.sh`** — Removed unsupported `--hosts` flag injection. This subcommand interacts with the local proxy management API and does not accept cluster-wide host redirection flags.
+- **`scripts/test-sparkrun-integration.sh`** — Optimized autoregister watchdog tests by allowing environment variable overrides for poll interval and attempt counts. Switched to unique log files per test case to eliminate interference from backgrounded watchdog processes.
+- **`README.md`** — Updated proxy routing guidance to reflect that `litellm-models` defaults to `--refresh` and corrected model name examples.
+
+### Added
+
+- **Watchdog Overrides** — `_dgx_vllm_autoregister_watchdog` now respects `DGX_WATCHDOG_ATTEMPTS` and `DGX_WATCHDOG_SLEEP` environment variables, enabling near-instantaneous validation in the test suite.
+
 ## 2026-04-22 — Fix: `vllm` / `litellm` wrappers now show up in the stock shell banner
 
 ### Fixed

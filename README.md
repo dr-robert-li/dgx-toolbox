@@ -156,10 +156,13 @@ it with the `:4000` proxy automatically. To force an immediate refresh or pin
 a short stable alias:
 
 ```bash
-litellm-models --refresh                              # refresh + list routed models
-sparkrun proxy alias add fast  Qwen/Qwen3-1.7B
+litellm-models                              # refresh + list routed models
+sparkrun proxy alias add fast  Qwen/Qwen3.6-35B-A3B-FP8
 sparkrun proxy alias add smart Qwen/Qwen3-8B
 ```
+
+> **Note:** `litellm-models` is a wrapper script that already defaults to
+> `--refresh` when no flags are passed, so you can just run it bare to sync.
 
 Clients (Claude Code via `claude-litellm`, Open-WebUI, the harness, any
 OpenAI-compatible SDK) then talk to the alias:
