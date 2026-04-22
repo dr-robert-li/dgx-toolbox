@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-04-20 — Claude AI & Ollama Integration (v1.4.0)
+
+### Added
+
+- **scripts/claude-ollama.sh** — New wrapper script for Claude Code to use local Ollama models. Includes model selection, environment variable management, and session tracking.
+- **example.bash_aliases** — Added `claude-ollama` alias under new `Claude AI` section.
+
+### Changed
+
+- **README.md** — Updated "Key aliases" table to include `claude-ollama`.
+
 ## 2026-04-05 — Revert vLLM --user Flag (v1.3.4)
 
 ### Fixed

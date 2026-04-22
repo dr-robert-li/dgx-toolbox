@@ -16,6 +16,7 @@ SUBCOMMAND="${1:-help}"
 shift 2>/dev/null || true
 
 case "$SUBCOMMAND" in
+  gc)      exec "${MODELSTORE_CMD}/gc.sh"      "$@" ;; # cmd/gc.sh
   init)    exec "${MODELSTORE_CMD}/init.sh"    "$@" ;; # cmd/init.sh
   status)  exec "${MODELSTORE_CMD}/status.sh"  "$@" ;; # cmd/status.sh
   migrate) exec "${MODELSTORE_CMD}/migrate.sh" "$@" ;; # cmd/migrate.sh
@@ -25,6 +26,7 @@ case "$SUBCOMMAND" in
     echo "Usage: modelstore <subcommand>"
     echo ""
     echo "Subcommands:"
+    echo "  gc       Garbage collection — find and delete incomplete/truncated models"
     echo "  init     Interactive setup wizard"
     echo "  status   Show models by tier with sizes"
     echo "  migrate  Move stale models hot->cold"

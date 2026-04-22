@@ -3,6 +3,11 @@
 # Copy to ~/.bash_aliases:  cp ~/dgx-toolbox/example.bash_aliases ~/.bash_aliases && source ~/.bash_aliases
 # ============================================================================
 
+# --- Claude AI ---
+alias claude-ollama='source ~/dgx-toolbox/scripts/claude-ollama.sh'               # Use local Ollama models with Claude Code
+alias claude-ollama-danger='source ~/dgx-toolbox/scripts/claude-ollama.sh --dangerously-skip-permissions' # Use Ollama models with Claude Code (skip permissions)
+alias claude-danger='claude --dangerously-skip-permissions'                     # Native Claude Code (skip permissions)
+
 # --- Inference Playground ---
 alias open-webui='~/dgx-toolbox/inference/start-open-webui.sh'              # Chat UI with Ollama/LiteLLM/vLLM (:12000)
 alias open-webui-stop='docker stop open-webui'                    # Stop Open-WebUI
