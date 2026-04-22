@@ -177,8 +177,13 @@ if [ -f example.bash_aliases ]; then
   pass "example.bash_aliases present"
   for needle in \
     "vllm() {" \
+    "vllm-stop() {" \
+    "vllm-logs() {" \
+    "vllm-status() {" \
+    "vllm-show() {" \
+    "_dgx_host_args() {" \
     "unalias vllm 2>/dev/null" \
-    "alias vllm-stop='sparkrun stop'" \
+    "unalias vllm-stop 2>/dev/null" \
     "alias litellm='sparkrun proxy start'" \
     "alias litellm-stop='sparkrun proxy stop'" \
     "alias claude-litellm='source ~/dgx-toolbox/scripts/claude-litellm.sh'" \
@@ -190,6 +195,21 @@ if [ -f example.bash_aliases ]; then
       pass "example.bash_aliases contains \"${needle}\""
     else
       fail "example.bash_aliases missing \"${needle}\""
+    fi
+  done
+  # The old bare-alias form of vllm-stop/logs/status/show is the regression
+  # we're guarding against — if any of these come back, PR #10's fix has
+  # been reverted.
+  for stale_alias in \
+    "alias vllm-stop='sparkrun stop'" \
+    "alias vllm-logs='sparkrun logs'" \
+    "alias vllm-status='sparkrun status'" \
+    "alias vllm-show='sparkrun show'"
+  do
+    if grep -Fq "$stale_alias" example.bash_aliases; then
+      fail "example.bash_aliases still has bare alias \"${stale_alias}\" — should be a function"
+    else
+      pass "example.bash_aliases no longer uses bare \"${stale_alias}\""
     fi
   done
 else
@@ -365,6 +385,110 @@ else
   fail "dgx-mode single clobbered DGX_PROXY_AUTOREGISTER=0 (mode.env: $(cat "$TMP_CFG2/mode.env" 2>/dev/null | tr '\n' ';'))"
 fi
 rm -rf "$STUB_DIR2" "$TMP_CFG2"
+
+# ---------------------------------------------------------------------------
+# vllm-stop / vllm-logs / vllm-status / vllm-show wrapper behavior.
+# These used to be bare aliases ('sparkrun stop', 'sparkrun logs', ...). The
+# bare form fails in single-node mode before a default cluster is registered
+# because sparkrun's stop/logs paths call _resolve_hosts_or_exit() before
+# the target check, producing "No hosts specified". PR #10 converts them to
+# functions that mirror vllm()'s host-injection logic, and makes vllm-stop
+# default to --all when no TARGET is supplied. The assertions below pin
+# that behavior.
+
+# vllm-stop with no args in single mode: inject --hosts localhost AND add --all
+OUT=$(bash -ic "$_SPARKRUN_STUB; export DGX_MODE=single; source ./example.bash_aliases; vllm-stop" 2>/dev/null)
+if echo "$OUT" | grep -q 'STUB:stop' && echo "$OUT" | grep -q -- '--hosts localhost' && echo "$OUT" | grep -q -- '--all'; then
+  pass "vllm-stop with no args injects --hosts localhost and defaults to --all"
+else
+  fail "vllm-stop did not inject --hosts localhost + --all in single mode (got: $OUT)"
+fi
+
+# vllm-stop --all in single mode: inject host, do NOT duplicate --all.
+OUT=$(bash -ic "$_SPARKRUN_STUB; export DGX_MODE=single; source ./example.bash_aliases; vllm-stop --all" 2>/dev/null)
+ALL_COUNT=$(echo "$OUT" | grep -o -- '--all' | wc -l | tr -d ' ')
+if echo "$OUT" | grep -q -- '--hosts localhost' && [ "$ALL_COUNT" = "1" ]; then
+  pass "vllm-stop --all does not duplicate --all when caller supplies it"
+else
+  fail "vllm-stop --all duplicated or missed --all (got: $OUT, --all count=$ALL_COUNT)"
+fi
+
+# vllm-stop <target> in single mode: inject host, do NOT add --all (target
+# and --all are mutually exclusive in sparkrun stop).
+OUT=$(bash -ic "$_SPARKRUN_STUB; export DGX_MODE=single; source ./example.bash_aliases; vllm-stop my-recipe" 2>/dev/null)
+if echo "$OUT" | grep -q -- '--hosts localhost' && echo "$OUT" | grep -q 'my-recipe' && ! echo "$OUT" | grep -q -- '--all'; then
+  pass "vllm-stop <target> injects --hosts localhost and does not add --all"
+else
+  fail "vllm-stop <target> added --all or missed host injection (got: $OUT)"
+fi
+
+# vllm-stop with explicit --hosts: do NOT inject a second --hosts.
+OUT=$(bash -ic "$_SPARKRUN_STUB; export DGX_MODE=single; source ./example.bash_aliases; vllm-stop --hosts 10.0.0.1 --all" 2>/dev/null)
+HOST_COUNT=$(echo "$OUT" | grep -o -- '--hosts' | wc -l | tr -d ' ')
+if [ "$HOST_COUNT" = "1" ] && echo "$OUT" | grep -q '10.0.0.1'; then
+  pass "vllm-stop --hosts <x> does not duplicate --hosts when caller supplies it"
+else
+  fail "vllm-stop duplicated --hosts when caller supplied one (got: $OUT, --hosts count=$HOST_COUNT)"
+fi
+
+# vllm-stop with --cluster: skip host injection (cluster wins).
+OUT=$(bash -ic "$_SPARKRUN_STUB; export DGX_MODE=single; source ./example.bash_aliases; vllm-stop --cluster prod --all" 2>/dev/null)
+if echo "$OUT" | grep -q -- '--cluster prod' && ! echo "$OUT" | grep -q -- '--hosts'; then
+  pass "vllm-stop --cluster skips --hosts injection"
+else
+  fail "vllm-stop --cluster wrongly injected --hosts (got: $OUT)"
+fi
+
+# vllm-stop with no DGX_MODE: no injection, still defaults to --all so
+# "stop everything" works once the user configures a cluster.
+OUT=$(bash -ic "$_SPARKRUN_STUB; unset DGX_MODE; export DGX_TOOLBOX_CONFIG_DIR=/nonexistent-$$; source ./example.bash_aliases; vllm-stop" 2>/dev/null)
+if echo "$OUT" | grep -q 'STUB:stop --all' && ! echo "$OUT" | grep -q -- '--hosts'; then
+  pass "vllm-stop with no mode configured defaults to --all and skips host injection"
+else
+  fail "vllm-stop with no mode behaved unexpectedly (got: $OUT)"
+fi
+
+# vllm-logs: inject --hosts localhost in single mode, pass positional args through.
+OUT=$(bash -ic "$_SPARKRUN_STUB; export DGX_MODE=single; source ./example.bash_aliases; vllm-logs my-recipe --follow" 2>/dev/null)
+if echo "$OUT" | grep -q 'STUB:logs' && echo "$OUT" | grep -q -- '--hosts localhost' && echo "$OUT" | grep -q 'my-recipe' && echo "$OUT" | grep -q -- '--follow'; then
+  pass "vllm-logs injects --hosts localhost and forwards positional args + flags"
+else
+  fail "vllm-logs did not inject host or forward args (got: $OUT)"
+fi
+
+# vllm-status: inject --hosts localhost in single mode.
+OUT=$(bash -ic "$_SPARKRUN_STUB; export DGX_MODE=single; source ./example.bash_aliases; vllm-status" 2>/dev/null)
+if echo "$OUT" | grep -q 'STUB:status' && echo "$OUT" | grep -q -- '--hosts localhost'; then
+  pass "vllm-status injects --hosts localhost in single mode"
+else
+  fail "vllm-status did not inject --hosts localhost (got: $OUT)"
+fi
+
+# vllm-show: inject --hosts localhost in single mode, forward recipe name.
+OUT=$(bash -ic "$_SPARKRUN_STUB; export DGX_MODE=single; source ./example.bash_aliases; vllm-show recipe.yaml" 2>/dev/null)
+if echo "$OUT" | grep -q 'STUB:show' && echo "$OUT" | grep -q -- '--hosts localhost' && echo "$OUT" | grep -q 'recipe.yaml'; then
+  pass "vllm-show injects --hosts localhost and forwards recipe argument"
+else
+  fail "vllm-show did not inject host or forward argument (got: $OUT)"
+fi
+
+# The wrappers must be functions in the current shell after sourcing, not
+# aliases — bash aliases don't support arg-aware logic.
+for fn in vllm-stop vllm-logs vllm-status vllm-show; do
+  if bash -ic "source ./example.bash_aliases; type $fn 2>/dev/null" | head -1 | grep -q "$fn is a function"; then
+    pass "$fn is a shell function after sourcing example.bash_aliases"
+  else
+    fail "$fn is not a shell function after sourcing example.bash_aliases"
+  fi
+done
+
+# Re-source safety for the new wrappers: sourcing over pre-existing aliases
+# (older installs) must not raise a syntax error.
+if bash -ic 'alias vllm-stop="echo old"; alias vllm-logs="echo old"; alias vllm-status="echo old"; alias vllm-show="echo old"; source ./example.bash_aliases; type vllm-stop | head -1' 2>/dev/null | grep -q 'vllm-stop is a function'; then
+  pass "example.bash_aliases re-sources cleanly over pre-existing vllm-stop/logs/status/show aliases"
+else
+  fail "example.bash_aliases fails to redefine wrappers when aliases already exist"
+fi
 
 # dgx-mode single must call through to sparkrun to register a localhost
 # cluster as the default. Stub `sparkrun` and capture its calls to confirm.
