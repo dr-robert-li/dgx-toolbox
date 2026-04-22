@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-04-22 — README: HF model onboarding + LAN URL (docs-only)
+
+### Changed
+
+- **`README.md`** — Quick Start now prints both `http://localhost:4000/v1` and `http://<LAN_IP>:4000/v1` after `litellm`, so other devices on the local network know where to point. Added a new **Downloading new models from Hugging Face** subsection covering: `hf` CLI install + `hf auth login`, `hf download` (full repo + `--include` patterns), the Xet-based fast-download knobs (`HF_XET_HIGH_PERFORMANCE`) that replace the deprecated `hf_transfer` path in `huggingface_hub` v1.x, serving a downloaded model via an existing upstream recipe (with `sparkrun registry add` for the [official](https://github.com/spark-arena/recipe-registry) and [community](https://github.com/spark-arena/community-recipe-registry) registries), authoring a custom recipe under `recipes/`, and wiring it through the `:4000` proxy with a stable alias. Also called out the `sparkrun proxy start --host 127.0.0.1` / `--master-key` hardening options since the default bind is `0.0.0.0` with no auth.
+
 ## 2026-04-22 — sparkrun Integration (v1.5.0)
 
 ### Added
