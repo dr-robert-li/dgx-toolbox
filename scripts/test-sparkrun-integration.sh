@@ -211,8 +211,11 @@ fi
 # pre-recipe host check doesn't bail with "No hosts specified". Stub
 # `sparkrun` as a function that echoes its argv, source the aliases, and
 # check what gets forwarded.
+# Existing tests set DGX_PROXY_AUTOREGISTER=0 so the autoregister watchdog
+# doesn't run concurrently and pollute captured output. Autoregister has its
+# own dedicated tests further down.
 _SPARKRUN_STUB='sparkrun() { echo "STUB:$*"; }; export -f sparkrun'
-OUT=$(bash -ic "$_SPARKRUN_STUB; export DGX_MODE=single; source ./example.bash_aliases; vllm qwen3.6" 2>/dev/null)
+OUT=$(bash -ic "$_SPARKRUN_STUB; export DGX_MODE=single DGX_PROXY_AUTOREGISTER=0; source ./example.bash_aliases; vllm qwen3.6" 2>/dev/null)
 if echo "$OUT" | grep -q '^STUB:run ' && echo "$OUT" | grep -q 'qwen3.6' && echo "$OUT" | grep -q -- '--hosts localhost'; then
   pass "vllm() injects --hosts localhost in single mode when no host flag given"
 else
@@ -221,7 +224,7 @@ fi
 
 # When the caller passes --hosts explicitly, the wrapper must NOT inject
 # --hosts localhost on top (would duplicate the flag).
-OUT=$(bash -ic "$_SPARKRUN_STUB; export DGX_MODE=single; source ./example.bash_aliases; vllm qwen3.6 --hosts 10.0.0.1" 2>/dev/null)
+OUT=$(bash -ic "$_SPARKRUN_STUB; export DGX_MODE=single DGX_PROXY_AUTOREGISTER=0; source ./example.bash_aliases; vllm qwen3.6 --hosts 10.0.0.1" 2>/dev/null)
 if echo "$OUT" | grep -q 'STUB:run qwen3.6 --hosts 10.0.0.1' && ! echo "$OUT" | grep -q -- '--hosts localhost'; then
   pass "vllm() skips host injection when caller passes --hosts explicitly"
 else
@@ -229,7 +232,7 @@ else
 fi
 
 # When the caller passes --solo, the wrapper must also skip injection.
-OUT=$(bash -ic "$_SPARKRUN_STUB; export DGX_MODE=single; source ./example.bash_aliases; vllm qwen3.6 --solo" 2>/dev/null)
+OUT=$(bash -ic "$_SPARKRUN_STUB; export DGX_MODE=single DGX_PROXY_AUTOREGISTER=0; source ./example.bash_aliases; vllm qwen3.6 --solo" 2>/dev/null)
 if echo "$OUT" | grep -q 'STUB:run qwen3.6 --solo' && ! echo "$OUT" | grep -q -- '--hosts'; then
   pass "vllm() skips host injection when caller passes --solo"
 else
@@ -238,12 +241,130 @@ fi
 
 # When DGX_MODE is not set (fresh install, picker not run), the wrapper must
 # NOT inject anything so we don't mask legitimate "no mode configured" errors.
-OUT=$(bash -ic "$_SPARKRUN_STUB; unset DGX_MODE; export DGX_TOOLBOX_CONFIG_DIR=/nonexistent-$$; source ./example.bash_aliases; vllm qwen3.6" 2>/dev/null)
+OUT=$(bash -ic "$_SPARKRUN_STUB; unset DGX_MODE; export DGX_PROXY_AUTOREGISTER=0; export DGX_TOOLBOX_CONFIG_DIR=/nonexistent-$$; source ./example.bash_aliases; vllm qwen3.6" 2>/dev/null)
 if echo "$OUT" | grep -q 'STUB:run qwen3.6' && ! echo "$OUT" | grep -q -- '--hosts'; then
   pass "vllm() does not inject --hosts when DGX_MODE is unset"
 else
   fail "vllm() injected --hosts with no mode configured (got: $OUT)"
 fi
+
+# Autoregister: the watchdog function must call `sparkrun proxy status`, and
+# when the proxy reports running:true, must then call `sparkrun proxy models
+# --refresh`. We write the stub + driver to a temporary script file to keep
+# case/newline handling intact across bash -c invocations.
+AUTOREG_DIR=$(mktemp -d)
+AUTOREG_LOG="$AUTOREG_DIR/calls.log"
+export AUTOREG_LOG
+cat > "$AUTOREG_DIR/stub-running.sh" <<'EOF_STUB'
+sparkrun() {
+  echo "CALL: $*" >> "$AUTOREG_LOG"
+  case "$1 $2" in
+    "proxy status") echo '{"running": true, "port": 4000}' ;;
+    "proxy models") echo 'Synced proxy models: added 1.' ;;
+    *) : ;;
+  esac
+}
+export -f sparkrun
+sleep() { :; }        # no-op to speed up the polling loop
+export -f sleep
+EOF_STUB
+# Run watchdog directly so we don't race with backgrounding.
+OUT=$(bash -c "source $AUTOREG_DIR/stub-running.sh && source ./example.bash_aliases && _dgx_vllm_autoregister_watchdog" 2>&1)
+if echo "$OUT" | grep -q 'Registered new workload with LiteLLM proxy'; then
+  pass "autoregister watchdog prints success message when proxy reports models added"
+else
+  fail "autoregister watchdog missed the success path (stderr: $OUT)"
+fi
+if grep -q 'CALL: proxy status --json' "$AUTOREG_LOG" && grep -q 'CALL: proxy models --refresh' "$AUTOREG_LOG"; then
+  pass "autoregister watchdog calls 'proxy status --json' and 'proxy models --refresh'"
+else
+  fail "autoregister watchdog did not issue expected sparkrun calls (log: $(tr '\n' ';' < "$AUTOREG_LOG"))"
+fi
+
+# Autoregister skip: when the proxy is NOT running, the watchdog must loop
+# without ever calling `proxy models --refresh`.
+rm -f "$AUTOREG_LOG"
+cat > "$AUTOREG_DIR/stub-stopped.sh" <<'EOF_STUB'
+sparkrun() {
+  echo "CALL: $*" >> "$AUTOREG_LOG"
+  case "$1 $2" in
+    "proxy status") echo '{"running": false}' ;;
+    *) : ;;
+  esac
+}
+export -f sparkrun
+sleep() { :; }
+export -f sleep
+EOF_STUB
+# If proxy stays stopped the watchdog loops all 240 iterations and returns 1.
+# We only care that it does NOT call 'proxy models --refresh'.
+timeout 5 bash -c "source $AUTOREG_DIR/stub-stopped.sh && source ./example.bash_aliases && _dgx_vllm_autoregister_watchdog" >/dev/null 2>&1 || true
+if [ -s "$AUTOREG_LOG" ] && ! grep -q 'CALL: proxy models --refresh' "$AUTOREG_LOG"; then
+  pass "autoregister watchdog does not call 'proxy models --refresh' when proxy is stopped"
+else
+  fail "autoregister watchdog wrongly called 'proxy models --refresh' with proxy stopped (log: $(tr '\n' ';' < "$AUTOREG_LOG" 2>/dev/null))"
+fi
+
+# Autoregister opt-out: DGX_PROXY_AUTOREGISTER=0 must prevent the wrapper
+# from spawning the watchdog.
+rm -f "$AUTOREG_LOG"
+cat > "$AUTOREG_DIR/stub-log-only.sh" <<'EOF_STUB'
+sparkrun() { echo "CALL: $*" >> "$AUTOREG_LOG"; }
+export -f sparkrun
+EOF_STUB
+timeout 3 bash -ic "source $AUTOREG_DIR/stub-log-only.sh && export DGX_MODE=single DGX_PROXY_AUTOREGISTER=0 && source ./example.bash_aliases && vllm qwen3.6" >/dev/null 2>&1 || true
+sleep 0.2  # allow any backgrounded watchdog (there shouldn't be one) to flush
+if grep -q 'CALL: run ' "$AUTOREG_LOG" 2>/dev/null && ! grep -q 'CALL: proxy status' "$AUTOREG_LOG" 2>/dev/null; then
+  pass "DGX_PROXY_AUTOREGISTER=0 prevents autoregister watchdog from running"
+else
+  fail "DGX_PROXY_AUTOREGISTER=0 did not suppress autoregister (log: $(tr '\n' ';' < "$AUTOREG_LOG" 2>/dev/null))"
+fi
+
+# Autoregister skip on --dry-run: dry-run doesn't launch a workload.
+rm -f "$AUTOREG_LOG"
+timeout 3 bash -ic "source $AUTOREG_DIR/stub-log-only.sh && export DGX_MODE=single DGX_PROXY_AUTOREGISTER=1 && source ./example.bash_aliases && vllm qwen3.6 --dry-run" >/dev/null 2>&1 || true
+sleep 0.2
+if grep -q 'CALL: run ' "$AUTOREG_LOG" 2>/dev/null && ! grep -q 'CALL: proxy status' "$AUTOREG_LOG" 2>/dev/null; then
+  pass "--dry-run suppresses autoregister watchdog"
+else
+  fail "--dry-run did not suppress autoregister (log: $(tr '\n' ';' < "$AUTOREG_LOG" 2>/dev/null))"
+fi
+
+# Autoregister skip on --foreground: watchdog output would interleave with
+# streamed container logs.
+rm -f "$AUTOREG_LOG"
+timeout 3 bash -ic "source $AUTOREG_DIR/stub-log-only.sh && export DGX_MODE=single DGX_PROXY_AUTOREGISTER=1 && source ./example.bash_aliases && vllm qwen3.6 --foreground" >/dev/null 2>&1 || true
+sleep 0.2
+if grep -q 'CALL: run ' "$AUTOREG_LOG" 2>/dev/null && ! grep -q 'CALL: proxy status' "$AUTOREG_LOG" 2>/dev/null; then
+  pass "--foreground suppresses autoregister watchdog"
+else
+  fail "--foreground did not suppress autoregister (log: $(tr '\n' ';' < "$AUTOREG_LOG" 2>/dev/null))"
+fi
+rm -rf "$AUTOREG_DIR"
+unset AUTOREG_LOG
+
+# mode.env must persist a pre-existing DGX_PROXY_AUTOREGISTER=0 across
+# re-runs of `dgx-mode single` so users don't lose their opt-out.
+STUB_DIR2=$(mktemp -d)
+cat > "$STUB_DIR2/sparkrun" <<'EOF_STUB'
+#!/usr/bin/env bash
+exit 0
+EOF_STUB
+chmod +x "$STUB_DIR2/sparkrun"
+TMP_CFG2=$(mktemp -d)
+# Seed mode.env with DGX_PROXY_AUTOREGISTER=0 (simulating a user who opted out)
+cat > "$TMP_CFG2/mode.env" <<'EOF_MODE'
+DGX_MODE=single
+DGX_PROXY_AUTOREGISTER=0
+EOF_MODE
+PATH="$STUB_DIR2:$PATH" DGX_TOOLBOX_CONFIG_DIR="$TMP_CFG2" \
+  bash setup/dgx-mode.sh single >/dev/null 2>&1
+if grep -q 'DGX_PROXY_AUTOREGISTER=0' "$TMP_CFG2/mode.env" 2>/dev/null; then
+  pass "dgx-mode single preserves existing DGX_PROXY_AUTOREGISTER=0 on re-run"
+else
+  fail "dgx-mode single clobbered DGX_PROXY_AUTOREGISTER=0 (mode.env: $(cat "$TMP_CFG2/mode.env" 2>/dev/null | tr '\n' ';'))"
+fi
+rm -rf "$STUB_DIR2" "$TMP_CFG2"
 
 # dgx-mode single must call through to sparkrun to register a localhost
 # cluster as the default. Stub `sparkrun` and capture its calls to confirm.

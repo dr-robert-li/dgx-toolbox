@@ -366,6 +366,20 @@ dgx-mode status                         # show resolved mode + hosts
 
 Every sparkrun invocation inherits this setting but can still be overridden on the fly with `--solo`, `--cluster NAME`, or `--hosts h1,h2,…`.
 
+#### Auto-registration with the LiteLLM proxy
+
+When you launch a workload with `vllm <recipe>`, a background watchdog waits for the model to come up and calls `sparkrun proxy models --refresh` so the new endpoint appears in the LiteLLM routing table automatically. No more manual `litellm-models` step before `claude-litellm` sees the model.
+
+Controlled by `DGX_PROXY_AUTOREGISTER` in `mode.env` (default `1`). Set to `0` to disable:
+
+```bash
+echo 'DGX_PROXY_AUTOREGISTER=0' >> ~/.config/dgx-toolbox/mode.env
+# or, per-invocation:
+DGX_PROXY_AUTOREGISTER=0 vllm qwen3.6
+```
+
+Skipped automatically for `--dry-run` and `--foreground`. Silently no-ops when the LiteLLM proxy isn't running.
+
 #### Ollama (Local LLM Server)
 
 Ollama runs as a systemd service (pre-installed on DGX Spark). By default it listens on `localhost:11434` only.

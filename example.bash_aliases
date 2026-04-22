@@ -40,10 +40,41 @@ alias ollama-remote='~/dgx-toolbox/inference/setup-ollama-remote.sh'          # 
 # installs that pre-date that fix, this wrapper also injects --hosts localhost
 # when DGX_MODE=single and the caller hasn't passed any host flag.
 #
+# Auto-registration with the LiteLLM proxy: by default, after launching a
+# workload the wrapper spawns a background watchdog that waits for the model
+# to come up and calls `sparkrun proxy models --refresh` so the new endpoint
+# appears in the LiteLLM routing table. Opt out with DGX_PROXY_AUTOREGISTER=0
+# (env or mode.env). Skipped automatically for --foreground / --dry-run.
+#
 # NOTE: `unalias` first so re-sourcing this file after an older install
 # (where vllm was an alias) does not trip a syntax error when the alias is
 # expanded inside the function definition.
 unalias vllm 2>/dev/null || true
+
+# Internal: background watchdog that polls until the LiteLLM proxy registers
+# a new model, then exits. Kept as a separate function so the body is
+# testable in isolation and so `disown` / `&` redirects stay legible.
+_dgx_vllm_autoregister_watchdog() {
+  # 240 * 5s = 1200s = 20 min max. Long enough for a cold image build on a
+  # fresh host; short enough to not linger indefinitely if the launch fails.
+  local _attempts=240
+  while [ "$_attempts" -gt 0 ]; do
+    sleep 5
+    _attempts=$(( _attempts - 1 ))
+    # Proxy must be running for a refresh to do anything useful.
+    if ! sparkrun proxy status --json 2>/dev/null | grep -q '"running":[[:space:]]*true'; then
+      continue
+    fi
+    local _out
+    _out=$(sparkrun proxy models --refresh 2>&1) || continue
+    if echo "$_out" | grep -qE 'Synced proxy models:.* added'; then
+      echo "[vllm] Registered new workload with LiteLLM proxy (:4000)" >&2
+      return 0
+    fi
+  done
+  return 1
+}
+
 vllm() {
   if [ "$#" -lt 1 ]; then
     echo "Usage: vllm <recipe-name|path/to/recipe.yaml> [sparkrun run options...]" >&2
@@ -52,26 +83,52 @@ vllm() {
   local _recipe="$1"; shift
   local _local="$HOME/dgx-toolbox/recipes/${_recipe}.yaml"
 
+  # Read DGX_MODE and DGX_PROXY_AUTOREGISTER from env, falling back to
+  # ~/.config/dgx-toolbox/mode.env.
+  local _mode_env="${DGX_TOOLBOX_CONFIG_DIR:-$HOME/.config/dgx-toolbox}/mode.env"
+  local _dgx_mode="${DGX_MODE:-}"
+  local _dgx_autoreg="${DGX_PROXY_AUTOREGISTER:-}"
+  if { [ -z "$_dgx_mode" ] || [ -z "$_dgx_autoreg" ]; } && [ -f "$_mode_env" ]; then
+    local _env_mode _env_autoreg
+    # shellcheck disable=SC1090
+    _env_mode="$(. "$_mode_env" && echo "${DGX_MODE:-}")"
+    # shellcheck disable=SC1090
+    _env_autoreg="$(. "$_mode_env" && echo "${DGX_PROXY_AUTOREGISTER:-}")"
+    [ -z "$_dgx_mode" ] && _dgx_mode="$_env_mode"
+    [ -z "$_dgx_autoreg" ] && _dgx_autoreg="$_env_autoreg"
+  fi
+  # Default: autoregister ON unless explicitly disabled.
+  if [ -z "$_dgx_autoreg" ]; then
+    _dgx_autoreg=1
+  fi
+
   # Defensive fallback: if the user is in single-node mode and passed no host
   # flag, inject --hosts localhost so sparkrun's pre-recipe host check passes.
   # Normally dgx-mode single registers a default cluster, but older installs
-  # may not have re-run it.
-  local _mode_env="${DGX_TOOLBOX_CONFIG_DIR:-$HOME/.config/dgx-toolbox}/mode.env"
-  local _dgx_mode="${DGX_MODE:-}"
-  if [ -z "$_dgx_mode" ] && [ -f "$_mode_env" ]; then
-    # shellcheck disable=SC1090
-    _dgx_mode="$(. "$_mode_env" && echo "${DGX_MODE:-}")"
-  fi
-  local _has_host_flag=0 _arg
+  # may not have re-run it. Also detect --foreground / --dry-run which change
+  # autoregister semantics.
+  local _has_host_flag=0 _is_foreground=0 _is_dry_run=0 _arg
   for _arg in "$@"; do
     case "$_arg" in
       --hosts|--hosts=*|-H|--hosts-file|--hosts-file=*|--cluster|--cluster=*|--solo)
-        _has_host_flag=1; break ;;
+        _has_host_flag=1 ;;
+      --foreground)
+        _is_foreground=1 ;;
+      --dry-run)
+        _is_dry_run=1 ;;
     esac
   done
   local _host_args=()
   if [ "$_dgx_mode" = "single" ] && [ "$_has_host_flag" -eq 0 ]; then
     _host_args=(--hosts localhost)
+  fi
+
+  # Spawn the autoregister watchdog BEFORE launching so it runs concurrently
+  # with sparkrun's foreground log-follow. Skipped when the user explicitly
+  # opted out, or when semantics don't fit (dry-run, foreground).
+  if [ "$_dgx_autoreg" = "1" ] && [ "$_is_foreground" -eq 0 ] && [ "$_is_dry_run" -eq 0 ]; then
+    ( _dgx_vllm_autoregister_watchdog ) >&2 &
+    disown 2>/dev/null || true
   fi
 
   if [ -f "$_recipe" ]; then
