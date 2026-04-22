@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-04-22 — Fix: re-source safety for `vllm()` + `dgx-discover` recipe discovery
+
+### Added
+
+- **`setup/dgx-discover.sh` + `dgx-discover` alias** — New convenience wrapper that answers "what models can I actually pull and serve right now?" without having to memorise sparkrun's underlying flags. Subcommands: `list` (default — local recipes + every registered registry), `local` (only `~/dgx-toolbox/recipes/`), `registries` (registered registry list), `search <query>` (sparkrun search by name/model/description), `show <recipe>` (resolved config + VRAM estimate; prefers local path for in-repo recipes), `update` (refresh registries). Flags like `--runtime vllm`, `--registry <name>`, `--all`, `--json` are forwarded to `sparkrun list` / `sparkrun search`. Bare queries like `dgx-discover qwen` fall through to search, and `dgx-discover --runtime vllm` implies `list`.
+- **`scripts/test-sparkrun-integration.sh`** — Four new assertions: `setup/dgx-discover.sh` is executable, its `help` and `local` subcommands run cleanly, and a regression test that sourcing `example.bash_aliases` over a pre-existing `vllm` alias still defines `vllm` as a function (the `syntax error near unexpected token `(`` regression below).
+
+### Fixed
+
+- **`example.bash_aliases`** — Re-sourcing the file in a shell that already has `vllm` defined as an alias (e.g. from an older install where `vllm='sparkrun run --recipe-path ...'`) caused `bash: syntax error near unexpected token `(`` because interactive bash expands aliases before parsing the function definition. Prepended `unalias vllm 2>/dev/null || true` so the old alias is cleared before the new function is defined. Verified by reproducing the error interactively and confirming the fix under `bash -ic`.
+
 ## 2026-04-22 — Fix: `vllm` wrapper uses real sparkrun CLI (no `--recipe-path`)
 
 ### Fixed

@@ -177,12 +177,14 @@ if [ -f example.bash_aliases ]; then
   pass "example.bash_aliases present"
   for needle in \
     "vllm() {" \
+    "unalias vllm 2>/dev/null" \
     "alias vllm-stop='sparkrun stop'" \
     "alias litellm='sparkrun proxy start'" \
     "alias litellm-stop='sparkrun proxy stop'" \
     "alias claude-litellm='source ~/dgx-toolbox/scripts/claude-litellm.sh'" \
     "alias dgx-mode=" \
-    "alias dgx-recipes="
+    "alias dgx-recipes=" \
+    "alias dgx-discover="
   do
     if grep -Fq "$needle" example.bash_aliases; then
       pass "example.bash_aliases contains \"${needle}\""
@@ -192,6 +194,33 @@ if [ -f example.bash_aliases ]; then
   done
 else
   fail "example.bash_aliases missing"
+fi
+
+# Re-source safety: even if `vllm` is already an alias in the current shell
+# (e.g. from an older install), sourcing example.bash_aliases must not raise
+# "syntax error near unexpected token `(`". Regression test for the issue
+# where alias expansion collided with the function definition.
+if bash -ic 'alias vllm="echo old"; source ./example.bash_aliases; type vllm | head -1' 2>/dev/null | grep -q 'vllm is a function'; then
+  pass "example.bash_aliases re-sources cleanly over a pre-existing vllm alias"
+else
+  fail "example.bash_aliases fails to redefine vllm when an alias already exists"
+fi
+
+# dgx-discover script
+if [ -x setup/dgx-discover.sh ]; then
+  pass "setup/dgx-discover.sh is executable"
+  if setup/dgx-discover.sh help >/dev/null 2>&1; then
+    pass "setup/dgx-discover.sh help runs without error"
+  else
+    fail "setup/dgx-discover.sh help failed"
+  fi
+  if setup/dgx-discover.sh local >/dev/null 2>&1; then
+    pass "setup/dgx-discover.sh local enumerates recipes/ directory"
+  else
+    fail "setup/dgx-discover.sh local failed"
+  fi
+else
+  fail "setup/dgx-discover.sh missing or not executable"
 fi
 
 if [ -f docker-compose.inference.yml ]; then

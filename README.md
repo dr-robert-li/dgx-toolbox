@@ -132,6 +132,12 @@ dgx-recipes list     # show what's registered
 dgx-recipes update   # git-pull every enabled registry; restore missing defaults
 dgx-recipes status   # summary + the URLs this script installs
 
+# Discover what's actually available to run (local + all registries):
+dgx-discover                     # full listing: local recipes + registry recipes
+dgx-discover search qwen3        # search by name / model / description
+dgx-discover show qwen3-1.7b-vllm  # inspect resolved recipe (incl. VRAM estimate)
+dgx-discover --runtime vllm      # filter by backend (vllm|sglang|llama-cpp)
+
 # Run any recipe by name — sparkrun pulls the model on first launch if needed:
 vllm qwen3-1.7b-vllm
 # or directly via sparkrun:
@@ -1267,6 +1273,7 @@ Key aliases:
 | `litellm-models` / `litellm-alias` | Refresh proxy routing table / manage model aliases |
 | `dgx-mode` | Switch between single- and multi-node sparkrun modes |
 | `dgx-recipes` | Register / list / update sparkrun recipe registries (official + community) |
+| `dgx-discover` | Discover recipes across local + registries: `list`, `local`, `registries`, `search <q>`, `show <r>`, `update` |
 | `eval-toolbox` / `data-toolbox` | Interactive toolbox shells |
 | `harness` / `harness-stop` | Start/stop safety harness gateway |
 | `hitl` | Launch HITL review dashboard |
