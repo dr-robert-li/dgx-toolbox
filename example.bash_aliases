@@ -14,8 +14,9 @@
 # --- Claude AI ---
 alias claude-ollama='source ~/dgx-toolbox/scripts/claude-ollama.sh'               # Use local Ollama models with Claude Code
 alias claude-ollama-danger='source ~/dgx-toolbox/scripts/claude-ollama.sh --dangerously-skip-permissions' # Use Ollama models with Claude Code (skip permissions)
-alias claude-litellm='source ~/dgx-toolbox/scripts/claude-litellm.sh'             # Route Claude Code through sparkrun proxy (LiteLLM, :4000)
+alias claude-litellm='source ~/dgx-toolbox/scripts/claude-litellm.sh'             # Route Claude Code through sparkrun proxy (LiteLLM, :4000) via local SSE filter
 alias claude-litellm-danger='source ~/dgx-toolbox/scripts/claude-litellm.sh --dangerously-skip-permissions' # Claude Code via sparkrun proxy (skip permissions)
+alias sparkrun-claude='source ~/dgx-toolbox/scripts/sparkrun-claude/sparkrun-claude' # Portable sparkrun-claude package (same as claude-litellm — preferred name)
 alias claude-danger='claude --dangerously-skip-permissions'                     # Native Claude Code (skip permissions)
 
 # --- Inference Playground (Open-WebUI container) ---

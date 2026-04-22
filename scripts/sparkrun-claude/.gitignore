@@ -1,0 +1,7 @@
+# Machine-specific runtime state — never distribute
+.last-endpoint
+filter.log
+*.log
+*.pid
+__pycache__/
+*.pyc
