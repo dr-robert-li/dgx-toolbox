@@ -185,6 +185,21 @@ fi
 if [ -f "$SPARKRUN_SUBMODULE/pyproject.toml" ]; then
   echo "=== Installing sparkrun from vendor/sparkrun (editable) ==="
   uv tool install --force --editable "$SPARKRUN_SUBMODULE"
+
+  # `source ~/.bashrc` from a non-interactive script is unreliable (bash
+  # short-circuits most interactive init), so the PATH update written to
+  # ~/.bashrc earlier isn't guaranteed to be in effect here. Explicitly
+  # surface uv's tool bin dir so downstream steps in this same script
+  # run (mode picker → dgx-mode.sh → `command -v sparkrun`) can see it.
+  UV_TOOL_BIN="$(uv tool dir --bin 2>/dev/null || echo "$HOME/.local/bin")"
+  case ":$PATH:" in
+    *":$UV_TOOL_BIN:"*) ;;
+    *) export PATH="$UV_TOOL_BIN:$PATH" ;;
+  esac
+
+  if ! command -v sparkrun >/dev/null 2>&1; then
+    echo "!!! sparkrun installed but not on PATH (looked in $UV_TOOL_BIN)" >&2
+  fi
 else
   echo "!!! vendor/sparkrun still missing after submodule init attempt — skipping sparkrun install." >&2
 fi
