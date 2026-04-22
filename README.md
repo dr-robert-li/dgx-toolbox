@@ -78,12 +78,6 @@ ollama-remote
 # On older single-node installs, the `litellm` / `litellm-models` wrappers
 # inject `--hosts localhost` the same way `vllm` does.
 litellm
-
-# Print the LAN URL other devices on your network can use (not just localhost)
-# e.g. http://10.24.11.13:4000/v1 → point any OpenAI-compatible client here.
-LAN_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
-echo "Proxy (local):  http://localhost:4000/v1"
-echo "Proxy (LAN):    http://${LAN_IP}:4000/v1"
 # Locked-down alternative — only listen on localhost:
 #   litellm --host 127.0.0.1
 # LAN with auth:
@@ -92,7 +86,7 @@ echo "Proxy (LAN):    http://${LAN_IP}:4000/v1"
 # Serve a model via a sparkrun recipe (single-node by default, or --cluster NAME)
 vllm nemotron-3-nano-4b-bf16-vllm
 
-# Check what's running
+# Check what's running and your serving IP and port
 dgx-status
 ```
 
