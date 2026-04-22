@@ -44,7 +44,9 @@ git clone <repo-url> ~/dgx-toolbox
 # Copy aliases
 cp ~/dgx-toolbox/example.bash_aliases ~/.bash_aliases && source ~/.bash_aliases
 
-# One-time system setup (Python, Miniconda, pyenv, uv, sparkrun, harness, kaggle)
+# One-time system setup (Python, Miniconda, pyenv, uv, sparkrun, harness, kaggle, hf)
+# Installs the `hf` CLI (huggingface_hub[cli] + hf_xet) and exports
+# HF_XET_HIGH_PERFORMANCE=1 in .bashrc for fast Xet-backed model downloads.
 # Also runs the DGX mode picker (single vs. cluster) on first launch.
 bash ~/dgx-toolbox/setup/dgx-global-base-setup.sh
 source ~/.bashrc
@@ -60,6 +62,11 @@ mkdir -p ~/.kaggle && chmod 700 ~/.kaggle
 echo '{"username":"YOUR_KAGGLE_USERNAME","key":"KGAT_your_key_here"}' > ~/.kaggle/kaggle.json
 chmod 600 ~/.kaggle/kaggle.json
 # Both username and key are required — find your username at kaggle.com/account
+
+# Optional: log in to Hugging Face (only needed for gated/private repos)
+# Get a read token at https://huggingface.co/settings/tokens → New token
+hf auth login
+# Or non-interactively:  hf auth login --token "$HF_TOKEN"
 
 # Build all toolbox images (base → eval + data)
 build-all
@@ -89,47 +96,28 @@ dgx-status
 
 ### Downloading new models from Hugging Face
 
-vLLM (via sparkrun) loads models straight from the Hugging Face cache at
-`~/.cache/huggingface` — the runtime exports `HF_HOME=/cache/huggingface` inside
-the container and bind-mounts the host cache in, so anything you pull on the
-host is visible to every recipe. You only need to download a model once per
-box; every subsequent recipe that references it starts instantly.
+sparkrun resolves every recipe's `model:` field against the Hugging Face cache
+at `~/.cache/huggingface` and **downloads automatically on first run** —
+`huggingface_hub.snapshot_download()` fires from inside the runtime, reuses
+anything already cached, and skips the pull entirely on subsequent starts.
+The runtime also exports `HF_HOME=/cache/huggingface` inside the container
+and bind-mounts the host cache, so anything you pull manually is visible to
+every recipe too.
 
-#### 1. Install the `hf` CLI and authenticate
+#### 1. Authenticate (only for gated/private repos)
 
-```bash
-# ARM64-native wheel, no compile step.
-pip install -U "huggingface_hub[cli]" hf_xet
-
-# One-time login (stores a token at ~/.cache/huggingface/token).
-# Only needed for gated repos (Llama, Nemotron, etc.) — public models work anonymously.
-hf auth login
-# Or non-interactively:
-# hf auth login --token "$HF_TOKEN"
-```
-
-`hf` is the current Hugging Face CLI — the old `huggingface-cli` name still
-works as an alias but is being phased out ([announcement](https://huggingface.co/blog/hf-cli)).
-
-#### 2. Download a model
+The `hf` CLI and `hf_xet` are installed by `setup/dgx-global-base-setup.sh`,
+and `HF_XET_HIGH_PERFORMANCE=1` is exported in your `.bashrc` for fast
+Xet-backed downloads. For gated models (Llama, Nemotron, etc.) log in once:
 
 ```bash
-# Full repo — most common for serving.
-hf download nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16
-
-# Just the files you need (handy for very large repos):
-hf download Qwen/Qwen3-1.7B --include "*.safetensors" "*.json" "tokenizer*"
-
-# Optional: speed up big downloads on a fast link (Xet-backed repos).
-# Replaces the deprecated HF_HUB_ENABLE_HF_TRANSFER path — huggingface_hub v1.x
-# removed hf_transfer; use the Xet knobs instead.
-export HF_XET_HIGH_PERFORMANCE=1
+hf auth login      # interactive, stores token at ~/.cache/huggingface/token
+# or: hf auth login --token "$HF_TOKEN"
 ```
 
-The model lands at `~/.cache/huggingface/hub/models--<org>--<name>/`. sparkrun
-reuses whatever is already there — no explicit import step.
+Public repos work without authentication.
 
-#### 3. Serve it via a registered recipe
+#### 2. Serve a model via a registered recipe
 
 Sparkrun resolves recipes by name from registered registries. Two upstream
 registries are provisioned automatically during `setup/dgx-global-base-setup.sh`
@@ -150,13 +138,16 @@ vllm qwen3-1.7b-vllm
 sparkrun run qwen3-1.7b-vllm
 ```
 
+The model lands at `~/.cache/huggingface/hub/models--<org>--<name>/`. Later
+recipes that reference the same model start instantly.
+
 For anything not in those registries, drop a YAML file into
 `~/dgx-toolbox/recipes/` (the local recipe directory the `vllm` alias already
 searches) and use `recipes/nemotron-3-nano-4b-bf16-vllm.yaml` as a template.
 See [`recipes/README.md`](recipes/README.md) for the schema and sm_121
 container guidance.
 
-#### 4. Route the model through the proxy
+#### 3. Route the model through the proxy
 
 Once the recipe is running, sparkrun's autodiscover sweep (every 30s) registers
 it with the `:4000` proxy automatically. To force an immediate refresh or pin
