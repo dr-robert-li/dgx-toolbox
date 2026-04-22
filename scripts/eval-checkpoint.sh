@@ -10,8 +10,8 @@
 #   EVAL_F1_THRESHOLD:   F1 pass threshold (default: 0.80)
 #   EVAL_VLLM_PORT:      eval recipe port (default: 8021)
 #   EVAL_GPU_UTIL:       GPU memory utilization for eval recipe (default: 0.5)
-#   EVAL_RECIPE:         sparkrun recipe name (default: eval-checkpoint)
-#   EVAL_RECIPE_PATH:    sparkrun --recipe-path (default: <repo>/recipes)
+#   EVAL_RECIPE:         sparkrun recipe name or path (default: eval-checkpoint)
+#   EVAL_RECIPE_PATH:    directory holding the eval recipe YAML (default: <repo>/recipes)
 #   PROD_RECIPE:         production recipe to stop when --stop-production is set
 set -euo pipefail
 
@@ -42,7 +42,7 @@ if [ $# -lt 1 ]; then
   echo "  EVAL_VLLM_PORT      eval recipe port (default: 8021)" >&2
   echo "  EVAL_GPU_UTIL       GPU memory utilization for eval recipe (default: 0.5)" >&2
   echo "  EVAL_RECIPE         sparkrun recipe (default: eval-checkpoint)" >&2
-  echo "  EVAL_RECIPE_PATH    sparkrun --recipe-path (default: <repo>/recipes)" >&2
+  echo "  EVAL_RECIPE_PATH    directory holding the eval recipe YAML (default: <repo>/recipes)" >&2
   echo "  PROD_RECIPE         production recipe to pause when --stop-production given" >&2
   exit 1
 fi
@@ -179,9 +179,19 @@ trap '_cleanup' EXIT
 sparkrun stop "$EVAL_RECIPE" 2>/dev/null || true
 
 echo "Launching sparkrun eval recipe ($EVAL_RECIPE) on :${EVAL_VLLM_PORT}..."
+# Sparkrun has no --recipe-path flag; resolve recipes either by direct path or
+# by name via registered registries. Prefer the full path when the eval recipe
+# lives in this repo's recipes/ dir so local edits are picked up without
+# registering a registry.
+if [ -f "${EVAL_RECIPE_PATH}/${EVAL_RECIPE}.yaml" ]; then
+  EVAL_RECIPE_REF="${EVAL_RECIPE_PATH}/${EVAL_RECIPE}.yaml"
+elif [ -f "$EVAL_RECIPE" ]; then
+  EVAL_RECIPE_REF="$EVAL_RECIPE"
+else
+  EVAL_RECIPE_REF="$EVAL_RECIPE"
+fi
 MODEL="$CHECKPOINT_DIR" \
-sparkrun run "$EVAL_RECIPE" \
-  --recipe-path "$EVAL_RECIPE_PATH" \
+sparkrun run "$EVAL_RECIPE_REF" \
   --port "$EVAL_VLLM_PORT" \
   --gpu-mem "$GPU_UTIL" \
   --solo

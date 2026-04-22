@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-04-22 — Fix: `vllm` wrapper uses real sparkrun CLI (no `--recipe-path`)
+
+### Fixed
+
+- **`example.bash_aliases`** — The `vllm` alias previously passed `--recipe-path ~/dgx-toolbox/recipes` to `sparkrun run`, but sparkrun's `run` command does not expose that flag. Invoking `vllm <recipe>` failed with `Error: No such option: --recipe-path`. Replaced the alias with a `vllm()` shell function that first checks `~/dgx-toolbox/recipes/<name>.yaml` and passes the full path to `sparkrun run`, falling back to sparkrun's normal name resolution (registered registries + CWD) for anything not found locally. Direct paths (`vllm /path/to/recipe.yaml`) and upstream registry names (`vllm qwen3.6`) both work.
+- **`scripts/eval-checkpoint.sh`** — Dropped the broken `--recipe-path "$EVAL_RECIPE_PATH"` argument from the `sparkrun run` invocation. The script now resolves `${EVAL_RECIPE_PATH}/${EVAL_RECIPE}.yaml` to a direct path when the file exists, otherwise passes the recipe reference through unchanged so registered-registry names still resolve. `EVAL_RECIPE_PATH` env var is retained as the lookup directory (default: `<repo>/recipes`).
+- **`recipes/README.md`** — Rewrote the usage block to match the real sparkrun CLI (name resolution via registries + CWD, or a direct path), and documented the `vllm` wrapper's local-first behaviour.
+- **`README.md`** — Corrected the two `sparkrun run ... --recipe-path ~/dgx-toolbox/recipes` snippets (NVIDIA Sync launcher and Port Reference table) to pass the full recipe path. Clarified in the sparkrun section that sparkrun has no `--recipe-path` flag.
+- **`scripts/test-sparkrun-integration.sh`** — Updated the alias assertion from `alias vllm='sparkrun run` to `vllm() {` to match the new function form. All 117/117 assertions still pass.
+
 ## 2026-04-22 — Default recipe registries + HF model onboarding + LAN URL
 
 ### Added

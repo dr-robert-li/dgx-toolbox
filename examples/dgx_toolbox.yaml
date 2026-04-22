@@ -24,7 +24,7 @@ components:
   # Inference services (sparkrun is the replacement launcher — these
   # values are intentionally command strings, not paths, because sparkrun
   # installs as a uv-managed CLI rather than a shell script in this repo).
-  vllm: "sparkrun run nemotron-3-nano-4b-bf16-vllm --recipe-path ~/dgx-toolbox/recipes"
+  vllm: "sparkrun run ~/dgx-toolbox/recipes/nemotron-3-nano-4b-bf16-vllm.yaml"
   litellm: "sparkrun proxy start"
 
   # Evaluation
