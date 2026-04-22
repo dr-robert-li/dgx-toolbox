@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-04-22 — Fix: single-node LiteLLM wrappers miss healthy vLLM backends
+
+### Fixed
+
+- **`example.bash_aliases`** — `litellm` and `litellm-models` were bare aliases (`sparkrun proxy start`, `sparkrun proxy models --refresh`), so in single-node mode they skipped the same `--hosts localhost` safety net that the `vllm*` wrappers already applied. That left the proxy's autodiscover loop and manual refresh path without host context on installs that pre-dated the default `solo` cluster setup, which is how you end up with a healthy local vLLM server but `No models registered with the proxy.` `litellm` and `litellm-models` are now shell functions that reuse `_dgx_host_args()`, inject `--hosts localhost` in `DGX_MODE=single`, preserve explicit caller-supplied host flags, and keep `litellm-models` defaulting to `--refresh` without duplicating it.
+- **`example.bash_aliases`** — `_dgx_vllm_autoregister_watchdog()` now refreshes the proxy through the same host-aware `sparkrun proxy models ... --refresh` path, so auto-registration uses the identical single-node fallback instead of the old blind refresh call.
+
+### Added
+
+- **`scripts/test-sparkrun-integration.sh`** — New wrapper assertions validate that `litellm` injects `--hosts localhost` in single mode, `litellm-models` injects host context and adds exactly one `--refresh`, explicit `--refresh` is not duplicated, the autoregister watchdog uses the host-aware refresh call, and the new proxy wrappers remain functions when re-sourced over older aliases.
+
 ## 2026-04-22 — Fix: `vllm-stop` / `vllm-logs` / `vllm-status` / `vllm-show` fail with "No hosts specified"
 
 ### Fixed

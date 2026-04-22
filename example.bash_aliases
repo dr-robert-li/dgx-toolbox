@@ -39,17 +39,18 @@ alias ollama-remote='~/dgx-toolbox/inference/setup-ollama-remote.sh'          # 
 # as sparkrun's default to satisfy this. As a defensive fallback for users on
 # installs that pre-date that fix, the wrappers below also inject
 # --hosts localhost when DGX_MODE=single and the caller hasn't passed any
-# host flag. This applies to `vllm` (sparkrun run) as well as `vllm-stop`,
-# `vllm-logs`, `vllm-status`, and `vllm-show` — sparkrun's stop/logs paths
-# call the same host-resolution gate, so bare `sparkrun stop --all` fails
-# with "No hosts specified" on an install where no default cluster is
-# registered yet.
+# host flag. This applies to `vllm` (sparkrun run) as well as the `vllm-*`
+# wrappers and the `litellm` / `litellm-models` wrappers — sparkrun's proxy
+# auto-discover and manual refresh flows also need host resolution to find
+# live endpoints on single-node installs that pre-date the default-cluster
+# fix.
 #
 # Auto-registration with the LiteLLM proxy: by default, after launching a
 # workload the wrapper spawns a background watchdog that waits for the model
-# to come up and calls `sparkrun proxy models --refresh` so the new endpoint
-# appears in the LiteLLM routing table. Opt out with DGX_PROXY_AUTOREGISTER=0
-# (env or mode.env). Skipped automatically for --foreground / --dry-run.
+# to come up and calls the same host-aware `litellm-models` refresh path so
+# the new endpoint appears in the LiteLLM routing table. Opt out with
+# DGX_PROXY_AUTOREGISTER=0 (env or mode.env). Skipped automatically for
+# --foreground / --dry-run.
 #
 # NOTE: `unalias` first so re-sourcing this file after an older install
 # (where these were aliases) does not trip a syntax error when the alias is
@@ -86,6 +87,10 @@ _dgx_vllm_autoregister_watchdog() {
   # 240 * 5s = 1200s = 20 min max. Long enough for a cold image build on a
   # fresh host; short enough to not linger indefinitely if the launch fails.
   local _attempts=240
+  local _host_args=() _line
+  while IFS= read -r _line; do
+    [ -n "$_line" ] && _host_args+=("$_line")
+  done < <(_dgx_host_args)
   while [ "$_attempts" -gt 0 ]; do
     sleep 5
     _attempts=$(( _attempts - 1 ))
@@ -94,7 +99,7 @@ _dgx_vllm_autoregister_watchdog() {
       continue
     fi
     local _out
-    _out=$(sparkrun proxy models --refresh 2>&1) || continue
+    _out=$(sparkrun proxy models "${_host_args[@]}" --refresh 2>&1) || continue
     if echo "$_out" | grep -qE 'Synced proxy models:.* added'; then
       echo "[vllm] Registered new workload with LiteLLM proxy (:4000)" >&2
       return 0
@@ -221,10 +226,36 @@ vllm-show() {
 }
 
 # --- OpenAI-compatible proxy (sparkrun proxy → LiteLLM under the hood, :4000) ---
-alias litellm='sparkrun proxy start'                                          # Start proxy on :4000
+unalias litellm 2>/dev/null || true
+litellm() {
+  local _host_args=() _line
+  while IFS= read -r _line; do
+    [ -n "$_line" ] && _host_args+=("$_line")
+  done < <(_dgx_host_args "$@")
+  sparkrun proxy start "${_host_args[@]}" "$@"
+}
 alias litellm-stop='sparkrun proxy stop'                                      # Stop proxy
 alias litellm-status='sparkrun proxy status'                                  # Proxy status
-alias litellm-models='sparkrun proxy models --refresh'                        # Refresh and list routed models
+unalias litellm-models 2>/dev/null || true
+litellm-models() {
+  local _host_args=() _line
+  while IFS= read -r _line; do
+    [ -n "$_line" ] && _host_args+=("$_line")
+  done < <(_dgx_host_args "$@")
+
+  local _has_refresh=0 _arg
+  for _arg in "$@"; do
+    case "$_arg" in
+      --refresh) _has_refresh=1 ;;
+    esac
+  done
+  local _extra_args=()
+  if [ "$_has_refresh" -eq 0 ]; then
+    _extra_args+=(--refresh)
+  fi
+
+  sparkrun proxy models "${_host_args[@]}" "${_extra_args[@]}" "$@"
+}
 alias litellm-alias='sparkrun proxy alias'                                    # Manage proxy aliases (add/remove/list)
 
 # --- DGX mode (single vs. cluster) ---
