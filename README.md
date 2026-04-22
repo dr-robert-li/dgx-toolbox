@@ -1161,6 +1161,8 @@ Key aliases:
 |-------|--------|
 | `claude-ollama` | Use local Ollama models with Claude Code |
 | `claude-ollama-danger` | Claude Code with Ollama + skip permissions |
+| `claude-litellm` | Route Claude Code through sparkrun proxy (LiteLLM, `:4000`) |
+| `claude-litellm-danger` | Claude Code via sparkrun proxy + skip permissions |
 | `claude-danger` | Native Claude Code + skip permissions |
 | `build-all` | Build base → eval → data toolbox images |
 | `dgx-status` | Show all services, images, and disk usage |

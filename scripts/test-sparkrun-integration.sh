@@ -124,6 +124,7 @@ declare -A MUST_REFERENCE=(
   [scripts/autoresearch-deregister.sh]="sparkrun proxy"
   [scripts/eval-checkpoint.sh]="sparkrun run"
   [scripts/demo-autoresearch.sh]="sparkrun"
+  [scripts/claude-litellm.sh]="sparkrun proxy"
   [setup/dgx-global-base-setup.sh]="vendor/sparkrun"
   [setup/dgx-mode.sh]="mode.env"
   [setup/dgx-mode-picker.sh]="dgx-mode"
@@ -164,6 +165,7 @@ if [ -f example.bash_aliases ]; then
     "alias vllm-stop='sparkrun stop'" \
     "alias litellm='sparkrun proxy start'" \
     "alias litellm-stop='sparkrun proxy stop'" \
+    "alias claude-litellm='source ~/dgx-toolbox/scripts/claude-litellm.sh'" \
     "alias dgx-mode="
   do
     if grep -Fq "$needle" example.bash_aliases; then
