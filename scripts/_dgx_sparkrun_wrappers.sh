@@ -85,7 +85,10 @@ _dgx_vllm_should_autoregister() {
 
 _dgx_vllm_resolve_recipe() {
   local _recipe="$1"
-  local _local="$HOME/dgx-toolbox/recipes/${_recipe}.yaml"
+  # Determine repo root relative to this sourced script (scripts/_dgx_sparkrun_wrappers.sh)
+  local _repo_root
+  _repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  local _local="$_repo_root/recipes/${_recipe}.yaml"
 
   if [ -f "$_recipe" ]; then
     printf '%s\n' "$_recipe"
