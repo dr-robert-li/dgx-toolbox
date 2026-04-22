@@ -1,0 +1,545 @@
+#!/usr/bin/env bash
+# sparkrun-claude — Connect Claude Code to a sparkrun/LiteLLM proxy
+#
+# Source this script — do NOT execute directly.  The alias in
+# example.bash_aliases handles that:
+#   alias sparkrun-claude='source /path/to/sparkrun-claude'
+#
+# What it does:
+#   1. Discovers a running sparkrun/LiteLLM proxy (saved endpoint →
+#      loopback → ARP cache → /24 subnet scan → manual prompt)
+#   2. Lists models via GET /v1/models, prompts for selection
+#   3. Launches a local SSE filter proxy that fixes LiteLLM's
+#      anthropic_messages stream bugs (duplicate message_start events +
+#      empty thinking blocks) — see proxy-filter.py for details
+#   4. Saves every Anthropic env var, points Claude Code at the filter
+#   5. Launches: claude --dangerously-skip-permissions --model <selected>
+#   6. On exit: stops filter, restores every env var to its original state
+
+# Self-locate: find the directory this script lives in, regardless of
+# whether it was sourced from bash, zsh, or any relative/absolute path.
+if [ -n "${BASH_SOURCE[0]:-}" ]; then
+    _SC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+elif [ -n "${ZSH_VERSION:-}" ]; then
+    # ${(%):-%x} expands to the current script path in zsh
+    _SC_DIR="$(cd "$(dirname "${(%):-%x}")" && pwd)"
+else
+    _SC_DIR="$(cd "$(dirname "${0}")" && pwd)"
+fi
+_SC_LAST_ENDPOINT="${_SC_DIR}/.last-endpoint"
+_SC_PROXY_PORT="${SPARKRUN_PROXY_PORT:-4000}"
+
+# ─── Help ─────────────────────────────────────────────────────────────────────
+
+_sc_show_help() {
+    cat << 'EOF'
+sparkrun-claude — Claude Code routed through sparkrun/LiteLLM proxy
+
+USAGE
+    source ~/sparkrun-claude/sparkrun-claude [-h|--help]
+
+WHAT IT DOES
+    1. Checks .last-endpoint, then ARP cache, then subnet /24 scan for a
+       LiteLLM proxy listening on port 4000
+    2. Prompts for IP:port if auto-discovery fails
+    3. Lists registered models (GET /v1/models) — you pick main + advisor tier
+    4. Unsets ANTHROPIC_API_KEY, sets proxy routing vars, launches Claude Code
+       with --dangerously-skip-permissions
+    5. On exit: every Anthropic env var is restored to its pre-session value
+
+ADVISOR MODE
+    The opus/advisor tier can be set independently.  If your sparkrun proxy
+    has a passthrough route for claude-opus-4-7, select it at the prompt to
+    use cloud Opus for /advisor while running local inference everywhere else.
+
+ENV VARS SET DURING SESSION
+    ANTHROPIC_BASE_URL                       http://<proxy-host>:<port>
+    ANTHROPIC_AUTH_TOKEN                     sparkrun-local
+    ANTHROPIC_API_KEY                        (unset)
+    ANTHROPIC_MODEL                          <selected>
+    ANTHROPIC_DEFAULT_HAIKU_MODEL            <selected>
+    ANTHROPIC_DEFAULT_SONNET_MODEL           <selected>
+    ANTHROPIC_DEFAULT_OPUS_MODEL             <selected or advisor choice>
+    ANTHROPIC_SMALL_FAST_MODEL               <selected>
+    DISABLE_TELEMETRY                        1
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC 1
+
+FILES
+    ~/sparkrun-claude/.last-endpoint   Saved proxy address (auto-updated)
+EOF
+}
+
+if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+    _sc_show_help
+    return 0 2>/dev/null || exit 0
+fi
+
+# ─── Save original env vars (UNSET_MARKER distinguishes unset vs empty) ───────
+# ${VAR:-} collapses both unset and empty to ""; UNSET_MARKER lets restore()
+# correctly re-unset vars that were never set in the first place.
+
+_SC_UNSET_MARKER="__SC_UNSET__"
+
+_sc_orig_ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY-$_SC_UNSET_MARKER}"
+_sc_orig_ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL-$_SC_UNSET_MARKER}"
+_sc_orig_ANTHROPIC_AUTH_TOKEN="${ANTHROPIC_AUTH_TOKEN-$_SC_UNSET_MARKER}"
+_sc_orig_ANTHROPIC_MODEL="${ANTHROPIC_MODEL-$_SC_UNSET_MARKER}"
+_sc_orig_ANTHROPIC_DEFAULT_HAIKU_MODEL="${ANTHROPIC_DEFAULT_HAIKU_MODEL-$_SC_UNSET_MARKER}"
+_sc_orig_ANTHROPIC_DEFAULT_SONNET_MODEL="${ANTHROPIC_DEFAULT_SONNET_MODEL-$_SC_UNSET_MARKER}"
+_sc_orig_ANTHROPIC_DEFAULT_OPUS_MODEL="${ANTHROPIC_DEFAULT_OPUS_MODEL-$_SC_UNSET_MARKER}"
+_sc_orig_ANTHROPIC_SMALL_FAST_MODEL="${ANTHROPIC_SMALL_FAST_MODEL-$_SC_UNSET_MARKER}"
+_sc_orig_DISABLE_TELEMETRY="${DISABLE_TELEMETRY-$_SC_UNSET_MARKER}"
+_sc_orig_CLAUDE_DISABLE_TRAFFIC="${CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC-$_SC_UNSET_MARKER}"
+_sc_orig_CLAUDE_MAX_TOKENS="${CLAUDE_CODE_MAX_OUTPUT_TOKENS-$_SC_UNSET_MARKER}"
+
+# ─── Restore function (called after claude exits) ─────────────────────────────
+
+_sc_restore_env() {
+    echo ""
+    echo "Restoring original Anthropic environment..."
+
+    _sc_restore_var() {
+        local var="$1" val="$2"
+        if [ "$val" = "$_SC_UNSET_MARKER" ]; then
+            unset "$var"
+        else
+            export "$var"="$val"
+        fi
+    }
+
+    _sc_restore_var ANTHROPIC_API_KEY                          "$_sc_orig_ANTHROPIC_API_KEY"
+    _sc_restore_var ANTHROPIC_BASE_URL                         "$_sc_orig_ANTHROPIC_BASE_URL"
+    _sc_restore_var ANTHROPIC_AUTH_TOKEN                       "$_sc_orig_ANTHROPIC_AUTH_TOKEN"
+    _sc_restore_var ANTHROPIC_MODEL                            "$_sc_orig_ANTHROPIC_MODEL"
+    _sc_restore_var ANTHROPIC_DEFAULT_HAIKU_MODEL              "$_sc_orig_ANTHROPIC_DEFAULT_HAIKU_MODEL"
+    _sc_restore_var ANTHROPIC_DEFAULT_SONNET_MODEL             "$_sc_orig_ANTHROPIC_DEFAULT_SONNET_MODEL"
+    _sc_restore_var ANTHROPIC_DEFAULT_OPUS_MODEL               "$_sc_orig_ANTHROPIC_DEFAULT_OPUS_MODEL"
+    _sc_restore_var ANTHROPIC_SMALL_FAST_MODEL                 "$_sc_orig_ANTHROPIC_SMALL_FAST_MODEL"
+    _sc_restore_var DISABLE_TELEMETRY                          "$_sc_orig_DISABLE_TELEMETRY"
+    _sc_restore_var CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC   "$_sc_orig_CLAUDE_DISABLE_TRAFFIC"
+    _sc_restore_var CLAUDE_CODE_MAX_OUTPUT_TOKENS              "$_sc_orig_CLAUDE_MAX_TOKENS"
+
+    unset _sc_orig_ANTHROPIC_API_KEY _sc_orig_ANTHROPIC_BASE_URL \
+          _sc_orig_ANTHROPIC_AUTH_TOKEN _sc_orig_ANTHROPIC_MODEL \
+          _sc_orig_ANTHROPIC_DEFAULT_HAIKU_MODEL _sc_orig_ANTHROPIC_DEFAULT_SONNET_MODEL \
+          _sc_orig_ANTHROPIC_DEFAULT_OPUS_MODEL _sc_orig_ANTHROPIC_SMALL_FAST_MODEL \
+          _sc_orig_DISABLE_TELEMETRY _sc_orig_CLAUDE_DISABLE_TRAFFIC \
+          _sc_orig_CLAUDE_MAX_TOKENS _SC_UNSET_MARKER
+    unset -f _sc_restore_var _sc_restore_env _sc_port_open \
+             _sc_check_proxy _sc_get_models _sc_discover_proxy _sc_show_help 2>/dev/null
+
+    echo "Done — ANTHROPIC_API_KEY restored, proxy vars cleared."
+}
+
+# ─── Connectivity helpers ─────────────────────────────────────────────────────
+
+_sc_port_open() {
+    nc -z -w 1 "$1" "$2" 2>/dev/null
+}
+
+_sc_check_proxy() {
+    local base="$1"
+    curl -sf --max-time 3 "${base}/health"    > /dev/null 2>&1 && return 0
+    curl -sf --max-time 3 "${base}/v1/models" > /dev/null 2>&1 && return 0
+    return 1
+}
+
+_sc_get_models() {
+    local base="$1"
+    curl -sf --max-time 8 "${base}/v1/models" 2>/dev/null \
+        | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    for m in d.get('data', []):
+        mid = m.get('id','')
+        if mid:
+            print(mid)
+except Exception:
+    pass
+" 2>/dev/null
+}
+
+# ─── Network discovery ────────────────────────────────────────────────────────
+# Strategy (in order):
+#   1. Try saved .last-endpoint
+#   2. Probe loopback (127.0.0.1) — covers locally-hosted LiteLLM
+#   3. Parallel nc scan of ARP cache (zero new traffic, instant)
+#   4. Parallel nc scan of local /24 subnet (~3 s for 254 hosts)
+# Prints the working base URL to stdout; all progress goes to stderr.
+
+_sc_discover_proxy() {
+    local tmpdir candidate found_base=""
+    tmpdir=$(mktemp -d)
+
+    # 1. Saved endpoint
+    if [ -f "$_SC_LAST_ENDPOINT" ]; then
+        local saved
+        saved=$(cat "$_SC_LAST_ENDPOINT" 2>/dev/null | tr -d '[:space:]')
+        if [ -n "$saved" ]; then
+            printf "  Trying saved endpoint: %s\n" "$saved" >&2
+            if _sc_check_proxy "$saved"; then
+                rm -rf "$tmpdir"
+                echo "$saved"
+                return 0
+            fi
+            echo "  ✗ Saved endpoint not responding" >&2
+        fi
+    fi
+
+    # 2. Localhost (covers LiteLLM running on same machine as Claude Code)
+    local loopback_candidate="http://127.0.0.1:${_SC_PROXY_PORT}"
+    printf "  Probing loopback %s... " "$loopback_candidate" >&2
+    if _sc_check_proxy "$loopback_candidate"; then
+        echo "✓" >&2
+        rm -rf "$tmpdir"
+        echo "$loopback_candidate"
+        return 0
+    fi
+    echo "not running" >&2
+
+    # Helper: check a list of IPs in parallel, write matches to tmpdir
+    _sc_parallel_scan() {
+        local port="$1"; shift
+        local ip
+        for ip in "$@"; do
+            (
+                if _sc_port_open "$ip" "$port" 2>/dev/null; then
+                    printf '%s' "$ip" > "${tmpdir}/hit_${ip//./_}"
+                fi
+            ) &
+        done
+        wait
+    }
+
+    # 2. ARP cache scan
+    local arp_ips
+    arp_ips=$(arp -a 2>/dev/null \
+        | grep -v incomplete \
+        | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' \
+        | sort -u)
+
+    if [ -n "$arp_ips" ]; then
+        echo "  Scanning ARP cache ($(echo "$arp_ips" | wc -l | tr -d ' ') hosts)..." >&2
+        # shellcheck disable=SC2086
+        _sc_parallel_scan "$_SC_PROXY_PORT" $arp_ips
+
+        for f in "${tmpdir}"/hit_*; do
+            [ -f "$f" ] || continue
+            candidate="http://$(cat "$f"):${_SC_PROXY_PORT}"
+            if _sc_check_proxy "$candidate"; then
+                found_base="$candidate"
+                break
+            fi
+        done
+    fi
+
+    # 3. Subnet scan (if ARP came up empty)
+    if [ -z "$found_base" ]; then
+        local local_ip subnet
+        local_ip=$(ifconfig 2>/dev/null \
+            | awk '/inet / && !/127\.0\.0\.1/ {print $2; exit}')
+
+        if [ -n "$local_ip" ]; then
+            subnet="${local_ip%.*}"
+            printf "  Scanning %s.1-254 on port %s...\n" "$subnet" "$_SC_PROXY_PORT" >&2
+            rm -f "${tmpdir}"/hit_*
+
+            local all_ips=""
+            local i
+            for i in $(seq 1 254); do
+                all_ips="${all_ips} ${subnet}.${i}"
+            done
+            # shellcheck disable=SC2086
+            _sc_parallel_scan "$_SC_PROXY_PORT" $all_ips
+
+            for f in "${tmpdir}"/hit_*; do
+                [ -f "$f" ] || continue
+                candidate="http://$(cat "$f"):${_SC_PROXY_PORT}"
+                if _sc_check_proxy "$candidate"; then
+                    found_base="$candidate"
+                    break
+                fi
+            done
+        fi
+    fi
+
+    unset -f _sc_parallel_scan 2>/dev/null
+    rm -rf "$tmpdir"
+
+    if [ -n "$found_base" ]; then
+        echo "$found_base"
+        return 0
+    fi
+    return 1
+}
+
+# ─── Banner ───────────────────────────────────────────────────────────────────
+
+echo ""
+echo "╔══════════════════════════════════════════════╗"
+echo "║    sparkrun-claude  ·  local inference       ║"
+echo "║  Claude Code  →  LiteLLM  →  sparkrun/vLLM  ║"
+echo "╚══════════════════════════════════════════════╝"
+echo ""
+
+# ─── Proxy discovery ──────────────────────────────────────────────────────────
+
+_SC_PROXY_BASE=""
+
+if [ -n "$ANTHROPIC_BASE_URL" ] && _sc_check_proxy "$ANTHROPIC_BASE_URL"; then
+    echo "✓ Re-using existing proxy: $ANTHROPIC_BASE_URL"
+    _SC_PROXY_BASE="$ANTHROPIC_BASE_URL"
+fi
+
+if [ -z "$_SC_PROXY_BASE" ]; then
+    echo "Discovering sparkrun proxy on local network..."
+    _SC_PROXY_BASE=$(_sc_discover_proxy)
+
+    if [ -n "$_SC_PROXY_BASE" ]; then
+        echo "✓ Proxy found: $_SC_PROXY_BASE"
+    else
+        echo "✗ Auto-discovery found nothing"
+        echo ""
+        printf "Enter proxy address (e.g. 192.168.1.100:4000): " >&2
+        read -r _sc_user_input
+
+        if [[ "$_sc_user_input" =~ ^http ]]; then
+            _SC_PROXY_BASE="$_sc_user_input"
+        else
+            _SC_PROXY_BASE="http://${_sc_user_input}"
+        fi
+        unset _sc_user_input
+
+        printf "\nTesting %s ... " "$_SC_PROXY_BASE" >&2
+        if ! _sc_check_proxy "$_SC_PROXY_BASE"; then
+            echo "✗"
+            echo "Cannot reach $_SC_PROXY_BASE — aborting."
+            _sc_restore_env
+            return 1 2>/dev/null || exit 1
+        fi
+        echo "✓"
+    fi
+fi
+
+# Persist for next session
+printf '%s' "$_SC_PROXY_BASE" > "$_SC_LAST_ENDPOINT"
+
+# ─── Model selection ──────────────────────────────────────────────────────────
+
+echo ""
+echo "Fetching model list from proxy..."
+_sc_tmpmodels=$(mktemp)
+_sc_get_models "$_SC_PROXY_BASE" > "$_sc_tmpmodels"
+_sc_model_count=$(wc -l < "$_sc_tmpmodels" | tr -d '[:space:]')
+
+_SC_MAIN_MODEL=""
+
+if [ "${_sc_model_count:-0}" -eq 0 ]; then
+    echo "⚠  No models registered in proxy." >&2
+    echo "   Run on the DGX:  sparkrun proxy models --refresh" >&2
+    echo "   Or enter a model name manually if you know it is loaded:" >&2
+    while [ -z "$_SC_MAIN_MODEL" ]; do
+        printf "> " >&2
+        read -r _SC_MAIN_MODEL
+        if [ -z "$_SC_MAIN_MODEL" ]; then
+            echo "  Model name cannot be empty. Ctrl-C to abort." >&2
+        fi
+    done
+else
+    echo ""
+    echo "Available models:"
+    _sc_idx=1
+    while IFS= read -r _sc_line; do
+        printf "  %3d)  %s\n" "$_sc_idx" "$_sc_line"
+        _sc_idx=$((_sc_idx + 1))
+    done < "$_sc_tmpmodels"
+    echo ""
+
+    printf "Select main model [1]: " >&2
+    read -r _sc_choice
+    _sc_choice="${_sc_choice:-1}"
+
+    if [[ "$_sc_choice" =~ ^[0-9]+$ ]] \
+       && [ "$_sc_choice" -ge 1 ] \
+       && [ "$_sc_choice" -le "$_sc_model_count" ]; then
+        _SC_MAIN_MODEL=$(sed -n "${_sc_choice}p" "$_sc_tmpmodels")
+    else
+        _SC_MAIN_MODEL=$(sed -n "1p" "$_sc_tmpmodels")
+        echo "  (invalid selection — using first model)"
+    fi
+    unset _sc_choice _sc_idx _sc_line
+fi
+
+rm -f "$_sc_tmpmodels"
+unset _sc_tmpmodels _sc_model_count
+
+# Guard: abort if model name is still empty (should not happen after loop above)
+if [ -z "$_SC_MAIN_MODEL" ]; then
+    echo "✗ No model selected — aborting." >&2
+    _sc_restore_env
+    return 1 2>/dev/null || exit 1
+fi
+
+echo "  Main model:  $_SC_MAIN_MODEL"
+
+# ─── Start local SSE filter proxy ─────────────────────────────────────────────
+# LiteLLM's anthropic_messages passthrough emits a malformed stream that breaks
+# Claude Code's parser: duplicate `message_start` + empty `thinking` block
+# with no deltas. The filter (proxy-filter.py) fixes both in flight.
+
+_SC_FILTER_PORT="${SPARKRUN_FILTER_PORT:-11435}"
+_SC_FILTER_URL="http://127.0.0.1:${_SC_FILTER_PORT}"
+_SC_FILTER_LOG="$_SC_DIR/filter.log"
+_SC_FILTER_PID=""
+
+echo ""
+echo "Starting local SSE filter proxy (port ${_SC_FILTER_PORT})..."
+
+# Kill any stale filter on that port
+_sc_stale_pid=$(lsof -ti tcp:${_SC_FILTER_PORT} 2>/dev/null | head -1)
+if [ -n "$_sc_stale_pid" ]; then
+    kill -9 "$_sc_stale_pid" 2>/dev/null
+    sleep 0.3
+fi
+unset _sc_stale_pid
+
+: > "$_SC_FILTER_LOG"
+SPARKRUN_UPSTREAM="$_SC_PROXY_BASE" \
+SPARKRUN_FILTER_PORT="$_SC_FILTER_PORT" \
+    python3 "$_SC_DIR/proxy-filter.py" >> "$_SC_FILTER_LOG" 2>&1 &
+_SC_FILTER_PID=$!
+
+# Poll for the "ready" marker on the filter's stdout
+_sc_ready=0
+for _sc_i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+    if grep -q "ready" "$_SC_FILTER_LOG" 2>/dev/null; then
+        _sc_ready=1
+        break
+    fi
+    sleep 0.2
+done
+unset _sc_i
+
+if [ "$_sc_ready" != 1 ]; then
+    echo "✗ Filter proxy failed to start. Log:"
+    cat "$_SC_FILTER_LOG"
+    kill "$_SC_FILTER_PID" 2>/dev/null
+    _sc_restore_env
+    return 1 2>/dev/null || exit 1
+fi
+unset _sc_ready
+
+echo "✓ Filter ready  PID=$_SC_FILTER_PID  ${_SC_FILTER_URL} → ${_SC_PROXY_BASE}"
+echo "  (logs: $_SC_FILTER_LOG)"
+
+# ─── Apply proxy environment ──────────────────────────────────────────────────
+
+echo ""
+echo "Setting proxy environment..."
+
+unset ANTHROPIC_API_KEY
+unset ANTHROPIC_AUTH_TOKEN
+
+# Point Claude Code at the local filter, not the DGX proxy directly.
+export ANTHROPIC_BASE_URL="$_SC_FILTER_URL"
+export ANTHROPIC_AUTH_TOKEN="${SPARKRUN_MASTER_KEY:-sparkrun-local}"
+
+export ANTHROPIC_MODEL="$_SC_MAIN_MODEL"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL="$_SC_MAIN_MODEL"
+export ANTHROPIC_DEFAULT_SONNET_MODEL="$_SC_MAIN_MODEL"
+export ANTHROPIC_DEFAULT_OPUS_MODEL="$_SC_MAIN_MODEL"
+export ANTHROPIC_SMALL_FAST_MODEL="$_SC_MAIN_MODEL"
+
+export DISABLE_TELEMETRY=1
+export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+
+# Reasoning models (Qwen3, DeepSeek-R1, o1-style) burn output tokens on hidden
+# thinking before producing visible text. Claude Code's default max_tokens
+# (~4K) is exhausted during the thinking phase → empty response to user.
+# 32K output default; Qwen3.6 native context window is 262144 total tokens.
+export CLAUDE_CODE_MAX_OUTPUT_TOKENS="${SPARKRUN_MAX_TOKENS:-32768}"
+
+printf "  ANTHROPIC_BASE_URL              = %s\n"   "$ANTHROPIC_BASE_URL"
+printf "  ANTHROPIC_MODEL                 = %s\n"   "$ANTHROPIC_MODEL"
+printf "  ANTHROPIC_DEFAULT_HAIKU_MODEL   = %s\n"   "$ANTHROPIC_DEFAULT_HAIKU_MODEL"
+printf "  ANTHROPIC_DEFAULT_SONNET_MODEL  = %s\n"   "$ANTHROPIC_DEFAULT_SONNET_MODEL"
+printf "  ANTHROPIC_DEFAULT_OPUS_MODEL    = %s\n"   "$ANTHROPIC_DEFAULT_OPUS_MODEL"
+printf "  ANTHROPIC_SMALL_FAST_MODEL      = %s\n"   "$ANTHROPIC_SMALL_FAST_MODEL"
+printf "  ANTHROPIC_API_KEY               = (unset)\n"
+printf "  ANTHROPIC_AUTH_TOKEN            = %s\n"   "$ANTHROPIC_AUTH_TOKEN"
+printf "  CLAUDE_CODE_MAX_OUTPUT_TOKENS   = %s\n"   "$CLAUDE_CODE_MAX_OUTPUT_TOKENS"
+printf "  DISABLE_TELEMETRY               = 1\n"
+printf "  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = 1\n"
+
+# Auth-conflict warning hint
+if security find-generic-password -s "Claude Code-credentials" >/dev/null 2>&1; then
+    echo ""
+    echo "  ⓘ  Claude Code has a stored OAuth login (Keychain). You may see a"
+    echo "     cosmetic 'Auth conflict' warning at launch — the proxy still"
+    echo "     works (uses ANTHROPIC_AUTH_TOKEN). To silence: claude /logout"
+fi
+
+# ─── Quick API validation ─────────────────────────────────────────────────────
+# Send an intentionally invalid model name → proxy should return HTTP 4xx fast
+# (no GPU inference triggered). Proves the /v1/messages endpoint is wired up.
+
+echo ""
+printf "Validating Anthropic Messages API endpoint... " >&2
+_sc_http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
+    -X POST "${_SC_PROXY_BASE}/v1/messages" \
+    -H "Content-Type: application/json" \
+    -H "x-api-key: sparkrun-local" \
+    -d '{"model":"__probe__","max_tokens":1,"messages":[{"role":"user","content":"ping"}]}' \
+    2>/dev/null)
+
+case "$_sc_http_code" in
+    000)
+        echo "✗  No HTTP response — proxy may not support /v1/messages"
+        echo "   Proceeding anyway; Claude Code will surface any errors."
+        ;;
+    2*|4*)
+        echo "✓  Endpoint alive (HTTP $_sc_http_code)"
+        ;;
+    *)
+        echo "⚠  HTTP $_sc_http_code — check proxy config if Claude Code fails"
+        ;;
+esac
+unset _sc_http_code
+
+# ─── Launch Claude Code ───────────────────────────────────────────────────────
+
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "Launching Claude Code → sparkrun proxy"
+echo "Session end will restore your Anthropic env vars."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+
+claude --dangerously-skip-permissions --model "$_SC_MAIN_MODEL"
+
+# ─── Shut down filter proxy ───────────────────────────────────────────────────
+
+if [ -n "$_SC_FILTER_PID" ]; then
+    echo ""
+    echo "Stopping SSE filter proxy (PID $_SC_FILTER_PID)..."
+    kill "$_SC_FILTER_PID" 2>/dev/null
+    # Give it a moment to exit cleanly before force-killing
+    for _sc_i in 1 2 3 4 5; do
+        if ! kill -0 "$_SC_FILTER_PID" 2>/dev/null; then
+            break
+        fi
+        sleep 0.2
+    done
+    if kill -0 "$_SC_FILTER_PID" 2>/dev/null; then
+        kill -9 "$_SC_FILTER_PID" 2>/dev/null
+    fi
+    wait "$_SC_FILTER_PID" 2>/dev/null
+    unset _sc_i
+fi
+
+# ─── Restore on session end ───────────────────────────────────────────────────
+
+_sc_restore_env
+unset _SC_PROXY_BASE _SC_MAIN_MODEL _SC_ADVISOR_MODEL _SC_DIR _SC_LAST_ENDPOINT \
+      _SC_PROXY_PORT _SC_FILTER_PID _SC_FILTER_PORT _SC_FILTER_URL _SC_FILTER_LOG
