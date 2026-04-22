@@ -156,7 +156,7 @@ it with the `:4000` proxy automatically. To force an immediate refresh or pin
 a short stable alias:
 
 ```bash
-litellm-models                              # refresh + list routed models
+litellm-models --refresh                              # refresh + list routed models
 sparkrun proxy alias add fast  Qwen/Qwen3-1.7B
 sparkrun proxy alias add smart Qwen/Qwen3-8B
 ```
