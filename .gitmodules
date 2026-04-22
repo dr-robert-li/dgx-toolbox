@@ -1,0 +1,4 @@
+[submodule "vendor/sparkrun"]
+	path = vendor/sparkrun
+	url = https://github.com/spark-arena/sparkrun.git
+	branch = main

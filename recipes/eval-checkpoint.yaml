@@ -1,0 +1,39 @@
+recipe_version: "2"
+# Ephemeral eval workload — expects MODEL env var or CLI override to supply the
+# checkpoint directory or HF repo id. Used by scripts/eval-checkpoint.sh to run
+# evaluation against a fine-tune without disturbing the production inference
+# workload on :8000.
+model: ${MODEL:-/models/checkpoint}
+runtime: vllm
+container: ghcr.io/spark-arena/dgx-vllm-eugr-nightly:latest
+
+metadata:
+  description: >
+    Ephemeral eval harness runner. Bind checkpoint dir via --extra-mount or
+    the container's /models volume.
+  maintainers:
+    - dgx-toolbox
+
+defaults:
+  port: 8021
+  host: 0.0.0.0
+  tensor_parallel: 1
+  pipeline_parallel: 1
+  gpu_memory_utilization: 0.4
+  max_model_len: 4096
+  max_num_batched_tokens: 4096
+  trust_remote_code: true
+
+env:
+  HF_HUB_ENABLE_HF_TRANSFER: "1"
+
+command: |
+  vllm serve {model} \
+    --host {host} \
+    --port {port} \
+    --max-model-len {max_model_len} \
+    --max-num-batched-tokens {max_num_batched_tokens} \
+    --gpu-memory-utilization {gpu_memory_utilization} \
+    --trust-remote-code \
+    -tp {tensor_parallel} \
+    -pp {pipeline_parallel}

@@ -1,5 +1,51 @@
 # Changelog
 
+## 2026-04-22 — sparkrun Integration (v1.5.0)
+
+### Added
+
+- **sparkrun submodule** — [spark-arena/sparkrun](https://github.com/spark-arena/sparkrun) is now vendored at `vendor/sparkrun` (tracks `main`; pinned commit recorded in `.sparkrun-pin`). Replaces the hand-rolled `start-vllm.sh` / `start-litellm.sh` / `setup-litellm-config.sh` launchers with a maintained, Apache-2.0 CLI that supports single-node and multi-node workloads out of the box.
+- **`recipes/` directory** — Project-specific sparkrun recipes: `nemotron-3-nano-4b-bf16-vllm.yaml` (preserves the previous default model + gpu-memory envelope) and `eval-checkpoint.yaml` (ephemeral vLLM workload used by `scripts/eval-checkpoint.sh`). Upstream recipes remain available from `vendor/sparkrun/recipes/`.
+- **`setup/dgx-mode.sh` + `setup/dgx-mode-picker.sh`** — Choose single-node or multi-node sparkrun defaults. Picker runs on first `setup/dgx-global-base-setup.sh` invocation; `dgx-mode single|cluster <hosts>|status` switches later. On-the-fly overrides remain available via `--solo`, `--cluster NAME`, and `--hosts h1,h2,…`.
+- **`scripts/test-sparkrun-integration.sh`** — Smoke test suite that validates submodule pinning, recipe parseability, rewritten downstream scripts, alias coverage, LICENSE/NOTICE attribution, and workflow submodule handling.
+- **`scripts/claude-litellm.sh`** — Wrapper that routes Claude Code through the sparkrun proxy (LiteLLM, `:4000`). Discovers models via `sparkrun proxy models --json`, offers a numbered picker, pins every Claude Code tier (`haiku`/`sonnet`/`opus`/`small-fast`) to the chosen local model to prevent cloud fallback, and restores the shell's Anthropic env vars on exit. Mirrors the behaviour of `scripts/claude-ollama.sh`. New aliases: `claude-litellm`, `claude-litellm-danger`.
+- **`.github/workflows/test.yml`** now checks out submodules so CI sees sparkrun.
+- **LICENSE (MIT) + NOTICE** — Explicit MIT licence file for this repo plus an Apache-2.0 attribution notice for sparkrun, consistent with sublicensing under Section 4 of that licence.
+
+### Changed
+
+- **`setup/dgx-global-base-setup.sh`** — Installs [uv](https://github.com/astral-sh/uv) and `uv tool install --force --editable vendor/sparkrun`. Runs the DGX mode picker on first boot.
+- **`scripts/eval-checkpoint.sh`** — Launches the `eval-checkpoint` recipe via `sparkrun run` (port defaults to `$EVAL_VLLM_PORT`, default `8021`) instead of a hand-built `docker run`. Model registration now uses `sparkrun proxy alias add` instead of appending to `~/.litellm/config.yaml`. `--stop-vllm` still works as a backward-compatible alias for `--stop-production`.
+- **`scripts/autoresearch-deregister.sh`** — Rewritten on top of `sparkrun proxy unload`.
+- **`scripts/demo-autoresearch.sh`** — Backend readiness check uses `sparkrun status`; LiteLLM-reload note updated to reflect the management-API path.
+- **`harness/start-harness.sh`** — Log banner clarifies the upstream proxy is sparkrun on `:4000`.
+- **`harness/eval/lm_model.py`** — Docstring clarifies that `litellm_url` now refers to the sparkrun proxy (same port, same wire protocol). `litellm_url` kwarg kept for backward compatibility with existing `HarnessLM` callers.
+- **`docker-compose.inference.yml`** — Pruned to Open-WebUI only. Model serving and proxy moved to sparkrun.
+- **`example.bash_aliases`** — `vllm*` and `litellm*` aliases now wrap `sparkrun` / `sparkrun proxy`. Added `dgx-mode`, `vllm-status`, `vllm-logs`, `vllm-show`, `litellm-models`, `litellm-alias`, `autoresearch-deregister`, `eval-checkpoint`. `inference-up` / `inference-down` start/stop Open-WebUI + sparkrun proxy together.
+- **`status.sh`** — Reports `sparkrun proxy` and `sparkrun status` instead of querying raw LiteLLM / vLLM containers.
+- **`README.md`** — Version badge 1.3.1 → 1.5.0. Rewrote the Inference Playground section around sparkrun; refreshed Architecture diagram, Cross-Tool Integrations, Safety Harness quick-start, NVIDIA Sync mapping, Port Reference, and Suggested Aliases. Added **Third-Party Software** section and a submodule-aware **License** paragraph.
+
+### Removed
+
+- **`inference/start-vllm.sh`**, **`inference/start-vllm-sync.sh`** — Superseded by `sparkrun run` against recipes in `recipes/` or `vendor/sparkrun/recipes/`.
+- **`inference/start-litellm.sh`**, **`inference/start-litellm-sync.sh`**, **`inference/setup-litellm-config.sh`** — Superseded by `sparkrun proxy start` + `sparkrun proxy alias add`. The proxy still binds `:4000` for wire-level compatibility.
+- **`scripts/_litellm_register.py`**, **`scripts/test-eval-register.sh`** — The hand-rolled LiteLLM config-file mutator and its test are obsolete now that proxy routing is controlled through the sparkrun CLI.
+- **`example.vllm-model`** — Default model is now encoded in `recipes/nemotron-3-nano-4b-bf16-vllm.yaml`.
+
+### Migration
+
+1. `git pull && git submodule update --init --recursive` (or re-clone with `--recurse-submodules`).
+2. Re-run `bash setup/dgx-global-base-setup.sh` to install uv + sparkrun and run the DGX mode picker.
+3. Replace any direct uses of `start-vllm.sh` / `start-litellm.sh` in your own scripts with `sparkrun run <recipe>` / `sparkrun proxy start`. Downstream consumers pointing at `http://localhost:4000` (harness, eval-toolbox `lm_eval`, Open-WebUI, n8n, custom code) need no changes.
+4. If you maintained a custom `~/.litellm/config.yaml`, port each entry to `sparkrun proxy alias add <name> <provider/model>` — or keep the file and point sparkrun at it via its `--config` passthrough.
+5. Update any NVIDIA Sync custom apps that referenced `start-vllm-sync.sh` / `start-litellm-sync.sh` to the sparkrun commands in the README's NVIDIA Sync table.
+
+### Risk notes
+
+- sparkrun proxy binds the same `:4000` port as the legacy LiteLLM container, so every downstream HTTP consumer keeps working unchanged.
+- Only three files in this repo previously edited `~/.litellm/config.yaml` directly (`scripts/_litellm_register.py`, `scripts/autoresearch-deregister.sh`, `scripts/eval-checkpoint.sh`) — all have been rewritten or removed. No other file path depends on LiteLLM's on-disk config format.
+- The legacy `8020` vLLM port is dropped in favour of each recipe's own `defaults.port` (the shipped `nemotron` recipe uses `:8000`). If you had external tools pinned to `:8020`, either override with `sparkrun run ... --port 8020` or edit the recipe.
+
 ## 2026-04-20 — Claude AI & Ollama Integration (v1.4.0)
 
 ### Added

@@ -82,3 +82,12 @@ karpathy-autoresearch/autoresearch/
 # Docker
 *.tar
 docker-compose.override.yml
+
+# Sparkrun vendored submodule runtime
+vendor/sparkrun/.venv/
+vendor/sparkrun/*.egg-info/
+vendor/sparkrun/dist/
+vendor/sparkrun/build/
+
+# Sparkrun runtime state (written to ~/.config and ~/.cache, not repo, but defensive)
+.sparkrun/

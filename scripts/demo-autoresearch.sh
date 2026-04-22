@@ -180,13 +180,14 @@ else
     "$(_yellow "WARNING")" "$HARNESS_URL"
 fi
 
-# Check vLLM/Ollama (informational only)
-if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^vllm$"; then
-  printf '  vLLM: running (:8020)\n'
+# Inference backend check (informational only)
+if command -v sparkrun >/dev/null 2>&1 && sparkrun status 2>/dev/null | grep -qE 'running|healthy'; then
+  printf '  sparkrun: active workload(s) detected\n'
+  sparkrun status 2>/dev/null | sed 's/^/    /' | head -10 || true
 elif curl -sf http://localhost:11434/api/tags --max-time 3 >/dev/null 2>&1; then
   printf '  Ollama: running (:11434)\n'
 else
-  printf '  Inference: no vLLM or Ollama detected (model registration will use vLLM)\n'
+  printf '  Inference: no sparkrun workload or Ollama detected — will launch via sparkrun\n'
 fi
 
 printf '\n'
@@ -572,7 +573,7 @@ if [ "$SUMMARY_EVAL_RESULT" = "PASS" ] && [ -n "$SUMMARY_MODEL_NAME" ]; then
   printf '    -H "Content-Type: application/json" \\\n'
   printf '    -d '"'"'{"model": "%s", "messages": [{"role": "user", "content": "Hello"}]}'"'"'\n' \
     "$SUMMARY_MODEL_NAME"
-  printf '\n  Note: Run `docker restart litellm` to reload LiteLLM config if needed.\n'
+  printf '\n  Note: sparkrun proxy updates its model list via the LiteLLM management API — no restart needed.\n'
 else
   if [ -n "$SUMMARY_CHECKPOINT" ]; then
     printf '\n  Model was NOT registered (eval did not pass).\n'
