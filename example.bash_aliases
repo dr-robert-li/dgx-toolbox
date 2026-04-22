@@ -4,10 +4,11 @@
 #
 # NOTE: Model serving and the OpenAI-compatible proxy are now delegated to
 # sparkrun (https://github.com/spark-arena/sparkrun), vendored under
-# vendor/sparkrun. The `vllm*` and `litellm*` aliases below are thin wrappers
-# that preserve the old muscle memory while delegating to sparkrun under the
-# hood. The proxy still binds :4000, so anything pointing at
-# http://localhost:4000 (harness, eval, Open-WebUI, etc.) keeps working.
+# vendor/sparkrun. The `vllm*` and `litellm*` commands below are exposed by
+# sourcing this file on shell refresh; some are shell functions (arg-aware
+# wrappers), others remain simple aliases. The proxy still binds :4000, so
+# anything pointing at http://localhost:4000 (harness, eval, Open-WebUI, etc.)
+# keeps working.
 # ============================================================================
 
 # --- Claude AI ---
@@ -226,6 +227,8 @@ vllm-show() {
 }
 
 # --- OpenAI-compatible proxy (sparkrun proxy → LiteLLM under the hood, :4000) ---
+# `litellm` and `litellm-models` are functions rather than bare aliases so a
+# fresh `source ~/.bash_aliases` exposes the single-node host-injection fix too.
 unalias litellm 2>/dev/null || true
 litellm() {
   local _host_args=() _line
@@ -306,8 +309,8 @@ alias n8n-stop='docker stop n8n'                                              # 
 
 # --- Orchestration (docker-compose + sparkrun) ---
 alias build-all='~/dgx-toolbox/build-toolboxes.sh'                                                                          # Build base + eval + data images
-alias inference-up='docker compose -f ~/dgx-toolbox/docker-compose.inference.yml up -d open-webui && sparkrun proxy start'  # Open-WebUI + sparkrun proxy (:4000)
-alias inference-down='sparkrun proxy stop && docker compose -f ~/dgx-toolbox/docker-compose.inference.yml down'             # Stop proxy + Open-WebUI
+alias inference-up='docker compose -f ~/dgx-toolbox/docker-compose.inference.yml up -d open-webui && litellm'              # Open-WebUI + sparkrun proxy wrapper (:4000)
+alias inference-down='litellm-stop && docker compose -f ~/dgx-toolbox/docker-compose.inference.yml down'                   # Stop proxy + Open-WebUI
 alias inference-logs='docker compose -f ~/dgx-toolbox/docker-compose.inference.yml logs -f'                                 # Stream Open-WebUI logs (sparkrun has vllm-logs)
 alias data-stack-up='docker compose -f ~/dgx-toolbox/docker-compose.data.yml up -d'                                         # Start Label Studio + Argilla
 alias data-stack-down='docker compose -f ~/dgx-toolbox/docker-compose.data.yml down'                                        # Stop data stack

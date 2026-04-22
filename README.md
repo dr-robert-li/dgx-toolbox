@@ -41,7 +41,7 @@ The pinned sparkrun commit is stored in `.sparkrun-pin` for reproducibility; the
 # Clone to your DGX
 git clone <repo-url> ~/dgx-toolbox
 
-# Copy aliases
+# Copy aliases/functions exposed on shell refresh
 cp ~/dgx-toolbox/example.bash_aliases ~/.bash_aliases && source ~/.bash_aliases
 
 # One-time system setup (Python, Miniconda, pyenv, uv, sparkrun, harness, kaggle, hf)
@@ -74,7 +74,9 @@ build-all
 # Enable Ollama for remote/LAN access
 ollama-remote
 
-# Start the OpenAI-compatible proxy (sparkrun wraps LiteLLM, binds 0.0.0.0:4000)
+# Start the OpenAI-compatible proxy (host-aware wrapper around sparkrun proxy)
+# On older single-node installs, the `litellm` / `litellm-models` wrappers
+# inject `--hosts localhost` the same way `vllm` does.
 litellm
 
 # Print the LAN URL other devices on your network can use (not just localhost)
@@ -83,9 +85,9 @@ LAN_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 echo "Proxy (local):  http://localhost:4000/v1"
 echo "Proxy (LAN):    http://${LAN_IP}:4000/v1"
 # Locked-down alternative — only listen on localhost:
-#   sparkrun proxy start --host 127.0.0.1
+#   litellm --host 127.0.0.1
 # LAN with auth:
-#   sparkrun proxy start --master-key sk-choose-a-long-random-string
+#   litellm --master-key sk-choose-a-long-random-string
 
 # Serve a model via a sparkrun recipe (single-node by default, or --cluster NAME)
 vllm nemotron-3-nano-4b-bf16-vllm
@@ -246,7 +248,7 @@ Tools for serving models and interacting with them — chat, code, agentic workf
 
 #### Docker Compose (Open-WebUI only) + sparkrun
 
-The compose file now ships only the Open-WebUI GUI container. Model serving and the OpenAI-compatible proxy are delegated to [sparkrun](https://github.com/spark-arena/sparkrun), vendored at `vendor/sparkrun`. The `inference-up` / `inference-down` aliases start/stop both layers together:
+The compose file now ships only the Open-WebUI GUI container. Model serving and the OpenAI-compatible proxy are delegated to [sparkrun](https://github.com/spark-arena/sparkrun), vendored at `vendor/sparkrun`. The `inference-up` / `inference-down` aliases start/stop both layers together via the same host-aware `litellm` wrapper you get after `source ~/.bash_aliases`:
 
 ```bash
 # Start Open-WebUI (:12000) + sparkrun proxy (:4000)
@@ -328,7 +330,7 @@ curl http://localhost:8000/v1/chat/completions \
 
 Host selection precedence: CLI flag > `~/.config/dgx-toolbox/mode.env` (written by `dgx-mode`) > `sparkrun`'s named cluster > `sparkrun`'s default cluster.
 
-**OpenAI-compatible proxy (`litellm` alias → `sparkrun proxy`):**
+**OpenAI-compatible proxy (`litellm*` wrappers → `sparkrun proxy`):**
 
 The proxy is sparkrun's supervised `litellm[proxy]` instance. It binds `:4000` by default and auto-routes to the active sparkrun workload plus any aliases you add.
 
@@ -339,6 +341,8 @@ litellm-models                # sparkrun proxy models --refresh
 litellm-alias add claude-sonnet anthropic/claude-sonnet-4-20250514
 litellm-stop                  # sparkrun proxy stop
 ```
+
+On single-node installs, `litellm` and `litellm-models` intentionally mirror the `vllm*` wrappers: if `DGX_MODE=single` and you did not pass `--hosts` / `--cluster`, they inject `--hosts localhost` so the proxy's autodiscover and manual refresh paths can still find your local workload.
 
 **Custom aliases / cloud routing:** Use `sparkrun proxy alias add` to register additional upstreams. Cloud API keys live in the environment sparkrun inherits (e.g. in `~/.bashrc`):
 
@@ -362,7 +366,7 @@ dgx-mode cluster host-a,host-b,host-c   # multi-node, writes DGX_HOSTS
 dgx-mode status                         # show resolved mode + hosts
 ```
 
-`dgx-mode single` registers a sparkrun cluster named `solo` with `hosts=localhost` and marks it as the default. Sparkrun's `run`, `stop`, `logs`, `status`, and `show` commands all resolve hosts before doing anything and exit if none are configured, so single-node users need this even for `sparkrun run <recipe>` or the `vllm*` wrappers to work. If you skipped `dgx-mode single` on an older install, the `vllm`, `vllm-stop`, `vllm-logs`, `vllm-status`, and `vllm-show` wrappers all inject `--hosts localhost` defensively when `DGX_MODE=single`.
+`dgx-mode single` registers a sparkrun cluster named `solo` with `hosts=localhost` and marks it as the default. Sparkrun's `run`, `stop`, `logs`, `status`, `show`, and proxy autodiscover flows all resolve hosts before doing anything and exit if none are configured, so single-node users need this even for `sparkrun run <recipe>` or the shell wrappers to work. If you skipped `dgx-mode single` on an older install, the `vllm`, `vllm-stop`, `vllm-logs`, `vllm-status`, `vllm-show`, `litellm`, and `litellm-models` wrappers all inject `--hosts localhost` defensively when `DGX_MODE=single`.
 
 `vllm-stop` with no argument defaults to `--all` — "stop everything" — so the common "I'm done, shut it all down" flow is a single command. Pass a recipe name to stop a specific workload (`vllm-stop my-recipe`) or `--all` explicitly; both work.
 
@@ -370,7 +374,7 @@ Every sparkrun invocation inherits this setting but can still be overridden on t
 
 #### Auto-registration with the LiteLLM proxy
 
-When you launch a workload with `vllm <recipe>`, a background watchdog waits for the model to come up and calls `sparkrun proxy models --refresh` so the new endpoint appears in the LiteLLM routing table automatically. No more manual `litellm-models` step before `claude-litellm` sees the model.
+When you launch a workload with `vllm <recipe>`, a background watchdog waits for the model to come up and calls the same host-aware `litellm-models` refresh path so the new endpoint appears in the LiteLLM routing table automatically. No more manual `litellm-models` step before `claude-litellm` sees the model.
 
 Controlled by `DGX_PROXY_AUTOREGISTER` in `mode.env` (default `1`). Set to `0` to disable:
 
@@ -1287,8 +1291,8 @@ Key aliases:
 | `inference-up` / `inference-down` | Start/stop inference stack (Open-WebUI + sparkrun proxy) |
 | `data-stack-up` / `data-stack-down` | Start/stop data stack (Label Studio + Argilla) |
 | `vllm` / `vllm-stop` / `vllm-status` / `vllm-logs` | Run / stop / inspect a sparkrun model workload |
-| `litellm` / `litellm-stop` / `litellm-status` | Start / stop / inspect the sparkrun OpenAI-compatible proxy |
-| `litellm-models` / `litellm-alias` | Refresh proxy routing table / manage model aliases |
+| `litellm` / `litellm-stop` / `litellm-status` | Start / stop / inspect the sparkrun OpenAI-compatible proxy; `litellm` is a host-aware wrapper |
+| `litellm-models` / `litellm-alias` | Refresh proxy routing table / manage model aliases; `litellm-models` is a host-aware wrapper |
 | `dgx-mode` | Switch between single- and multi-node sparkrun modes |
 | `dgx-recipes` | Register / list / update sparkrun recipe registries (official + community) |
 | `dgx-discover` | Discover recipes across local + registries: `list`, `local`, `registries`, `search <q>`, `show <r>`, `update` |
