@@ -67,11 +67,63 @@ _dgx_vllm_autoregister_watchdog() {
     _out=$(sparkrun proxy models "${_host_args[@]}" --refresh 2>&1) || continue
     if echo "$_out" | grep -qE 'Synced proxy models:.* added'; then
       echo "[vllm] Registered new workload with LiteLLM proxy (:4000)" >&2
+      _dgx_fix_litellm_models >/dev/null 2>&1 || true
       return 0
     fi
   done
 
   return 1
+}
+
+_dgx_fix_litellm_models() {
+  python3 <<'EOF_PY'
+import json, urllib.request, os
+
+# Try to resolve master key and port from sparkrun state
+master_key = "sk-sparkrun"
+port = 4000
+state_path = os.path.expanduser("~/.cache/sparkrun/proxy/state.yaml")
+if os.path.exists(state_path):
+    try:
+        import yaml
+        with open(state_path) as f:
+            state = yaml.safe_load(f)
+            master_key = state.get("master_key", master_key)
+            port = state.get("port", port)
+    except: pass
+
+def api_req(method, path, payload=None):
+    url = f"http://localhost:{port}{path}"
+    headers = {"Content-Type": "application/json"}
+    if master_key: headers["Authorization"] = f"Bearer {master_key}"
+    data = json.dumps(payload).encode() if payload else None
+    try:
+        req = urllib.request.Request(url, data=data, headers=headers, method=method)
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return json.loads(resp.read())
+    except: return None
+
+models_data = api_req("GET", "/model/info")
+if models_data and "data" in models_data:
+    for m in models_data["data"]:
+        name = m.get("model_name")
+        params = m.get("litellm_params", m.get("model_info", {}).get("litellm_params", {}))
+        if not name or not params: continue
+        
+        model_id = params.get("model", "")
+        changed = False
+        # Ensure openai/ prefix (forces chat endpoint routing)
+        if not model_id.startswith("openai/"):
+            params["model"] = f"openai/{model_id.split('/')[-1]}"
+            changed = True
+        # Ensure drop_params: True (prevents vLLM rejection of OpenAI-specific extras)
+        if params.get("drop_params") != True:
+            params["drop_params"] = True
+            changed = True
+            
+        if changed:
+            api_req("POST", "/model/new", {"model_name": name, "litellm_params": params})
+EOF_PY
 }
 
 _dgx_vllm_should_autoregister() {

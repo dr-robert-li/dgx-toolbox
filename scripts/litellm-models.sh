@@ -18,3 +18,6 @@ if [ "$has_refresh" -eq 0 ]; then
 fi
 
 _dgx_exec_sparkrun proxy models "${extra_args[@]}" "$@"
+
+# Apply LiteLLM sanitizer to ensure the refreshed models have correct params
+_dgx_fix_litellm_models >/dev/null 2>&1 || true
