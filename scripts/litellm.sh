@@ -8,6 +8,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 host_args=()
 _dgx_collect_host_args host_args "$@"
 
+# Force LiteLLM's Anthropic passthrough (/v1/messages) to use /v1/chat/completions
+# instead of the newer OpenAI Responses API (/v1/responses). 
+# vLLM's Responses API is currently too strict for multi-turn validation.
+export LITELLM_USE_CHAT_COMPLETIONS_URL_FOR_ANTHROPIC_MESSAGES=true
+
 # Start the proxy
 _dgx_exec_sparkrun proxy start "${host_args[@]}" "$@"
 

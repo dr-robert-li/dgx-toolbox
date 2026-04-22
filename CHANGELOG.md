@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- **`scripts/litellm.sh`** — Forced `LITELLM_USE_CHAT_COMPLETIONS_URL_FOR_ANTHROPIC_MESSAGES=true`. This ensures multi-turn conversations via Anthropic-compatible clients (like Claude Code) route through `/v1/chat/completions` instead of the more restrictive `/v1/responses` API, which currently fails validation for multi-turn vLLM workloads.
 - **`scripts/_dgx_sparkrun_wrappers.sh`** — Introduced `_dgx_exec_sparkrun` helper to correctly handle shell function stubs. This allows the wrapper scripts to run successfully during tests (where `sparkrun` is mocked as a function) while maintaining the optimized `exec` path for production.
 - **`scripts/litellm-models.sh`** — Removed unsupported `--hosts` flag injection. This subcommand interacts with the local proxy management API and does not accept cluster-wide host redirection flags.
 - **`scripts/test-sparkrun-integration.sh`** — Optimized autoregister watchdog tests by allowing environment variable overrides for poll interval and attempt counts. Switched to unique log files per test case to eliminate interference from backgrounded watchdog processes.
