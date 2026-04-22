@@ -41,7 +41,7 @@ The pinned sparkrun commit is stored in `.sparkrun-pin` for reproducibility; the
 # Clone to your DGX
 git clone <repo-url> ~/dgx-toolbox
 
-# Copy aliases/functions exposed on shell refresh
+# Copy aliases exposed on shell refresh
 cp ~/dgx-toolbox/example.bash_aliases ~/.bash_aliases && source ~/.bash_aliases
 
 # One-time system setup (Python, Miniconda, pyenv, uv, sparkrun, harness, kaggle, hf)
@@ -295,7 +295,7 @@ It is vendored as a git submodule at `vendor/sparkrun` and installed by `setup/d
 | `vendor/sparkrun/recipes/` (read-only) | Official recipes maintained upstream (`minimax-m2.7`, `qwen3-coder-next`, `qwen3-vl`, `qwen3.6`, …) |
 | `recipes/` (this repo) | Project-specific recipes: `nemotron-3-nano-4b-bf16-vllm` (default model, replaces the old `example.vllm-model`) and `eval-checkpoint` (ephemeral eval workload used by `scripts/eval-checkpoint.sh`) |
 
-Sparkrun does not have a `--recipe-path` flag: recipes are resolved either by name (via registered registries and the CWD) or by direct path. The `vllm` function in `example.bash_aliases` looks up recipes in `~/dgx-toolbox/recipes/` first, then falls back to sparkrun's registry resolution. Official + community registries can be registered via `dgx-recipes add`.
+Sparkrun does not have a `--recipe-path` flag: recipes are resolved either by name (via registered registries and the CWD) or by direct path. The `vllm` wrapper script exposed by `example.bash_aliases` looks up recipes in `~/dgx-toolbox/recipes/` first, then falls back to sparkrun's registry resolution. Official + community registries can be registered via `dgx-recipes add`.
 
 **Model serving (`vllm` alias → `sparkrun run`):**
 
@@ -324,7 +324,7 @@ curl http://localhost:8000/v1/chat/completions \
 
 Host selection precedence: CLI flag > `~/.config/dgx-toolbox/mode.env` (written by `dgx-mode`) > `sparkrun`'s named cluster > `sparkrun`'s default cluster.
 
-**OpenAI-compatible proxy (`litellm*` wrappers → `sparkrun proxy`):**
+**OpenAI-compatible proxy (`litellm*` script-backed aliases → `sparkrun proxy`):**
 
 The proxy is sparkrun's supervised `litellm[proxy]` instance. It binds `:4000` by default and auto-routes to the active sparkrun workload plus any aliases you add.
 
@@ -336,7 +336,7 @@ litellm-alias add claude-sonnet anthropic/claude-sonnet-4-20250514
 litellm-stop                  # sparkrun proxy stop
 ```
 
-On single-node installs, `litellm` and `litellm-models` intentionally mirror the `vllm*` wrappers: if `DGX_MODE=single` and you did not pass `--hosts` / `--cluster`, they inject `--hosts localhost` so the proxy's autodiscover and manual refresh paths can still find your local workload.
+On single-node installs, `litellm` and `litellm-models` intentionally mirror the `vllm*` wrappers: if `DGX_MODE=single` and you did not pass `--hosts` / `--cluster`, the script-backed aliases inject `--hosts localhost` so the proxy's autodiscover and manual refresh paths can still find your local workload.
 
 **Custom aliases / cloud routing:** Use `sparkrun proxy alias add` to register additional upstreams. Cloud API keys live in the environment sparkrun inherits (e.g. in `~/.bashrc`):
 
@@ -1284,9 +1284,9 @@ Key aliases:
 | `dgx-status` | Show all services, images, and disk usage |
 | `inference-up` / `inference-down` | Start/stop inference stack (Open-WebUI + sparkrun proxy) |
 | `data-stack-up` / `data-stack-down` | Start/stop data stack (Label Studio + Argilla) |
-| `vllm` / `vllm-stop` / `vllm-status` / `vllm-logs` | Run / stop / inspect a sparkrun model workload |
-| `litellm` / `litellm-stop` / `litellm-status` | Start / stop / inspect the sparkrun OpenAI-compatible proxy; `litellm` is a host-aware wrapper |
-| `litellm-models` / `litellm-alias` | Refresh proxy routing table / manage model aliases; `litellm-models` is a host-aware wrapper |
+| `vllm` / `vllm-stop` / `vllm-status` / `vllm-logs` | Run / stop / inspect a sparkrun model workload via script-backed aliases |
+| `litellm` / `litellm-stop` / `litellm-status` | Start / stop / inspect the sparkrun OpenAI-compatible proxy; `litellm` is a host-aware script-backed alias |
+| `litellm-models` / `litellm-alias` | Refresh proxy routing table / manage model aliases; `litellm-models` is a host-aware script-backed alias |
 | `dgx-mode` | Switch between single- and multi-node sparkrun modes |
 | `dgx-recipes` | Register / list / update sparkrun recipe registries (official + community) |
 | `dgx-discover` | Discover recipes across local + registries: `list`, `local`, `registries`, `search <q>`, `show <r>`, `update` |

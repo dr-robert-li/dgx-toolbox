@@ -166,6 +166,8 @@ while IFS= read -r -d '' sh; do
   fi
 done < <(find . -name '*.sh' \
   -not -path './.git/*' \
+  -not -path './.claude/*' \
+  -not -path './.codex/*' \
   -not -path './vendor/sparkrun/*' \
   -not -path './karpathy-autoresearch/*' \
   -print0)
@@ -176,18 +178,13 @@ section "5. Aliases + docker-compose"
 if [ -f example.bash_aliases ]; then
   pass "example.bash_aliases present"
   for needle in \
-    "vllm() {" \
-    "vllm-stop() {" \
-    "vllm-logs() {" \
-    "vllm-status() {" \
-    "vllm-show() {" \
-    "litellm() {" \
-    "litellm-models() {" \
-    "_dgx_host_args() {" \
-    "unalias vllm 2>/dev/null" \
-    "unalias vllm-stop 2>/dev/null" \
-    "unalias litellm 2>/dev/null" \
-    "unalias litellm-models 2>/dev/null" \
+    "alias vllm='~/dgx-toolbox/scripts/vllm.sh'" \
+    "alias vllm-stop='~/dgx-toolbox/scripts/vllm-stop.sh'" \
+    "alias vllm-logs='~/dgx-toolbox/scripts/vllm-logs.sh'" \
+    "alias vllm-status='~/dgx-toolbox/scripts/vllm-status.sh'" \
+    "alias vllm-show='~/dgx-toolbox/scripts/vllm-show.sh'" \
+    "alias litellm='~/dgx-toolbox/scripts/litellm.sh'" \
+    "alias litellm-models='~/dgx-toolbox/scripts/litellm-models.sh'" \
     "alias litellm-stop='sparkrun proxy stop'" \
     "alias claude-litellm='source ~/dgx-toolbox/scripts/claude-litellm.sh'" \
     "alias dgx-mode=" \
@@ -201,8 +198,8 @@ if [ -f example.bash_aliases ]; then
     fi
   done
   # The old bare-alias form of vllm-stop/logs/status/show is the regression
-  # we're guarding against — if any of these come back, PR #10's fix has
-  # been reverted.
+  # we're guarding against — these must stay script-backed aliases, not
+  # direct sparkrun passthroughs with no host-injection logic.
   for stale_alias in \
     "alias vllm-stop='sparkrun stop'" \
     "alias vllm-logs='sparkrun logs'" \
@@ -210,7 +207,7 @@ if [ -f example.bash_aliases ]; then
     "alias vllm-show='sparkrun show'"
   do
     if grep -Fq "$stale_alias" example.bash_aliases; then
-      fail "example.bash_aliases still has bare alias \"${stale_alias}\" — should be a function"
+      fail "example.bash_aliases still has bare alias \"${stale_alias}\" — should point at a wrapper script"
     else
       pass "example.bash_aliases no longer uses bare \"${stale_alias}\""
     fi
@@ -219,15 +216,32 @@ else
   fail "example.bash_aliases missing"
 fi
 
-# Re-source safety: even if `vllm` is already an alias in the current shell
-# (e.g. from an older install), sourcing example.bash_aliases must not raise
-# "syntax error near unexpected token `(`". Regression test for the issue
-# where alias expansion collided with the function definition.
-if bash -ic 'alias vllm="echo old"; source ./example.bash_aliases; type vllm | head -1' 2>/dev/null | grep -q 'vllm is a function'; then
+# Re-source safety: even if `vllm` is already an alias in the current shell,
+# sourcing example.bash_aliases must cleanly replace it with the wrapper alias.
+if bash -ic 'alias vllm="echo old"; source ./example.bash_aliases; alias vllm' 2>/dev/null | grep -q "scripts/vllm.sh"; then
   pass "example.bash_aliases re-sources cleanly over a pre-existing vllm alias"
 else
   fail "example.bash_aliases fails to redefine vllm when an alias already exists"
 fi
+
+# Wrapper scripts must exist and be executable because the banner now relies
+# on aliases that point directly at these paths.
+for wrapper in \
+  scripts/_dgx_sparkrun_wrappers.sh \
+  scripts/vllm.sh \
+  scripts/vllm-stop.sh \
+  scripts/vllm-logs.sh \
+  scripts/vllm-status.sh \
+  scripts/vllm-show.sh \
+  scripts/litellm.sh \
+  scripts/litellm-models.sh
+do
+  if [ -x "$wrapper" ]; then
+    pass "$wrapper is executable"
+  else
+    fail "$wrapper is missing or not executable"
+  fi
+done
 
 # Single-node host injection: with DGX_MODE=single and no host flag from the
 # caller, the vllm() wrapper must inject --hosts localhost so sparkrun's
@@ -292,7 +306,7 @@ sleep() { :; }        # no-op to speed up the polling loop
 export -f sleep
 EOF_STUB
 # Run watchdog directly so we don't race with backgrounding.
-OUT=$(bash -c "source $AUTOREG_DIR/stub-running.sh && source ./example.bash_aliases && _dgx_vllm_autoregister_watchdog" 2>&1)
+OUT=$(bash -c "source $AUTOREG_DIR/stub-running.sh && source ./scripts/_dgx_sparkrun_wrappers.sh && _dgx_vllm_autoregister_watchdog" 2>&1)
 if echo "$OUT" | grep -q 'Registered new workload with LiteLLM proxy'; then
   pass "autoregister watchdog prints success message when proxy reports models added"
 else
@@ -321,7 +335,7 @@ export -f sleep
 EOF_STUB
 # If proxy stays stopped the watchdog loops all 240 iterations and returns 1.
 # We only care that it does NOT call 'proxy models --refresh'.
-timeout 5 bash -c "source $AUTOREG_DIR/stub-stopped.sh && source ./example.bash_aliases && _dgx_vllm_autoregister_watchdog" >/dev/null 2>&1 || true
+timeout 5 bash -c "source $AUTOREG_DIR/stub-stopped.sh && source ./scripts/_dgx_sparkrun_wrappers.sh && _dgx_vllm_autoregister_watchdog" >/dev/null 2>&1 || true
 if [ -s "$AUTOREG_LOG" ] && ! grep -q 'CALL: proxy models --refresh' "$AUTOREG_LOG"; then
   pass "autoregister watchdog does not call 'proxy models --refresh' when proxy is stopped"
 else
@@ -394,10 +408,9 @@ rm -rf "$STUB_DIR2" "$TMP_CFG2"
 # These used to be bare aliases ('sparkrun stop', 'sparkrun logs', ...). The
 # bare form fails in single-node mode before a default cluster is registered
 # because sparkrun's stop/logs paths call _resolve_hosts_or_exit() before
-# the target check, producing "No hosts specified". PR #10 converts them to
-# functions that mirror vllm()'s host-injection logic, and makes vllm-stop
-# default to --all when no TARGET is supplied. The assertions below pin
-# that behavior.
+# the target check, producing "No hosts specified". The wrappers now live in
+# standalone scripts that preserve the same host-injection logic, and
+# vllm-stop still defaults to --all when no TARGET is supplied.
 
 # vllm-stop with no args in single mode: inject --hosts localhost AND add --all
 OUT=$(bash -ic "$_SPARKRUN_STUB; export DGX_MODE=single; source ./example.bash_aliases; vllm-stop" 2>/dev/null)
@@ -468,8 +481,15 @@ else
 fi
 
 # litellm: inject --hosts localhost in single mode so proxy start's
-# autodiscover loop can resolve the local workload.
-OUT=$(bash --noprofile --norc -c "$_SPARKRUN_STUB; export DGX_MODE=single; source ./example.bash_aliases; litellm --port 4001" 2>/dev/null)
+# autodiscover loop can resolve the local workload. These are script-backed
+# aliases, so stub sparkrun via PATH rather than a shell function.
+PROXY_STUB_DIR=$(mktemp -d)
+cat > "$PROXY_STUB_DIR/sparkrun" <<'EOF_STUB'
+#!/usr/bin/env bash
+echo "STUB:$*"
+EOF_STUB
+chmod +x "$PROXY_STUB_DIR/sparkrun"
+OUT=$(PATH="$PROXY_STUB_DIR:$PATH" bash --noprofile --norc -c "shopt -s expand_aliases; export DGX_MODE=single; source ./example.bash_aliases; eval 'litellm --port 4001'" 2>/dev/null)
 if echo "$OUT" | grep -q 'STUB:proxy start' && echo "$OUT" | grep -q -- '--hosts localhost' && echo "$OUT" | grep -q -- '--port 4001'; then
   pass "litellm injects --hosts localhost in single mode and forwards flags"
 else
@@ -477,7 +497,7 @@ else
 fi
 
 # litellm-models: inject --hosts localhost and default to --refresh.
-OUT=$(bash --noprofile --norc -c "$_SPARKRUN_STUB; export DGX_MODE=single; source ./example.bash_aliases; litellm-models --json" 2>/dev/null)
+OUT=$(PATH="$PROXY_STUB_DIR:$PATH" bash --noprofile --norc -c "shopt -s expand_aliases; export DGX_MODE=single; source ./example.bash_aliases; eval 'litellm-models --json'" 2>/dev/null)
 REFRESH_COUNT=$(echo "$OUT" | grep -o -- '--refresh' | wc -l | tr -d ' ')
 if echo "$OUT" | grep -q 'STUB:proxy models' && echo "$OUT" | grep -q -- '--hosts localhost' && [ "$REFRESH_COUNT" = "1" ] && echo "$OUT" | grep -q -- '--json'; then
   pass "litellm-models injects --hosts localhost and adds a single --refresh"
@@ -486,13 +506,14 @@ else
 fi
 
 # litellm-models with explicit --refresh: don't duplicate it.
-OUT=$(bash --noprofile --norc -c "$_SPARKRUN_STUB; export DGX_MODE=single; source ./example.bash_aliases; litellm-models --refresh --json" 2>/dev/null)
+OUT=$(PATH="$PROXY_STUB_DIR:$PATH" bash --noprofile --norc -c "shopt -s expand_aliases; export DGX_MODE=single; source ./example.bash_aliases; eval 'litellm-models --refresh --json'" 2>/dev/null)
 REFRESH_COUNT=$(echo "$OUT" | grep -o -- '--refresh' | wc -l | tr -d ' ')
 if [ "$REFRESH_COUNT" = "1" ] && echo "$OUT" | grep -q -- '--hosts localhost'; then
   pass "litellm-models does not duplicate --refresh when caller supplies it"
 else
   fail "litellm-models duplicated --refresh or missed host injection (got: $OUT, --refresh count=$REFRESH_COUNT)"
 fi
+rm -rf "$PROXY_STUB_DIR"
 
 # vllm-show: inject --hosts localhost in single mode, forward recipe name.
 OUT=$(bash -ic "$_SPARKRUN_STUB; export DGX_MODE=single; source ./example.bash_aliases; vllm-show recipe.yaml" 2>/dev/null)
@@ -502,19 +523,19 @@ else
   fail "vllm-show did not inject host or forward argument (got: $OUT)"
 fi
 
-# The wrappers must be functions in the current shell after sourcing, not
-# aliases — bash aliases don't support arg-aware logic.
+# The user-facing commands must now be aliases backed by wrapper scripts so
+# the stock ~/.bashrc banner picks them up on shell refresh.
 for fn in vllm-stop vllm-logs vllm-status vllm-show litellm litellm-models; do
-  if bash --noprofile --norc -c "source ./example.bash_aliases; type $fn 2>/dev/null" | head -1 | grep -q "$fn is a function"; then
-    pass "$fn is a shell function after sourcing example.bash_aliases"
+  if bash --noprofile --norc -c "source ./example.bash_aliases; alias $fn 2>/dev/null" | grep -q "$fn="; then
+    pass "$fn is an alias after sourcing example.bash_aliases"
   else
-    fail "$fn is not a shell function after sourcing example.bash_aliases"
+    fail "$fn is not an alias after sourcing example.bash_aliases"
   fi
 done
 
 # Re-source safety for the new wrappers: sourcing over pre-existing aliases
-# (older installs) must not raise a syntax error.
-if bash --noprofile --norc -c 'alias vllm-stop="echo old"; alias vllm-logs="echo old"; alias vllm-status="echo old"; alias vllm-show="echo old"; alias litellm="echo old"; alias litellm-models="echo old"; source ./example.bash_aliases; type litellm | head -1' 2>/dev/null | grep -q 'litellm is a function'; then
+# (older installs) must replace them with the new wrapper aliases.
+if bash --noprofile --norc -c 'alias vllm-stop="echo old"; alias vllm-logs="echo old"; alias vllm-status="echo old"; alias vllm-show="echo old"; alias litellm="echo old"; alias litellm-models="echo old"; source ./example.bash_aliases; alias litellm' 2>/dev/null | grep -q "scripts/litellm.sh"; then
   pass "example.bash_aliases re-sources cleanly over pre-existing proxy/vllm wrapper aliases"
 else
   fail "example.bash_aliases fails to redefine wrappers when aliases already exist"
@@ -634,6 +655,8 @@ STALE=$(grep -rE "start-(vllm|litellm)(-sync)?\.sh|setup-litellm-config\.sh|_lit
   --include='*.sh' --include='*.py' --include='*.yml' --include='*.yaml' --include='*.md' \
   . 2>/dev/null \
   | grep -v '\.git/' \
+  | grep -v '\.claude/' \
+  | grep -v '\.codex/' \
   | grep -v '\.planning/' \
   | grep -v 'vendor/sparkrun/' \
   | grep -v 'CHANGELOG.md' \

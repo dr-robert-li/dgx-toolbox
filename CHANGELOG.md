@@ -1,15 +1,27 @@
 # Changelog
 
+## 2026-04-22 — Fix: `vllm` / `litellm` wrappers now show up in the stock shell banner
+
+### Fixed
+
+- **`scripts/_dgx_sparkrun_wrappers.sh` + new `scripts/vllm*.sh` / `scripts/litellm*.sh` wrappers** — The earlier host-injection fix implemented `vllm`, `vllm-stop`, `vllm-logs`, `vllm-status`, `vllm-show`, `litellm`, and `litellm-models` as shell functions inside `example.bash_aliases`. Functionally that worked, but the stock `~/.bashrc` command banner only enumerates `alias ... # description` lines, so those commands disappeared from the "DGX Spark — Available Commands" list after a shell refresh. The wrapper logic now lives in standalone executable scripts under `scripts/`, backed by a shared helper library, and `example.bash_aliases` exposes them as ordinary aliases. Result: users keep the single-node `--hosts localhost` safety net, vLLM auto-registration, and `litellm-models --refresh` behavior, while the default banner sees the commands again with no custom `.bashrc` changes.
+- **`example.bash_aliases`** — Switched `vllm`, `vllm-stop`, `vllm-logs`, `vllm-status`, `vllm-show`, `litellm`, and `litellm-models` from function definitions to aliases pointing at the new wrapper scripts. `inference-up` / `inference-down` still route through the fixed proxy path.
+- **`README.md`** — Install-facing docs now describe the wrappers as script-backed aliases rather than shell functions, so the documented behavior matches what users actually get after `cp ... ~/.bash_aliases && source ~/.bash_aliases`.
+
+### Added
+
+- **`scripts/test-sparkrun-integration.sh`** — Updated to validate executable wrapper scripts, alias-to-script definitions in `example.bash_aliases`, host-injection behavior through the alias names users actually type, and direct watchdog execution through the shared wrapper helper.
+
 ## 2026-04-22 — Fix: single-node LiteLLM wrappers miss healthy vLLM backends
 
 ### Fixed
 
-- **`example.bash_aliases`** — `litellm` and `litellm-models` were bare aliases (`sparkrun proxy start`, `sparkrun proxy models --refresh`), so in single-node mode they skipped the same `--hosts localhost` safety net that the `vllm*` wrappers already applied. That left the proxy's autodiscover loop and manual refresh path without host context on installs that pre-dated the default `solo` cluster setup, which is how you end up with a healthy local vLLM server but `No models registered with the proxy.` `litellm` and `litellm-models` are now shell functions that reuse `_dgx_host_args()`, inject `--hosts localhost` in `DGX_MODE=single`, preserve explicit caller-supplied host flags, and keep `litellm-models` defaulting to `--refresh` without duplicating it.
+- **`example.bash_aliases`** — `litellm` and `litellm-models` were bare aliases (`sparkrun proxy start`, `sparkrun proxy models --refresh`), so in single-node mode they skipped the same `--hosts localhost` safety net that the `vllm*` wrappers already applied. That left the proxy's autodiscover loop and manual refresh path without host context on installs that pre-dated the default `solo` cluster setup, which is how you end up with a healthy local vLLM server but `No models registered with the proxy.` They now route through DGX Toolbox wrapper logic that injects `--hosts localhost` in `DGX_MODE=single`, preserves explicit caller-supplied host flags, and keeps `litellm-models` defaulting to `--refresh` without duplicating it.
 - **`example.bash_aliases`** — `_dgx_vllm_autoregister_watchdog()` now refreshes the proxy through the same host-aware `sparkrun proxy models ... --refresh` path, so auto-registration uses the identical single-node fallback instead of the old blind refresh call.
 
 ### Added
 
-- **`scripts/test-sparkrun-integration.sh`** — New wrapper assertions validate that `litellm` injects `--hosts localhost` in single mode, `litellm-models` injects host context and adds exactly one `--refresh`, explicit `--refresh` is not duplicated, the autoregister watchdog uses the host-aware refresh call, and the new proxy wrappers remain functions when re-sourced over older aliases.
+- **`scripts/test-sparkrun-integration.sh`** — New wrapper assertions validate that `litellm` injects `--hosts localhost` in single mode, `litellm-models` injects host context and adds exactly one `--refresh`, explicit `--refresh` is not duplicated, the autoregister watchdog uses the host-aware refresh call, and the new proxy wrappers remain correctly exposed through `example.bash_aliases`.
 
 ## 2026-04-22 — Fix: `vllm-stop` / `vllm-logs` / `vllm-status` / `vllm-show` fail with "No hosts specified"
 

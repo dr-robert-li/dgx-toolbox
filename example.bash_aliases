@@ -4,11 +4,11 @@
 #
 # NOTE: Model serving and the OpenAI-compatible proxy are now delegated to
 # sparkrun (https://github.com/spark-arena/sparkrun), vendored under
-# vendor/sparkrun. The `vllm*` and `litellm*` commands below are exposed by
-# sourcing this file on shell refresh; some are shell functions (arg-aware
-# wrappers), others remain simple aliases. The proxy still binds :4000, so
-# anything pointing at http://localhost:4000 (harness, eval, Open-WebUI, etc.)
-# keeps working.
+# vendor/sparkrun. The `vllm*` and `litellm*` commands below are real shell
+# scripts under `~/dgx-toolbox/scripts/`, then exposed here as plain aliases
+# so the stock `.bashrc` banner shows them on shell refresh. The proxy still
+# binds :4000, so anything pointing at http://localhost:4000 (harness, eval,
+# Open-WebUI, etc.) keeps working.
 # ============================================================================
 
 # --- Claude AI ---
@@ -27,238 +27,21 @@ alias ollama-remote='~/dgx-toolbox/inference/setup-ollama-remote.sh'          # 
 # `sparkrun run` launches a recipe (vLLM container by default). Sparkrun does
 # not expose a --recipe-path flag: recipe names are resolved against the
 # registered registries (see `dgx-recipes list`) and the CWD, or a direct
-# path to a recipe YAML can be passed. The `vllm` function below is a thin
-# wrapper that first looks for the recipe in this repo's local recipes/
-# directory, then falls back to sparkrun's normal resolution. Examples:
-#   vllm nemotron-3-nano-4b-bf16-vllm            # local recipes/ first, then registries
-#   vllm nemotron-3-nano-4b-bf16-vllm --solo     # force single-node
-#   vllm qwen3.6                                 # resolves from registered registries
-#   vllm ~/my-recipes/custom.yaml                # direct path to any recipe YAML
-#
-# Sparkrun resolves hosts BEFORE loading the recipe and exits if none are
-# configured. `dgx-mode single` registers a `solo` cluster (hosts=localhost)
-# as sparkrun's default to satisfy this. As a defensive fallback for users on
-# installs that pre-date that fix, the wrappers below also inject
-# --hosts localhost when DGX_MODE=single and the caller hasn't passed any
-# host flag. This applies to `vllm` (sparkrun run) as well as the `vllm-*`
-# wrappers and the `litellm` / `litellm-models` wrappers — sparkrun's proxy
-# auto-discover and manual refresh flows also need host resolution to find
-# live endpoints on single-node installs that pre-date the default-cluster
-# fix.
-#
-# Auto-registration with the LiteLLM proxy: by default, after launching a
-# workload the wrapper spawns a background watchdog that waits for the model
-# to come up and calls the same host-aware `litellm-models` refresh path so
-# the new endpoint appears in the LiteLLM routing table. Opt out with
-# DGX_PROXY_AUTOREGISTER=0 (env or mode.env). Skipped automatically for
-# --foreground / --dry-run.
-#
-# NOTE: `unalias` first so re-sourcing this file after an older install
-# (where these were aliases) does not trip a syntax error when the alias is
-# expanded inside the function definition.
-
-# _dgx_host_args: internal helper used by the vllm-* wrappers to decide
-# whether to inject --hosts localhost. Echoes nothing when no injection is
-# needed, or "--hosts localhost" when in single-node mode with no host flag
-# in "$@". Callers capture with: _inject=$(_dgx_host_args "$@").
-_dgx_host_args() {
-  local _mode_env="${DGX_TOOLBOX_CONFIG_DIR:-$HOME/.config/dgx-toolbox}/mode.env"
-  local _dgx_mode="${DGX_MODE:-}"
-  if [ -z "$_dgx_mode" ] && [ -f "$_mode_env" ]; then
-    # shellcheck disable=SC1090
-    _dgx_mode="$(. "$_mode_env" && echo "${DGX_MODE:-}")"
-  fi
-  [ "$_dgx_mode" = "single" ] || return 0
-  local _arg
-  for _arg in "$@"; do
-    case "$_arg" in
-      --hosts|--hosts=*|-H|--hosts-file|--hosts-file=*|--cluster|--cluster=*|--solo)
-        return 0 ;;
-    esac
-  done
-  printf -- '--hosts\nlocalhost\n'
-}
-
-unalias vllm 2>/dev/null || true
-
-# Internal: background watchdog that polls until the LiteLLM proxy registers
-# a new model, then exits. Kept as a separate function so the body is
-# testable in isolation and so `disown` / `&` redirects stay legible.
-_dgx_vllm_autoregister_watchdog() {
-  # 240 * 5s = 1200s = 20 min max. Long enough for a cold image build on a
-  # fresh host; short enough to not linger indefinitely if the launch fails.
-  local _attempts=240
-  local _host_args=() _line
-  while IFS= read -r _line; do
-    [ -n "$_line" ] && _host_args+=("$_line")
-  done < <(_dgx_host_args)
-  while [ "$_attempts" -gt 0 ]; do
-    sleep 5
-    _attempts=$(( _attempts - 1 ))
-    # Proxy must be running for a refresh to do anything useful.
-    if ! sparkrun proxy status --json 2>/dev/null | grep -q '"running":[[:space:]]*true'; then
-      continue
-    fi
-    local _out
-    _out=$(sparkrun proxy models "${_host_args[@]}" --refresh 2>&1) || continue
-    if echo "$_out" | grep -qE 'Synced proxy models:.* added'; then
-      echo "[vllm] Registered new workload with LiteLLM proxy (:4000)" >&2
-      return 0
-    fi
-  done
-  return 1
-}
-
-vllm() {
-  if [ "$#" -lt 1 ]; then
-    echo "Usage: vllm <recipe-name|path/to/recipe.yaml> [sparkrun run options...]" >&2
-    return 1
-  fi
-  local _recipe="$1"; shift
-  local _local="$HOME/dgx-toolbox/recipes/${_recipe}.yaml"
-
-  # Read DGX_PROXY_AUTOREGISTER from env, falling back to
-  # ~/.config/dgx-toolbox/mode.env. (DGX_MODE is read inside _dgx_host_args
-  # for host injection; we only need autoregister here.)
-  local _mode_env="${DGX_TOOLBOX_CONFIG_DIR:-$HOME/.config/dgx-toolbox}/mode.env"
-  local _dgx_autoreg="${DGX_PROXY_AUTOREGISTER:-}"
-  if [ -z "$_dgx_autoreg" ] && [ -f "$_mode_env" ]; then
-    # shellcheck disable=SC1090
-    _dgx_autoreg="$(. "$_mode_env" && echo "${DGX_PROXY_AUTOREGISTER:-}")"
-  fi
-  # Default: autoregister ON unless explicitly disabled.
-  if [ -z "$_dgx_autoreg" ]; then
-    _dgx_autoreg=1
-  fi
-
-  # Detect --foreground / --dry-run which change autoregister semantics.
-  # Host-flag detection and --hosts localhost injection now live in the
-  # shared _dgx_host_args helper below — kept in one place so vllm-stop,
-  # vllm-logs, vllm-status, and vllm-show share the same logic.
-  local _is_foreground=0 _is_dry_run=0 _arg
-  for _arg in "$@"; do
-    case "$_arg" in
-      --foreground) _is_foreground=1 ;;
-      --dry-run)    _is_dry_run=1 ;;
-    esac
-  done
-
-  local _host_args=()
-  local _line
-  while IFS= read -r _line; do
-    [ -n "$_line" ] && _host_args+=("$_line")
-  done < <(_dgx_host_args "$@")
-
-  # Spawn the autoregister watchdog BEFORE launching so it runs concurrently
-  # with sparkrun's foreground log-follow. Skipped when the user explicitly
-  # opted out, or when semantics don't fit (dry-run, foreground).
-  if [ "$_dgx_autoreg" = "1" ] && [ "$_is_foreground" -eq 0 ] && [ "$_is_dry_run" -eq 0 ]; then
-    ( _dgx_vllm_autoregister_watchdog ) >&2 &
-    disown 2>/dev/null || true
-  fi
-
-  if [ -f "$_recipe" ]; then
-    sparkrun run "$_recipe" "${_host_args[@]}" "$@"
-  elif [ -f "$_local" ]; then
-    sparkrun run "$_local" "${_host_args[@]}" "$@"
-  else
-    sparkrun run "$_recipe" "${_host_args[@]}" "$@"
-  fi
-}
-
-# vllm-stop: stop a running sparkrun workload. Intuitive defaults:
-#   vllm-stop                    -> stop everything (adds --all)
-#   vllm-stop <recipe-or-target> -> stop that target
-#   vllm-stop --all              -> explicit (passes through)
-# In single-node mode, injects --hosts localhost unless the caller already
-# specified a host flag. Any additional flags are forwarded verbatim.
-unalias vllm-stop 2>/dev/null || true
-vllm-stop() {
-  local _host_args=() _line
-  while IFS= read -r _line; do
-    [ -n "$_line" ] && _host_args+=("$_line")
-  done < <(_dgx_host_args "$@")
-
-  local _has_target=0 _has_all=0 _arg
-  for _arg in "$@"; do
-    case "$_arg" in
-      --all|-a) _has_all=1 ;;
-      -*|--*=*) ;;
-      *) _has_target=1 ;;
-    esac
-  done
-  local _extra_args=()
-  if [ "$_has_target" -eq 0 ] && [ "$_has_all" -eq 0 ]; then
-    _extra_args+=(--all)
-  fi
-
-  sparkrun stop "${_host_args[@]}" "${_extra_args[@]}" "$@"
-}
-
-# vllm-logs: tail logs of the active workload. Host injection applies here
-# too because sparkrun logs hits the same host-resolution gate.
-unalias vllm-logs 2>/dev/null || true
-vllm-logs() {
-  local _host_args=() _line
-  while IFS= read -r _line; do
-    [ -n "$_line" ] && _host_args+=("$_line")
-  done < <(_dgx_host_args "$@")
-  sparkrun logs "${_host_args[@]}" "$@"
-}
-
-# vllm-status: show running workload + proxy status.
-unalias vllm-status 2>/dev/null || true
-vllm-status() {
-  local _host_args=() _line
-  while IFS= read -r _line; do
-    [ -n "$_line" ] && _host_args+=("$_line")
-  done < <(_dgx_host_args "$@")
-  sparkrun status "${_host_args[@]}" "$@"
-}
-
-# vllm-show: print the resolved recipe config.
-unalias vllm-show 2>/dev/null || true
-vllm-show() {
-  local _host_args=() _line
-  while IFS= read -r _line; do
-    [ -n "$_line" ] && _host_args+=("$_line")
-  done < <(_dgx_host_args "$@")
-  sparkrun show "${_host_args[@]}" "$@"
-}
+# path to a recipe YAML can be passed. The `vllm*` shell scripts below first
+# look in this repo's local recipes/ directory, then fall back to sparkrun's
+# normal resolution. They also preserve the single-node `--hosts localhost`
+# injection and proxy auto-register behavior.
+alias vllm='~/dgx-toolbox/scripts/vllm.sh'                                    # Run a sparkrun recipe (local recipes/ first, single-node safe)
+alias vllm-stop='~/dgx-toolbox/scripts/vllm-stop.sh'                          # Stop a sparkrun workload (defaults to --all with no target)
+alias vllm-logs='~/dgx-toolbox/scripts/vllm-logs.sh'                          # Tail sparkrun workload logs
+alias vllm-status='~/dgx-toolbox/scripts/vllm-status.sh'                      # Show sparkrun workload status
+alias vllm-show='~/dgx-toolbox/scripts/vllm-show.sh'                          # Show resolved sparkrun recipe config
 
 # --- OpenAI-compatible proxy (sparkrun proxy → LiteLLM under the hood, :4000) ---
-# `litellm` and `litellm-models` are functions rather than bare aliases so a
-# fresh `source ~/.bash_aliases` exposes the single-node host-injection fix too.
-unalias litellm 2>/dev/null || true
-litellm() {
-  local _host_args=() _line
-  while IFS= read -r _line; do
-    [ -n "$_line" ] && _host_args+=("$_line")
-  done < <(_dgx_host_args "$@")
-  sparkrun proxy start "${_host_args[@]}" "$@"
-}
+alias litellm='~/dgx-toolbox/scripts/litellm.sh'                              # Start proxy on :4000 (single-node safe)
 alias litellm-stop='sparkrun proxy stop'                                      # Stop proxy
 alias litellm-status='sparkrun proxy status'                                  # Proxy status
-unalias litellm-models 2>/dev/null || true
-litellm-models() {
-  local _host_args=() _line
-  while IFS= read -r _line; do
-    [ -n "$_line" ] && _host_args+=("$_line")
-  done < <(_dgx_host_args "$@")
-
-  local _has_refresh=0 _arg
-  for _arg in "$@"; do
-    case "$_arg" in
-      --refresh) _has_refresh=1 ;;
-    esac
-  done
-  local _extra_args=()
-  if [ "$_has_refresh" -eq 0 ]; then
-    _extra_args+=(--refresh)
-  fi
-
-  sparkrun proxy models "${_host_args[@]}" "${_extra_args[@]}" "$@"
-}
+alias litellm-models='~/dgx-toolbox/scripts/litellm-models.sh'                # Refresh and list routed models (single-node safe)
 alias litellm-alias='sparkrun proxy alias'                                    # Manage proxy aliases (add/remove/list)
 
 # --- DGX mode (single vs. cluster) ---
