@@ -33,6 +33,11 @@ alias ollama-remote='~/dgx-toolbox/inference/setup-ollama-remote.sh'          # 
 #   vllm nemotron-3-nano-4b-bf16-vllm --solo     # force single-node
 #   vllm qwen3.6                                 # resolves from registered registries
 #   vllm ~/my-recipes/custom.yaml                # direct path to any recipe YAML
+#
+# NOTE: `unalias` first so re-sourcing this file after an older install
+# (where vllm was an alias) does not trip a syntax error when the alias is
+# expanded inside the function definition.
+unalias vllm 2>/dev/null || true
 vllm() {
   if [ "$#" -lt 1 ]; then
     echo "Usage: vllm <recipe-name|path/to/recipe.yaml> [sparkrun run options...]" >&2
@@ -65,6 +70,7 @@ alias dgx-mode='~/dgx-toolbox/setup/dgx-mode.sh'                              # 
 
 # --- Recipe registries (official + community, via sparkrun) ---
 alias dgx-recipes='~/dgx-toolbox/setup/dgx-recipes.sh'                        # dgx-recipes add | list | update | status
+alias dgx-discover='~/dgx-toolbox/setup/dgx-discover.sh'                      # dgx-discover [list|local|registries|search <q>|show <r>|update]
 
 # --- Fine-Tuning ---
 alias unsloth-studio='~/dgx-toolbox/containers/unsloth-studio.sh'             # Unsloth fine-tuning UI (:8000)
