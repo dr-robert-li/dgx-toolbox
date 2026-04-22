@@ -31,4 +31,4 @@ if _dgx_vllm_should_autoregister && [ "$is_foreground" -eq 0 ] && [ "$is_dry_run
   disown 2>/dev/null || true
 fi
 
-exec sparkrun run "$resolved_recipe" "${host_args[@]}" "$@"
+_dgx_exec_sparkrun run "$resolved_recipe" "${host_args[@]}" "$@"

@@ -344,38 +344,46 @@ fi
 
 # Autoregister opt-out: DGX_PROXY_AUTOREGISTER=0 must prevent the wrapper
 # from spawning the watchdog.
-rm -f "$AUTOREG_LOG"
-cat > "$AUTOREG_DIR/stub-log-only.sh" <<'EOF_STUB'
-sparkrun() { echo "CALL: $*" >> "$AUTOREG_LOG"; }
+AUTOREG_LOG_OPT_OUT="$AUTOREG_DIR/opt-out.log"
+cat > "$AUTOREG_DIR/stub-log-only.sh" <<EOF_STUB
+sparkrun() { echo "CALL: \$*" >> "$AUTOREG_LOG_OPT_OUT"; }
 export -f sparkrun
 EOF_STUB
-timeout 3 bash -ic "source $AUTOREG_DIR/stub-log-only.sh && export DGX_MODE=single DGX_PROXY_AUTOREGISTER=0 && source ./example.bash_aliases && vllm qwen3.6" >/dev/null 2>&1 || true
+timeout 3 bash -ic "source $AUTOREG_DIR/stub-log-only.sh && export DGX_MODE=single DGX_PROXY_AUTOREGISTER=0 DGX_WATCHDOG_ATTEMPTS=1 DGX_WATCHDOG_SLEEP=0.1 && source ./example.bash_aliases && vllm qwen3.6" >/dev/null 2>&1 || true
 sleep 0.2  # allow any backgrounded watchdog (there shouldn't be one) to flush
-if grep -q 'CALL: run ' "$AUTOREG_LOG" 2>/dev/null && ! grep -q 'CALL: proxy status' "$AUTOREG_LOG" 2>/dev/null; then
+if grep -q 'CALL: run ' "$AUTOREG_LOG_OPT_OUT" 2>/dev/null && ! grep -q 'CALL: proxy status' "$AUTOREG_LOG_OPT_OUT" 2>/dev/null; then
   pass "DGX_PROXY_AUTOREGISTER=0 prevents autoregister watchdog from running"
 else
-  fail "DGX_PROXY_AUTOREGISTER=0 did not suppress autoregister (log: $(tr '\n' ';' < "$AUTOREG_LOG" 2>/dev/null))"
+  fail "DGX_PROXY_AUTOREGISTER=0 did not suppress autoregister (log: $(tr '\n' ';' < "$AUTOREG_LOG_OPT_OUT" 2>/dev/null))"
 fi
 
 # Autoregister skip on --dry-run: dry-run doesn't launch a workload.
-rm -f "$AUTOREG_LOG"
-timeout 3 bash -ic "source $AUTOREG_DIR/stub-log-only.sh && export DGX_MODE=single DGX_PROXY_AUTOREGISTER=1 && source ./example.bash_aliases && vllm qwen3.6 --dry-run" >/dev/null 2>&1 || true
+AUTOREG_LOG_DRY_RUN="$AUTOREG_DIR/dry-run.log"
+cat > "$AUTOREG_DIR/stub-log-dry.sh" <<EOF_STUB
+sparkrun() { echo "CALL: \$*" >> "$AUTOREG_LOG_DRY_RUN"; }
+export -f sparkrun
+EOF_STUB
+timeout 3 bash -ic "source $AUTOREG_DIR/stub-log-dry.sh && export DGX_MODE=single DGX_PROXY_AUTOREGISTER=1 DGX_WATCHDOG_ATTEMPTS=1 DGX_WATCHDOG_SLEEP=0.1 && source ./example.bash_aliases && vllm qwen3.6 --dry-run" >/dev/null 2>&1 || true
 sleep 0.2
-if grep -q 'CALL: run ' "$AUTOREG_LOG" 2>/dev/null && ! grep -q 'CALL: proxy status' "$AUTOREG_LOG" 2>/dev/null; then
+if grep -q 'CALL: run ' "$AUTOREG_LOG_DRY_RUN" 2>/dev/null && ! grep -q 'CALL: proxy status' "$AUTOREG_LOG_DRY_RUN" 2>/dev/null; then
   pass "--dry-run suppresses autoregister watchdog"
 else
-  fail "--dry-run did not suppress autoregister (log: $(tr '\n' ';' < "$AUTOREG_LOG" 2>/dev/null))"
+  fail "--dry-run did not suppress autoregister (log: $(tr '\n' ';' < "$AUTOREG_LOG_DRY_RUN" 2>/dev/null))"
 fi
 
 # Autoregister skip on --foreground: watchdog output would interleave with
 # streamed container logs.
-rm -f "$AUTOREG_LOG"
-timeout 3 bash -ic "source $AUTOREG_DIR/stub-log-only.sh && export DGX_MODE=single DGX_PROXY_AUTOREGISTER=1 && source ./example.bash_aliases && vllm qwen3.6 --foreground" >/dev/null 2>&1 || true
+AUTOREG_LOG_FOREGROUND="$AUTOREG_DIR/foreground.log"
+cat > "$AUTOREG_DIR/stub-log-fore.sh" <<EOF_STUB
+sparkrun() { echo "CALL: \$*" >> "$AUTOREG_LOG_FOREGROUND"; }
+export -f sparkrun
+EOF_STUB
+timeout 3 bash -ic "source $AUTOREG_DIR/stub-log-fore.sh && export DGX_MODE=single DGX_PROXY_AUTOREGISTER=1 DGX_WATCHDOG_ATTEMPTS=1 DGX_WATCHDOG_SLEEP=0.1 && source ./example.bash_aliases && vllm qwen3.6 --foreground" >/dev/null 2>&1 || true
 sleep 0.2
-if grep -q 'CALL: run ' "$AUTOREG_LOG" 2>/dev/null && ! grep -q 'CALL: proxy status' "$AUTOREG_LOG" 2>/dev/null; then
+if grep -q 'CALL: run ' "$AUTOREG_LOG_FOREGROUND" 2>/dev/null && ! grep -q 'CALL: proxy status' "$AUTOREG_LOG_FOREGROUND" 2>/dev/null; then
   pass "--foreground suppresses autoregister watchdog"
 else
-  fail "--foreground did not suppress autoregister (log: $(tr '\n' ';' < "$AUTOREG_LOG" 2>/dev/null))"
+  fail "--foreground did not suppress autoregister (log: $(tr '\n' ';' < "$AUTOREG_LOG_FOREGROUND" 2>/dev/null))"
 fi
 rm -rf "$AUTOREG_DIR"
 unset AUTOREG_LOG

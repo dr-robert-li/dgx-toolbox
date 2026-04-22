@@ -23,4 +23,4 @@ if [ "$has_target" -eq 0 ] && [ "$has_all" -eq 0 ]; then
   extra_args+=(--all)
 fi
 
-exec sparkrun stop "${host_args[@]}" "${extra_args[@]}" "$@"
+_dgx_exec_sparkrun stop "${host_args[@]}" "${extra_args[@]}" "$@"

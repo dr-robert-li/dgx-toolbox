@@ -20,4 +20,4 @@ if [ "$has_refresh" -eq 0 ]; then
   extra_args+=(--refresh)
 fi
 
-exec sparkrun proxy models "${host_args[@]}" "${extra_args[@]}" "$@"
+_dgx_exec_sparkrun proxy models "${host_args[@]}" "${extra_args[@]}" "$@"

@@ -50,12 +50,13 @@ _dgx_collect_host_args() {
 }
 
 _dgx_vllm_autoregister_watchdog() {
-  local _attempts=240
+  local _attempts=${DGX_WATCHDOG_ATTEMPTS:-240}
+  local _sleep=${DGX_WATCHDOG_SLEEP:-5}
   local _host_args=()
   _dgx_collect_host_args _host_args
 
   while [ "$_attempts" -gt 0 ]; do
-    sleep 5
+    sleep "$_sleep"
     _attempts=$(( _attempts - 1 ))
 
     if ! sparkrun proxy status --json 2>/dev/null | grep -q '"running":[[:space:]]*true'; then
@@ -92,5 +93,13 @@ _dgx_vllm_resolve_recipe() {
     printf '%s\n' "$_local"
   else
     printf '%s\n' "$_recipe"
+  fi
+}
+
+_dgx_exec_sparkrun() {
+  if [ "$(type -t sparkrun 2>/dev/null)" = "function" ]; then
+    sparkrun "$@"
+  else
+    exec sparkrun "$@"
   fi
 }

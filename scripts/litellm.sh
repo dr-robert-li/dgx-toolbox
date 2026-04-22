@@ -8,4 +8,4 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 host_args=()
 _dgx_collect_host_args host_args "$@"
 
-exec sparkrun proxy start "${host_args[@]}" "$@"
+_dgx_exec_sparkrun proxy start "${host_args[@]}" "$@"
