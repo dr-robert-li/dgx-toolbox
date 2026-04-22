@@ -250,6 +250,20 @@ if [ -f "$ALIASES_SRC" ]; then
 fi
 
 # -----------------------------------------------------------------------------
+# Register upstream sparkrun recipe registries (official + community)
+# -----------------------------------------------------------------------------
+# Pulls in the Spark Arena official and community recipe registries so
+# `sparkrun run <recipe>` / `vllm <recipe>` can resolve names from either
+# source out of the box. Idempotent — skips anything already registered.
+# Runs before the mode picker because recipes are mode-agnostic and we'd
+# rather surface any network/auth issues with registries first.
+RECIPES_SCRIPT="$(cd "$(dirname "$0")" && pwd)/dgx-recipes.sh"
+if [ -x "$RECIPES_SCRIPT" ] && command -v sparkrun >/dev/null 2>&1; then
+  echo "=== Registering default recipe registries ==="
+  "$RECIPES_SCRIPT" add || echo "Recipe registration skipped/failed — run 'dgx-recipes' later to retry."
+fi
+
+# -----------------------------------------------------------------------------
 # First-time mode picker (single-node vs cluster)
 # -----------------------------------------------------------------------------
 PICKER="$(cd "$(dirname "$0")" && pwd)/dgx-mode-picker.sh"

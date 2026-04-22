@@ -67,8 +67,18 @@ build-all
 # Enable Ollama for remote/LAN access
 ollama-remote
 
-# Start the OpenAI-compatible proxy (sparkrun wraps LiteLLM, binds :4000)
+# Start the OpenAI-compatible proxy (sparkrun wraps LiteLLM, binds 0.0.0.0:4000)
 litellm
+
+# Print the LAN URL other devices on your network can use (not just localhost)
+# e.g. http://10.24.11.13:4000/v1 → point any OpenAI-compatible client here.
+LAN_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+echo "Proxy (local):  http://localhost:4000/v1"
+echo "Proxy (LAN):    http://${LAN_IP}:4000/v1"
+# Locked-down alternative — only listen on localhost:
+#   sparkrun proxy start --host 127.0.0.1
+# LAN with auth:
+#   sparkrun proxy start --master-key sk-choose-a-long-random-string
 
 # Serve a model via a sparkrun recipe (single-node by default, or --cluster NAME)
 vllm nemotron-3-nano-4b-bf16-vllm
@@ -76,6 +86,99 @@ vllm nemotron-3-nano-4b-bf16-vllm
 # Check what's running
 dgx-status
 ```
+
+### Downloading new models from Hugging Face
+
+vLLM (via sparkrun) loads models straight from the Hugging Face cache at
+`~/.cache/huggingface` — the runtime exports `HF_HOME=/cache/huggingface` inside
+the container and bind-mounts the host cache in, so anything you pull on the
+host is visible to every recipe. You only need to download a model once per
+box; every subsequent recipe that references it starts instantly.
+
+#### 1. Install the `hf` CLI and authenticate
+
+```bash
+# ARM64-native wheel, no compile step.
+pip install -U "huggingface_hub[cli]" hf_xet
+
+# One-time login (stores a token at ~/.cache/huggingface/token).
+# Only needed for gated repos (Llama, Nemotron, etc.) — public models work anonymously.
+hf auth login
+# Or non-interactively:
+# hf auth login --token "$HF_TOKEN"
+```
+
+`hf` is the current Hugging Face CLI — the old `huggingface-cli` name still
+works as an alias but is being phased out ([announcement](https://huggingface.co/blog/hf-cli)).
+
+#### 2. Download a model
+
+```bash
+# Full repo — most common for serving.
+hf download nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16
+
+# Just the files you need (handy for very large repos):
+hf download Qwen/Qwen3-1.7B --include "*.safetensors" "*.json" "tokenizer*"
+
+# Optional: speed up big downloads on a fast link (Xet-backed repos).
+# Replaces the deprecated HF_HUB_ENABLE_HF_TRANSFER path — huggingface_hub v1.x
+# removed hf_transfer; use the Xet knobs instead.
+export HF_XET_HIGH_PERFORMANCE=1
+```
+
+The model lands at `~/.cache/huggingface/hub/models--<org>--<name>/`. sparkrun
+reuses whatever is already there — no explicit import step.
+
+#### 3. Serve it via a registered recipe
+
+Sparkrun resolves recipes by name from registered registries. Two upstream
+registries are provisioned automatically during `setup/dgx-global-base-setup.sh`
+and can be refreshed any time via the `dgx-recipes` alias:
+
+- [**Official recipes**](https://github.com/spark-arena/recipe-registry) — maintained and Blackwell-tested by the Spark Arena team.
+- [**Community recipes**](https://github.com/spark-arena/community-recipe-registry) — contributed by users; benchmark entries are surfaced at [Spark Arena](https://spark-arena.com).
+
+```bash
+dgx-recipes add      # register defaults (idempotent — safe to re-run)
+dgx-recipes list     # show what's registered
+dgx-recipes update   # git-pull every enabled registry; restore missing defaults
+dgx-recipes status   # summary + the URLs this script installs
+
+# Run any recipe by name — sparkrun pulls the model on first launch if needed:
+vllm qwen3-1.7b-vllm
+# or directly via sparkrun:
+sparkrun run qwen3-1.7b-vllm
+```
+
+For anything not in those registries, drop a YAML file into
+`~/dgx-toolbox/recipes/` (the local recipe directory the `vllm` alias already
+searches) and use `recipes/nemotron-3-nano-4b-bf16-vllm.yaml` as a template.
+See [`recipes/README.md`](recipes/README.md) for the schema and sm_121
+container guidance.
+
+#### 4. Route the model through the proxy
+
+Once the recipe is running, sparkrun's autodiscover sweep (every 30s) registers
+it with the `:4000` proxy automatically. To force an immediate refresh or pin
+a short stable alias:
+
+```bash
+litellm-models                              # refresh + list routed models
+sparkrun proxy alias add fast  Qwen/Qwen3-1.7B
+sparkrun proxy alias add smart Qwen/Qwen3-8B
+```
+
+Clients (Claude Code via `claude-litellm`, Open-WebUI, the harness, any
+OpenAI-compatible SDK) then talk to the alias:
+
+```bash
+curl http://${LAN_IP:-localhost}:4000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"fast","messages":[{"role":"user","content":"hi"}]}'
+```
+
+Repointing `fast` at a different backing model later is one `alias add` away —
+no client reconfiguration needed.
 
 ## Architecture
 
@@ -1172,6 +1275,7 @@ Key aliases:
 | `litellm` / `litellm-stop` / `litellm-status` | Start / stop / inspect the sparkrun OpenAI-compatible proxy |
 | `litellm-models` / `litellm-alias` | Refresh proxy routing table / manage model aliases |
 | `dgx-mode` | Switch between single- and multi-node sparkrun modes |
+| `dgx-recipes` | Register / list / update sparkrun recipe registries (official + community) |
 | `eval-toolbox` / `data-toolbox` | Interactive toolbox shells |
 | `harness` / `harness-stop` | Start/stop safety harness gateway |
 | `hitl` | Launch HITL review dashboard |
