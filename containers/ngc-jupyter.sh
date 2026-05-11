@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 source "$(dirname "$0")/../lib.sh"
+require_files "$HOME/ngc-quickstart.sh" "$HOME/requirements-gpu.txt"
 PORT=8888
 IP=$(hostname -I | awk '{print $1}')
 

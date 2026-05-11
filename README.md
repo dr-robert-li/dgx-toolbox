@@ -1322,19 +1322,27 @@ dgx.execute("training", "python", "train.py")
 
 Edit the YAML to point at your container names, workdirs, and validation paths. The `dgx_toolbox_path` setting (or `DGX_TOOLBOX_PATH` env var) tells the engine where your dgx-toolbox clone lives.
 
-## GPU Requirements File
+## NGC Launcher Host Files
 
-Both NGC PyTorch scripts auto-install from `~/requirements-gpu.txt` at container start. Create it with your preferred packages:
+Both NGC PyTorch scripts (`containers/ngc-pytorch.sh`, `containers/ngc-jupyter.sh`) bind-mount two host files and fail-fast if either is missing:
 
-```bash
-cat > ~/requirements-gpu.txt << 'EOF'
-unsloth
-trl
-peft
-bitsandbytes
-datasets
-EOF
-```
+1. `~/requirements-gpu.txt` — packages auto-installed at container start. Create with your preferred deps:
+
+   ```bash
+   cat > ~/requirements-gpu.txt << 'EOF'
+   unsloth
+   trl
+   peft
+   bitsandbytes
+   datasets
+   EOF
+   ```
+
+2. `~/ngc-quickstart.sh` — in-container quickstart guide. Symlink the repo copy so future updates flow through without re-copying:
+
+   ```bash
+   ln -sf "$(pwd)/containers/ngc-quickstart.sh" ~/ngc-quickstart.sh
+   ```
 
 ## Third-Party Software
 

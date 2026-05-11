@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-05-11 — Fix: NGC launchers fail-fast on missing host files and don't depend on PATH/exec-bit
+
+### Fixed
+
+- **`containers/ngc-pytorch.sh` + `containers/ngc-jupyter.sh`** — Both launchers bind-mount `$HOME/requirements-gpu.txt` and `$HOME/ngc-quickstart.sh`. When either host file was missing, Docker silently auto-created the bind-mount source as an empty directory, the downstream `pip install -r <dir>` or `quickstart` invocation failed, the `&&` chain short-circuited, and the container exited before the interactive shell / Jupyter Lab step ever ran. Both launchers now call the new `require_files` helper at the top and abort with a clear `ERROR: required host file missing: ...` message before `docker run` is reached.
+- **`containers/ngc-pytorch.sh`** — Replaced `&& quickstart &&` with `&& bash /usr/local/bin/quickstart &&` in the in-container command. Invoking the mounted script through `bash <path>` removes two implicit couplings: the host file no longer needs to be executable for the mount to work, and the launcher no longer depends on `/usr/local/bin` being on `PATH` inside the `bash -c` context. This eliminates the secondary `bash: line 1: quickstart: command not found` failure mode observed after host files were restored.
+
+### Added
+
+- **`lib.sh`** — New `require_files` helper that fails fast when any host bind-mount source is missing, reporting every missing path in a single pass rather than failing on the first. Complements the existing `ensure_dirs` helper (which is correct for directory mounts, where Docker's auto-create-as-empty-dir behavior is harmless).
+- **`README.md`** — Renamed the "GPU Requirements File" section to "NGC Launcher Host Files" and documented both required host files. The `~/ngc-quickstart.sh` entry recommends symlinking the repo copy (`ln -sf "$(pwd)/containers/ngc-quickstart.sh" ~/ngc-quickstart.sh`) so future repo updates propagate without re-copying.
+
 ## 2026-04-22 — Fix: support shell function stubs in wrappers and optimize tests
 
 ### Fixed

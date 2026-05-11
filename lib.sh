@@ -88,6 +88,21 @@ ensure_dirs() {
   mkdir -p "$@"
 }
 
+# Require host files to exist before mounting (fail-fast)
+# Docker silently creates missing bind-mount sources as empty dirs, which
+# breaks downstream commands like `pip -r <file>` or executing the mount.
+# Usage: require_files ~/file1 ~/file2
+require_files() {
+  local missing=0
+  for f in "$@"; do
+    if [[ ! -f "$f" ]]; then
+      echo "ERROR: required host file missing: $f" >&2
+      missing=1
+    fi
+  done
+  [[ $missing -eq 0 ]] || exit 1
+}
+
 # Build extra -v flags from EXTRA_MOUNTS env var
 # Format: EXTRA_MOUNTS="/host/a:/container/a,/host/b:/container/b"
 # Comma-separated mount specs, each spec is host_path:container_path
