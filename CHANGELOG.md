@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-05-11 — Fix: NGC launchers install transitive deps without clobbering NGC torch/CUDA
+
+### Fixed
+
+- **`containers/ngc-pytorch.sh` + `containers/ngc-jupyter.sh`** — Replaced `pip install --no-deps -r /tmp/requirements-gpu.txt` with `python /tmp/install-deps.py -r /tmp/requirements-gpu.txt`. The bare `--no-deps -r` form was correct in spirit (preserve NGC's custom-compiled torch/torchvision/torchaudio/torchcodec wheels) but stripped legitimate transitives, leaving the container with packages like `unsloth` and `peft` installed but no `transformers`, `accelerate`, or `sentencepiece` — producing `ModuleNotFoundError: No module named 'transformers'` and (when the user worked around with a bare `pip install transformers`) version-skew failures because pip's resolver picked the latest transformers, which was incompatible with unsloth's `transformers<=5.5.0`. The new helper installs every package with `--no-deps`, walks runtime requirements recursively, intersects specifiers across all parents, and only installs/upgrades packages whose current version doesn't satisfy the combined constraint. The torch family is hard-skipped so pip never gets a chance to replace NGC's pinned wheels.
+- **`containers/ngc-pytorch.sh` + `containers/ngc-jupyter.sh`** — Added defensive `pip uninstall -y torchcodec 2>/dev/null` after the dep install. NGC PyTorch images ship a torchcodec built against the image's FFmpeg stack; after our install brings in newer wheels for `transformers` etc., the bundled torchcodec can segfault on `import torch` (it's auto-discovered). Text-only LLM workloads don't need `torchcodec.decoders.{VideoDecoder,AudioDecoder}`.
+
+### Added
+
+- **`containers/install-deps.py`** (new) — Self-contained Python helper that performs the safe-transitive-install strategy described above. Accepts either positional package names (mirroring the unsloth launcher's pattern) or `-r <requirements-file>` (mirroring the NGC launchers' pattern). Mounted into the container as `/tmp/install-deps.py` so the host doesn't need its own copy.
+- **All six launchers (`ngc-*.sh`, `unsloth-*.sh`)** — `~/.cache/pip` is now bind-mounted into the container at `/root/.cache/pip`, so repeat container starts reuse downloaded wheels (transformers ~10MB, triton ~190MB, bitsandbytes ~31MB) instead of redownloading. The HuggingFace cache mount was already present; this brings the pip cache to parity.
+- **`README.md`** — New "How dependency installation works" subsection under "NGC Launcher Host Files" explaining the safe-transitive strategy, the cross-parent specifier intersection, the torchcodec defense, and what to do if your `requirements-gpu.txt` has unresolvable conflicts.
+
+### Changed (refactor)
+
+- **`containers/unsloth-headless.sh`, `unsloth-studio.sh`, `unsloth-headless-sync.sh`, `unsloth-studio-sync.sh`** — Replaced the inline bash-embedded Python heredoc (the same one duplicated in all four scripts) with a single call to `python /tmp/install-deps.py unsloth unsloth_zoo`. Net result: ~20 lines of heredoc removed per script, one shared helper to maintain. The existing `pip uninstall -y torchcodec` defenses are preserved (including the second uninstall after `unsloth studio setup` in the studio variants).
+
 ## 2026-05-11 — Fix: NGC launchers fail-fast on missing host files and don't depend on PATH/exec-bit
 
 ### Fixed

@@ -3,6 +3,9 @@
 # See unsloth-headless.sh for details.
 
 source "$(dirname "$0")/../lib.sh"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+require_files "$SCRIPT_DIR/install-deps.py"
+ensure_dirs "$HOME/.cache/huggingface" "$HOME/.cache/pip" "$HOME/unsloth-data"
 CONTAINER_NAME="unsloth-headless"
 
 if is_running "$CONTAINER_NAME"; then
@@ -18,34 +21,14 @@ docker run -d \
   --ipc=host \
   -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
   -v "$HOME/.cache/huggingface:/root/.cache/huggingface" \
+  -v "$HOME/.cache/pip:/root/.cache/pip" \
   -v "$HOME/unsloth-data:/workspace/work" \
+  -v "$SCRIPT_DIR/install-deps.py:/tmp/install-deps.py:ro" \
   $(build_extra_mounts) \
   --restart unless-stopped \
   nvcr.io/nvidia/pytorch:25.11-py3 \
   bash -c '\
-    pip install --no-deps unsloth unsloth_zoo && \
-    python -c "
-import importlib.metadata as md
-from packaging.requirements import Requirement
-seen = set()
-missing = []
-for pkg in [\"unsloth\", \"unsloth_zoo\"]:
-    for r in (md.requires(pkg) or []):
-        req = Requirement(r)
-        if req.extras: continue
-        if req.marker and not req.marker.evaluate(): continue
-        if req.name in seen: continue
-        seen.add(req.name)
-        try: md.distribution(req.name)
-        except md.PackageNotFoundError: missing.append(str(req))
-if missing:
-    print(\"Missing deps: \" + \", \".join(missing))
-    with open(\"/tmp/missing_deps.txt\", \"w\") as f: f.write(chr(10).join(missing))
-else:
-    print(\"All deps satisfied\")
-    open(\"/tmp/missing_deps.txt\", \"w\").close()
-" && \
-    if [ -s /tmp/missing_deps.txt ]; then pip install --no-build-isolation -r /tmp/missing_deps.txt; fi && \
+    python /tmp/install-deps.py unsloth unsloth_zoo && \
     pip uninstall -y torchcodec 2>/dev/null; \
     echo "Unsloth headless ready — waiting for exec commands..." && \
     sleep infinity'

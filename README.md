@@ -1326,15 +1326,15 @@ Edit the YAML to point at your container names, workdirs, and validation paths. 
 
 Both NGC PyTorch scripts (`containers/ngc-pytorch.sh`, `containers/ngc-jupyter.sh`) bind-mount two host files and fail-fast if either is missing:
 
-1. `~/requirements-gpu.txt` — packages auto-installed at container start. Create with your preferred deps:
+1. `~/requirements-gpu.txt` — packages installed inside the container at start. Create with your preferred deps:
 
    ```bash
    cat > ~/requirements-gpu.txt << 'EOF'
-   unsloth
-   trl
    peft
-   bitsandbytes
+   accelerate
+   transformers
    datasets
+   bitsandbytes
    EOF
    ```
 
@@ -1343,6 +1343,24 @@ Both NGC PyTorch scripts (`containers/ngc-pytorch.sh`, `containers/ngc-jupyter.s
    ```bash
    ln -sf "$(pwd)/containers/ngc-quickstart.sh" ~/ngc-quickstart.sh
    ```
+
+### How dependency installation works
+
+Both NGC launchers run `containers/install-deps.py` inside the container (auto-mounted from the repo; no host copy required). The helper:
+
+1. Installs every top-level package in `~/requirements-gpu.txt` with `pip install --no-deps`. This preserves NGC's custom-compiled `torch` / `torchvision` / `torchaudio` / `torchcodec` wheels — replacing them with vanilla PyPI builds produces ABI errors like `RuntimeError: operator torchvision::nms does not exist`.
+2. Walks each installed package's runtime requirements (`importlib.metadata.requires`), filtering out extras and unsatisfied environment markers.
+3. **Intersects version specifiers across every parent** so the combined constraint reflects all requesters (e.g. `transformers>=4.51.3,<=5.5.0,...` from `unsloth` rather than whichever parent we hit first).
+4. For any requirement whose installed version doesn't satisfy the combined specifier, installs it with `pip install --no-deps --no-build-isolation`. Recurses into newly-installed packages' transitives until stable.
+5. The torch family (`torch`, `torchvision`, `torchaudio`, `torchcodec`) is skipped entirely — NGC's baseline wins.
+
+If your `requirements-gpu.txt` contains packages with truly incompatible version specifiers (e.g. one package requires `datasets<4.4` while another requires `datasets>=4.7`), the helper surfaces this as a `Could not find a version that satisfies` error at install time rather than producing a silently-broken environment. Pick one of the conflicting top-level packages and rerun.
+
+After the install, both NGC launchers defensively `pip uninstall -y torchcodec` (silenced if torchcodec is absent) — the NGC base image ships a torchcodec built against its FFmpeg combo that can segfault on `import torch` after the pip install. You lose `torchcodec.decoders.{VideoDecoder,AudioDecoder}` — text-only LLM workloads don't use either.
+
+### Caches
+
+All six launchers (`ngc-*.sh`, `unsloth-*.sh`) bind-mount `~/.cache/pip` and `~/.cache/huggingface` so repeat starts reuse downloaded wheels and model weights instead of redownloading. The unsloth launchers also share the same `install-deps.py` helper as the NGC scripts.
 
 ## Third-Party Software
 
