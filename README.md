@@ -1326,17 +1326,20 @@ Edit the YAML to point at your container names, workdirs, and validation paths. 
 
 Both NGC PyTorch scripts (`containers/ngc-pytorch.sh`, `containers/ngc-jupyter.sh`) bind-mount two host files and fail-fast if either is missing:
 
-1. `~/requirements-gpu.txt` — packages installed inside the container at start. Create with your preferred deps:
+1. `~/requirements-gpu.txt` — packages installed inside the container at start. Create with your preferred deps. The example below targets an unsloth-based LoRA finetune stack; see "How dependency installation works" for the `# no-walk` marker semantics.
 
    ```bash
    cat > ~/requirements-gpu.txt << 'EOF'
    peft
-   accelerate
-   transformers
-   datasets
    bitsandbytes
+   unsloth
+   diffusers
+   datasets>=3.4.1,<4.4.0   # pin for unsloth (it requires datasets<4.4)
+   trl  # no-walk — trl requires datasets>=4.7, conflicting with unsloth; installed without resolving its deps
    EOF
    ```
+
+   **Known breaking conflict — unsloth ↔ trl on `datasets`:** unsloth requires `datasets<4.4.0`, trl requires `datasets>=4.7.0`. They cannot both be satisfied. The recommended workaround is to pin `datasets` to a version unsloth accepts (e.g. `<4.4.0`) and install trl with the `# no-walk` marker so the helper installs it without walking — and therefore without enforcing — its `datasets>=4.7` constraint. At runtime, trl features that hard-require datasets ≥ 4.7 APIs will break; the unsloth+peft+transformers training paths do not.
 
 2. `~/ngc-quickstart.sh` — in-container quickstart guide. Symlink the repo copy so future updates flow through without re-copying:
 
@@ -1354,7 +1357,10 @@ Both NGC launchers run `containers/install-deps.py` inside the container (auto-m
 4. For any requirement whose installed version doesn't satisfy the combined specifier, installs it with `pip install --no-deps --no-build-isolation`. Recurses into newly-installed packages' transitives until stable.
 5. The torch family (`torch`, `torchvision`, `torchaudio`, `torchcodec`) is skipped entirely — NGC's baseline wins.
 
-If your `requirements-gpu.txt` contains packages with truly incompatible version specifiers (e.g. one package requires `datasets<4.4` while another requires `datasets>=4.7`), the helper surfaces this as a `Could not find a version that satisfies` error at install time rather than producing a silently-broken environment. Pick one of the conflicting top-level packages and rerun.
+If your `requirements-gpu.txt` contains packages with truly incompatible version specifiers (e.g. one package requires `datasets<4.4` while another requires `datasets>=4.7`), the helper surfaces this as a `Could not find a version that satisfies` error at install time rather than producing a silently-broken environment. Two ways to recover:
+
+1. Drop one of the conflicting top-level packages.
+2. Append `# no-walk` to the trailing comment of the package whose transitive constraint you want to ignore. The helper will install that package with `--no-deps` and skip walking its declared requirements, leaving the conflicting transitive (e.g. `datasets`) free to be pinned by the other parent. The package is installed; you accept that any of its features that hard-require the conflicting transitive will break at runtime. Example: `trl  # no-walk` lets you keep `datasets<4.4` for unsloth while still installing trl.
 
 After the install, both NGC launchers defensively `pip uninstall -y torchcodec` (silenced if torchcodec is absent) — the NGC base image ships a torchcodec built against its FFmpeg combo that can segfault on `import torch` after the pip install. You lose `torchcodec.decoders.{VideoDecoder,AudioDecoder}` — text-only LLM workloads don't use either.
 

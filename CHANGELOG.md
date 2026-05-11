@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-05-11 — Add: `# no-walk` requirements marker + document unsloth↔trl `datasets` conflict
+
+### Added
+
+- **`containers/install-deps.py`** — Recognizes a `# no-walk` marker in the trailing comment of a `requirements.txt` line. Packages marked this way are installed with `--no-deps` like everything else, but the helper skips walking their declared requirements. Use this when a top-level package declares a transitive constraint you can't satisfy alongside another top-level (e.g. trl requires `datasets>=4.7` while unsloth requires `datasets<4.4`). Example line: `trl  # no-walk`.
+
+### Fixed
+
+- **`containers/install-deps.py`** — On each BFS pass, re-evaluate every plan entry against its current (possibly-intersected) specifier set. Earlier logic cached "already satisfied" verdicts after the first pass, so a later parent that tightened the constraint (e.g. transformers adding `huggingface-hub>=1.5.0` on top of peft's `>=0.21.0`) would silently leave the stale older version installed. Now an upgrade is triggered the moment the intersected specifier stops being satisfied.
+
+### Docs
+
+- **`README.md` — "NGC Launcher Host Files"** — Updated the example `~/requirements-gpu.txt` to the unsloth-targeting stack: `peft bitsandbytes unsloth diffusers datasets>=3.4.1,<4.4.0 trl  # no-walk`. Added a "Known breaking conflict" callout explaining the unsloth↔trl `datasets` incompatibility and the `# no-walk` workaround. Extended "How dependency installation works" with a second recovery path (use `# no-walk`) alongside "drop a top-level package".
+
 ## 2026-05-11 — Fix: NGC launchers install transitive deps without clobbering NGC torch/CUDA
 
 ### Fixed

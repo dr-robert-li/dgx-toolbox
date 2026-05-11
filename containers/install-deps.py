@@ -31,6 +31,13 @@ constraint is silently ignored.
 Usage:
   install-deps.py <pkg> [<pkg> ...]
   install-deps.py -r <requirements-file>
+
+Per-line markers in a requirements file:
+  - Append `# no-walk` to install the package with --no-deps and skip walking
+    its declared requirements. Use this when a top-level package declares a
+    transitive constraint you can't satisfy alongside other top-level packages
+    (e.g. trl requires `datasets>=4.7` while unsloth requires `datasets<4.4`).
+    The package is installed; its deps are your responsibility at runtime.
 """
 import argparse
 import subprocess
@@ -53,14 +60,22 @@ def _norm(name):
 TORCH_FAMILY_NORM = frozenset(_norm(n) for n in TORCH_FAMILY)
 
 
+NO_WALK_MARKER = "no-walk"
+
+
 def parse_requirements_file(path):
-    specs = []
+    """Return list of (spec, no_walk_flag). `# no-walk` in the trailing comment
+    marks a package as install-only (don't walk its requirements)."""
+    entries = []
     with open(path) as f:
         for raw in f:
-            line = raw.split("#", 1)[0].strip()
-            if line:
-                specs.append(line)
-    return specs
+            spec_part, _, comment = raw.partition("#")
+            spec = spec_part.strip()
+            if not spec:
+                continue
+            no_walk = NO_WALK_MARKER in comment.lower()
+            entries.append((spec, no_walk))
+    return entries
 
 
 def pip_install(*args):
@@ -101,13 +116,12 @@ def intersect(a, b):
     return SpecifierSet(",".join(filter(None, [str(a), str(b)])))
 
 
-def install_recursively(top_specs):
+def install_recursively(top_entries):
+    """top_entries: list of (spec, no_walk_flag) tuples."""
     # plan[canonical_name] = (display_name, combined SpecifierSet)
     plan = {}
     # canonical names whose md.requires() we have walked
     walked = set()
-    # canonical names we have pip-installed (top-level or transitive) this run
-    installed_here = set()
 
     def add(req):
         key = _norm(req.name)
@@ -120,48 +134,53 @@ def install_recursively(top_specs):
             plan[key] = (req.name, req.specifier)
 
     # Phase 1: install requested top-level packages with --no-deps.
+    top_specs = [spec for spec, _ in top_entries]
     print(
         f"install-deps: installing {len(top_specs)} top-level package(s) with --no-deps"
     )
     pip_install("--no-deps", *top_specs)
-    to_walk = []
-    for spec in top_specs:
+    walk_queue = []
+    for spec, no_walk in top_entries:
         try:
             req = Requirement(spec)
         except Exception:
             print(f"WARN: cannot parse top-level spec '{spec}'", file=sys.stderr)
             continue
         add(req)
-        installed_here.add(_norm(req.name))
-        to_walk.append(req.name)
+        if no_walk:
+            walked.add(_norm(req.name))
+            print(f"install-deps: skipping dep walk for '{req.name}' (no-walk)")
+        else:
+            walk_queue.append(req.name)
 
-    # Phase 2: BFS through transitives until stable.
-    while to_walk:
-        # Walk requirements of newly added packages.
-        for pkg in to_walk:
+    # Phase 2: BFS through transitives. Re-checks satisfaction every pass so a
+    # later parent that tightens a spec can trigger an upgrade.
+    while True:
+        # Walk any pending packages' declared requirements into the plan.
+        for pkg in walk_queue:
             key = _norm(pkg)
             if key in walked:
                 continue
             walked.add(key)
             for req in declared_runtime_requires(pkg):
                 add(req)
+        walk_queue = []
 
-        # Decide what needs installing (or upgrading) in this pass.
+        # Re-evaluate every plan entry against current combined specifiers.
         to_install = []  # list of (canonical_key, display, install_str)
-        candidates_already_ok = []  # display names already satisfied — walk their deps
         for key, (display, spec) in plan.items():
-            if key in installed_here:
-                continue
             version = installed_version(display)
             spec_str = str(spec)
-            if version is not None and (not spec_str or version in spec):
-                installed_here.add(key)
-                candidates_already_ok.append(display)
+            satisfied = version is not None and (not spec_str or version in spec)
+            if satisfied:
+                if key not in walked:
+                    walk_queue.append(display)
                 continue
             install_str = f"{display}{spec_str}" if spec_str else display
             to_install.append((key, display, install_str))
 
-        next_walk = list(candidates_already_ok)
+        if not to_install and not walk_queue:
+            break
 
         if to_install:
             print(
@@ -172,11 +191,8 @@ def install_recursively(top_specs):
             pip_install(
                 "--no-deps", "--no-build-isolation", *[s for _, _, s in to_install]
             )
-            for key, display, _ in to_install:
-                installed_here.add(key)
-                next_walk.append(display)
-
-        to_walk = next_walk
+            for _, display, _ in to_install:
+                walk_queue.append(display)
 
 
 def main():
@@ -185,14 +201,14 @@ def main():
     ap.add_argument("packages", nargs="*", help="package specs")
     args = ap.parse_args()
 
-    specs = list(args.packages)
+    entries = [(spec, False) for spec in args.packages]
     if args.requirements:
-        specs.extend(parse_requirements_file(args.requirements))
-    if not specs:
+        entries.extend(parse_requirements_file(args.requirements))
+    if not entries:
         print("install-deps: nothing to install", file=sys.stderr)
         return 0
 
-    install_recursively(specs)
+    install_recursively(entries)
     return 0
 
 
