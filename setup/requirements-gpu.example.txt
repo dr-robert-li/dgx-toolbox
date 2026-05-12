@@ -1,0 +1,44 @@
+# dgx-toolbox known-good GPU stack.
+#
+# Copy this file to $HOME/requirements-gpu.txt (the path ngc-pytorch.sh and
+# ngc-jupyter.sh read), then customise. The pins below target NGC PyTorch
+# 26.02-py3 (transformers 5.x base image) and rebase the HF + bitsandbytes
+# stack onto versions that work with the wider open-source recipe ecosystem
+# (PEFT 0.13, TRL 0.11, datasets <4.4).
+#
+# See README "Known Issues and Compatibility" for the trade-offs.
+#
+# `# no-walk` (handled by containers/install-deps.py) installs the marked
+# package without walking its declared transitives — the explicit pins
+# below stay authoritative even when the optional packages (unsloth, etc.)
+# would otherwise pull in transformers 5.x.
+
+# --- HF stack pinned for PEFT 0.13 / TRL 0.11 compatibility ---
+transformers==4.46.*
+tokenizers==0.20.*
+huggingface-hub==0.26.*
+peft==0.13.*
+accelerate>=1.0,<2.0
+trl==0.11.*
+datasets>=3.4.1,<4.4.0
+
+# --- Quantisation ---
+# bitsandbytes==0.49.x ships no CUDA-13 wheel; 0.48.0 falls back gracefully on
+# CUDA 12.x. Track upstream for a CUDA-13 wheel release and lift the pin:
+# https://github.com/bitsandbytes-foundation/bitsandbytes/releases
+bitsandbytes==0.48.0
+
+# --- Common extras ---
+sentencepiece
+einops
+
+# --- Optional (uncomment as needed) ---
+# Unsloth — pair with the matching version pin. Required because latest
+# unsloth's runtime imports transformers 5.x APIs even when --no-deps stops
+# pip from upgrading at install time. UNSLOTH_VERSION env var to the
+# unsloth-headless / unsloth-studio launchers is the same idea.
+# unsloth==2026.3.5  # no-walk
+# unsloth_zoo==2026.3.5  # no-walk
+
+# flash-attn builds from source on first install — be patient on first run.
+# flash-attn  # no-walk
