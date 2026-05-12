@@ -57,10 +57,13 @@ docker run -d \
   bash -c '\
     python /tmp/install-deps.py '"${UNSLOTH_SPEC}"' && \
     pip uninstall -y torchcodec 2>/dev/null; \
-    (unsloth studio setup && \
-     pip uninstall -y torchcodec 2>/dev/null; \
-     unsloth studio -H 0.0.0.0 -p '"${PORT}"') || \
-    { echo "ERROR: unsloth studio setup/start failed — keeping container alive for inspection"; sleep infinity; }'
+    if [ ! -x /root/.unsloth/studio/unsloth_studio/bin/python ]; then \
+        echo "[unsloth-studio] venv missing at /root/.unsloth/studio/unsloth_studio; bootstrapping via install.sh"; \
+        curl -fsSL https://unsloth.ai/install.sh | sh; \
+    fi && \
+    unsloth studio setup && \
+    pip uninstall -y torchcodec 2>/dev/null; \
+    unsloth studio -H 0.0.0.0 -p '"${PORT}"''
 
 # Poll for readiness in the background, open browser when ready
 (
@@ -69,19 +72,6 @@ docker run -d \
             echo ""
             echo "Container exited unexpectedly."
             docker rm -f "$CONTAINER_NAME" 2>/dev/null
-            exit 1
-        fi
-        # Container kept alive after a bringup failure (see inner cmd's `|| { ... sleep infinity; }`).
-        # Without this short-circuit the poll would hang the full 30 minutes.
-        if docker logs "$CONTAINER_NAME" 2>&1 | grep -q "ERROR: unsloth studio setup/start failed"; then
-            echo ""
-            echo "Studio bringup failed. Container left running for inspection."
-            echo "  docker logs $CONTAINER_NAME"
-            echo "  docker exec -it $CONTAINER_NAME bash"
-            echo "  Stop with: docker stop $CONTAINER_NAME"
-            echo ""
-            echo "--- last 20 log lines ---"
-            docker logs --tail 20 "$CONTAINER_NAME" 2>&1
             exit 1
         fi
         if curl -s -o /dev/null -w '%{http_code}' "http://localhost:${PORT}" 2>/dev/null | grep -q "200\|302\|301"; then
