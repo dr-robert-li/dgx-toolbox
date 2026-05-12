@@ -1391,6 +1391,8 @@ The remediation is to layer a known-good HF stack on top of the NGC base via `~/
 
 The shipped template at [`setup/requirements-gpu.example.txt`](./setup/requirements-gpu.example.txt) pins exactly this stack. Copy it to `~/requirements-gpu.txt` and tweak from there.
 
+The same `~/requirements-gpu.txt` is honoured by `containers/unsloth-headless.sh` and `containers/unsloth-studio.sh` — when the file exists on the host it is bind-mounted into the container and passed as `-r /tmp/requirements-gpu.txt` to `install-deps.py` (alongside the `unsloth` / `unsloth_zoo` top-level packages). Override the path with `HF_PINS_FILE=/abs/path ./containers/unsloth-headless.sh` or disable propagation entirely with `HF_PINS_FILE='' ./containers/unsloth-headless.sh`. NGC launchers continue to read the file via their own bind-mount block as before — there is now a single source of truth for HF pins across all four container launchers.
+
 ### bitsandbytes on CUDA 13
 
 `bitsandbytes==0.49.2` ships `libbitsandbytes_cuda121.so` and lower but no `libbitsandbytes_cuda131.so`. On the CUDA 13.x bases (26.02-py3, or 25.11-py3 with forward-compat), first import warns `Configured CUDA binary not found at .../libbitsandbytes_cuda131.so` and quantised loads silently fall back to CPU. The template pins `bitsandbytes==0.48.0` which falls back gracefully on CUDA 12.x and remains functional in mixed-CUDA environments. Track upstream for a CUDA-13 wheel: <https://github.com/bitsandbytes-foundation/bitsandbytes/releases>.

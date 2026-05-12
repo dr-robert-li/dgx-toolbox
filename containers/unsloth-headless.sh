@@ -26,6 +26,17 @@ else
     UNSLOTH_SPEC="unsloth unsloth_zoo"
 fi
 
+# Optional HF-stack pin file (transformers / tokenizers / hub / peft / trl / bnb).
+# Defaults to $HOME/requirements-gpu.txt — the same path NGC launchers honour.
+# Override with HF_PINS_FILE=/abs/path or HF_PINS_FILE='' to disable.
+HF_PINS_FILE="${HF_PINS_FILE-$HOME/requirements-gpu.txt}"
+HF_PINS_MOUNT=""
+HF_PINS_ARG=""
+if [ -n "$HF_PINS_FILE" ] && [ -f "$HF_PINS_FILE" ]; then
+    HF_PINS_MOUNT="-v $HF_PINS_FILE:/tmp/requirements-gpu.txt:ro"
+    HF_PINS_ARG="-r /tmp/requirements-gpu.txt"
+fi
+
 # Check if already running
 if is_running "$CONTAINER_NAME"; then
     echo "Unsloth headless container is already running"
@@ -44,6 +55,9 @@ echo ""
 echo "  Container: $CONTAINER_NAME"
 echo "  Exec:      docker exec -it $CONTAINER_NAME bash"
 echo "  Stop:      docker stop $CONTAINER_NAME"
+if [ -n "$HF_PINS_ARG" ]; then
+    echo "  HF pins:   $HF_PINS_FILE"
+fi
 echo "================================================"
 echo ""
 
@@ -57,11 +71,12 @@ docker run -d \
   -v "$HOME/unsloth-data:/workspace/work" \
   -v "${PWD}:/workspace/project" \
   -v "$SCRIPT_DIR/install-deps.py:/tmp/install-deps.py:ro" \
+  $HF_PINS_MOUNT \
   $(build_extra_mounts) \
   --restart unless-stopped \
   nvcr.io/nvidia/pytorch:25.11-py3 \
   bash -c '\
-    python /tmp/install-deps.py '"${UNSLOTH_SPEC}"' && \
+    python /tmp/install-deps.py '"${HF_PINS_ARG}"' '"${UNSLOTH_SPEC}"' && \
     pip uninstall -y torchcodec 2>/dev/null; \
     echo "Unsloth headless ready — waiting for exec commands..." && \
     sleep infinity'
