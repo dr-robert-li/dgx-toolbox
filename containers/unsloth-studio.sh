@@ -57,13 +57,24 @@ docker run -d \
   bash -c '\
     python /tmp/install-deps.py '"${UNSLOTH_SPEC}"' && \
     pip uninstall -y torchcodec 2>/dev/null; \
-    if [ ! -x /root/.unsloth/studio/unsloth_studio/bin/python ]; then \
-        echo "[unsloth-studio] venv missing at /root/.unsloth/studio/unsloth_studio; bootstrapping via install.sh"; \
-        curl -fsSL https://unsloth.ai/install.sh | sh; \
+    VENV=/root/.unsloth/studio/unsloth_studio; \
+    if [ ! -x "$VENV/bin/python" ]; then \
+        echo "[unsloth-studio] venv missing at $VENV; bootstrapping via install.sh"; \
+        curl -fsSL https://unsloth.ai/install.sh | sh || true; \
+    fi; \
+    if [ "$(uname -m)" = "aarch64" ] && [ -x "$VENV/bin/python" ]; then \
+        echo "[unsloth-studio] aarch64 host detected; overriding torchcodec pin in venv"; \
+        "$VENV/bin/python" -m pip uninstall -y torchcodec 2>/dev/null; \
+        "$VENV/bin/python" -m pip install --no-deps "torchcodec>=0.11,<0.12" || \
+            echo "[unsloth-studio] WARN: torchcodec>=0.11 install failed; studio may still run without video support"; \
+    fi; \
+    if [ ! -x "$VENV/bin/unsloth" ]; then \
+        echo "[unsloth-studio] FATAL: venv bootstrap incomplete — $VENV/bin/unsloth not found"; \
+        echo "[unsloth-studio] Inspect curl install.sh output above for resolver errors"; \
+        exit 1; \
     fi && \
-    unsloth studio setup && \
-    pip uninstall -y torchcodec 2>/dev/null; \
-    unsloth studio -H 0.0.0.0 -p '"${PORT}"''
+    "$VENV/bin/unsloth" studio setup && \
+    "$VENV/bin/unsloth" studio -H 0.0.0.0 -p '"${PORT}"''
 
 # Poll for readiness in the background, open browser when ready
 (

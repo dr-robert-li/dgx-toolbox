@@ -1417,6 +1417,17 @@ UNSLOTH_VERSION=2026.3.5 ./containers/unsloth-studio.sh
 
 Leave `UNSLOTH_VERSION` unset (or empty) to keep the existing latest-pulling behaviour.
 
+### Unsloth Studio bootstrap on aarch64
+
+On a fresh container, `unsloth studio setup` requires a Python venv at `/root/.unsloth/studio/unsloth_studio` that the NGC base image does not provide. `containers/unsloth-studio.sh` runs the upstream `curl -fsSL https://unsloth.ai/install.sh | sh` bootstrap on first launch when that venv is missing.
+
+Two issues surface on aarch64 hosts (DGX Spark, Grace, ARM workstations) that the launcher now papers over:
+
+1. **`torchcodec==0.10.0` pin in `install.sh`** — upstream pins a torchcodec version that ships no `manylinux_*_aarch64` wheel. Both the uv resolver and the pip fallback fail with `No matching distribution found for torchcodec==0.10.0`, which makes `unsloth studio setup` exit non-zero. The launcher detects `uname -m == aarch64`, force-replaces torchcodec in the venv with `torchcodec>=0.11,<0.12` (which does have aarch64 wheels), and continues.
+2. **`$PATH` shadow on the `unsloth` binary** — the launcher's earlier `python /tmp/install-deps.py unsloth unsloth_zoo` step installs unsloth into the system Python 3.12 site-packages. A bare `unsloth studio` invocation then resolves through `$PATH` to that system install and crashes immediately with `ModuleNotFoundError: No module named 'structlog'` (structlog lives only in the install.sh-provisioned venv). The launcher now calls `"$VENV/bin/unsloth"` by absolute path for both `setup` and the studio server, bypassing `$PATH` entirely.
+
+If `$VENV/bin/unsloth` is missing after bootstrap (e.g. install.sh exited 1 for an unrelated reason), the launcher prints a clear FATAL banner referencing the curl install.sh output instead of failing silently. Inspect `docker logs unsloth-studio` for the resolver diagnostics.
+
 ### MoE LoRA adapter loading
 
 Unsloth-trained MoE LoRA adapters that use `target_parameters=["mlp.experts.gate_up_proj", "mlp.experts.down_proj"]` (e.g. Qwen3-30B-A3B with expert-MLP LoRA) silently fail to bind under raw `PeftModel.from_pretrained` on PEFT < 0.19. PEFT prints a `RuntimeWarning: target_parameters=[...] were set but no parameter was matched` — easy to miss — and generation then runs on BASE expert weights, producing a quality regression that looks like an untrained model.
