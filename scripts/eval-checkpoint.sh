@@ -160,10 +160,19 @@ fi
 # ---------------------------------------------------------------------------
 # Section 3: Cleanup trap
 # ---------------------------------------------------------------------------
+EVAL_BACKEND=""             # set in Section 4: "vllm-direct" or "sparkrun"
+VLLM_DIRECT_NAME="dgx-eval-vllm"
+
 _cleanup() {
   echo ""
-  echo "Stopping ephemeral eval workload ($EVAL_RECIPE)..."
-  sparkrun stop "$EVAL_RECIPE" 2>/dev/null || true
+  if [ "$EVAL_BACKEND" = "vllm-direct" ]; then
+    echo "Stopping ephemeral eval workload (docker $VLLM_DIRECT_NAME)..."
+    docker stop "$VLLM_DIRECT_NAME" 2>/dev/null || true
+    docker rm -f "$VLLM_DIRECT_NAME" 2>/dev/null || true
+  else
+    echo "Stopping ephemeral eval workload ($EVAL_RECIPE)..."
+    sparkrun stop "$EVAL_RECIPE" 2>/dev/null || true
+  fi
   if [ "${STOPPED_PROD:-0}" = "1" ] && [ -n "$PROD_RECIPE" ]; then
     echo "Restarting production recipe: $PROD_RECIPE"
     sparkrun run "$PROD_RECIPE" 2>/dev/null || \
@@ -171,6 +180,28 @@ _cleanup() {
   fi
 }
 trap '_cleanup' EXIT
+
+# Direct vLLM launcher for local checkpoint directories. sparkrun cannot serve
+# local paths (huggingface_hub.snapshot_download is hard-wired in
+# vendor/sparkrun/src/sparkrun/models/download.py) — see DGX_TOOLBOX_ISSUES.md
+# #8 and #9. --served-model-name aligns the advertised model id with
+# $MODEL_NAME so harness.eval replay's --model arg matches what vLLM serves.
+_launch_vllm_direct() {
+  local checkpoint="$1" port="$2" gpu_util="$3"
+  docker rm -f "$VLLM_DIRECT_NAME" 2>/dev/null || true
+  docker run -d --gpus all --name "$VLLM_DIRECT_NAME" \
+    -v "${checkpoint}:/models/checkpoint:ro" \
+    -p "${port}:${port}" \
+    -e HF_HUB_ENABLE_HF_TRANSFER=1 \
+    ghcr.io/spark-arena/dgx-vllm-eugr-nightly:latest \
+    vllm serve /models/checkpoint \
+      --served-model-name "$MODEL_NAME" \
+      --host 0.0.0.0 \
+      --port "$port" \
+      --gpu-memory-utilization "$gpu_util" \
+      --trust-remote-code \
+      --max-model-len 4096
+}
 
 # ---------------------------------------------------------------------------
 # Section 4: Launch ephemeral eval workload via sparkrun
@@ -190,11 +221,23 @@ elif [ -f "$EVAL_RECIPE" ]; then
 else
   EVAL_RECIPE_REF="$EVAL_RECIPE"
 fi
-MODEL="$CHECKPOINT_DIR" \
-sparkrun run "$EVAL_RECIPE_REF" \
-  --port "$EVAL_VLLM_PORT" \
-  --gpu-mem "$GPU_UTIL" \
-  --solo
+# sparkrun cannot serve local checkpoint directories (its model resolver is
+# wired to huggingface_hub.snapshot_download — no os.path.exists branch). For
+# local paths we bypass sparkrun and launch vLLM directly via docker run;
+# HF repo ids still go through sparkrun. See DGX_TOOLBOX_ISSUES.md #9.
+if [[ "$CHECKPOINT_DIR" == /* ]] && [ -d "$CHECKPOINT_DIR" ]; then
+  EVAL_BACKEND="vllm-direct"
+  echo "Launching vLLM directly for local checkpoint (sparkrun bypass)..."
+  _launch_vllm_direct "$CHECKPOINT_DIR" "$EVAL_VLLM_PORT" "$GPU_UTIL"
+else
+  EVAL_BACKEND="sparkrun"
+  # sparkrun does not expand ${VAR} in the recipe `model:` field — override via -o.
+  sparkrun run "$EVAL_RECIPE_REF" \
+    --port "$EVAL_VLLM_PORT" \
+    --gpu-mem "$GPU_UTIL" \
+    -o "model=$CHECKPOINT_DIR" \
+    --solo
+fi
 
 # ---------------------------------------------------------------------------
 # Section 5: Wait for model ready

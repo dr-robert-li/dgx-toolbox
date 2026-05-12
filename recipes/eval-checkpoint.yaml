@@ -1,9 +1,15 @@
 recipe_version: "2"
-# Ephemeral eval workload — expects MODEL env var or CLI override to supply the
-# checkpoint directory or HF repo id. Used by scripts/eval-checkpoint.sh to run
+# Ephemeral eval workload. Used by scripts/eval-checkpoint.sh to run
 # evaluation against a fine-tune without disturbing the production inference
 # workload on :8000.
-model: ${MODEL:-/models/checkpoint}
+#
+# NOTE: sparkrun does not expand ${VAR} / ${VAR:-default} in the `model:` field
+# (only the `env:` dict is expanded). Callers MUST override via `-o model=<id>`
+# on the command line, e.g. `sparkrun run eval-checkpoint -o model=org/repo`.
+# scripts/eval-checkpoint.sh handles this for HF repo IDs and routes local
+# checkpoint directories around sparkrun entirely (see DGX_TOOLBOX_ISSUES.md
+# #8 and #9 for the upstream sparkrun limitations).
+model: /models/checkpoint
 runtime: vllm
 container: ghcr.io/spark-arena/dgx-vllm-eugr-nightly:latest
 
