@@ -55,6 +55,8 @@ fi
 echo "================================================"
 echo ""
 
+memory_preflight
+
 docker run -d \
   --name "$CONTAINER_NAME" \
   --gpus all \
@@ -96,7 +98,9 @@ docker run -d \
     for i in $(seq 1 360); do
         if ! docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
             echo ""
-            echo "Container exited unexpectedly."
+            if ! oom_banner "$CONTAINER_NAME"; then
+                echo "Container exited unexpectedly."
+            fi
             docker rm -f "$CONTAINER_NAME" 2>/dev/null
             exit 1
         fi

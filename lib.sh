@@ -103,6 +103,62 @@ require_files() {
   [[ $missing -eq 0 ]] || exit 1
 }
 
+# Pre-flight memory check (informational; never blocks launch)
+# Warns to stderr if host MemAvailable or GPU memory.free is below threshold.
+# Usage: memory_preflight [min_host_gb] [min_gpu_gb]
+# Defaults: 16 GB host, 8 GB GPU. Override via MIN_HOST_GB / MIN_GPU_GB env.
+memory_preflight() {
+  local min_host="${MIN_HOST_GB:-${1:-16}}"
+  local min_gpu="${MIN_GPU_GB:-${2:-8}}"
+
+  local host_kb
+  host_kb=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo 2>/dev/null)
+  if [ -n "$host_kb" ]; then
+    local host_gb=$((host_kb / 1024 / 1024))
+    if [ "$host_gb" -lt "$min_host" ]; then
+      echo "WARN: host MemAvailable=${host_gb}GB < ${min_host}GB; container may OOM (exit 137)" >&2
+    fi
+  fi
+
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    local gpu_mib
+    gpu_mib=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null | awk 'NR==1{print $1}')
+    # Skip if nvidia-smi returns [N/A] (e.g. DGX Spark unified-memory hosts).
+    if [[ "$gpu_mib" =~ ^[0-9]+$ ]] && [ "$gpu_mib" -gt 0 ]; then
+      local gpu_gb=$((gpu_mib / 1024))
+      if [ "$gpu_gb" -lt "$min_gpu" ]; then
+        echo "WARN: GPU memory.free=${gpu_gb}GB < ${min_gpu}GB; large-model loads may fail" >&2
+      fi
+    fi
+  fi
+}
+
+# OOM banner — inspect a stopped container and surface OOM-vs-other-exit clearly
+# Usage: oom_banner <container_name>
+# Prints a banner and returns 0 when OOM/137 is detected; returns 1 otherwise.
+oom_banner() {
+  local name="$1"
+  local oom exit_code
+  oom=$(docker inspect "$name" -f '{{.State.OOMKilled}}' 2>/dev/null)
+  exit_code=$(docker inspect "$name" -f '{{.State.ExitCode}}' 2>/dev/null)
+  if [ "$oom" = "true" ] || [ "$exit_code" = "137" ]; then
+    echo ""
+    echo "================================================"
+    echo "  Container OOM-killed (exit ${exit_code}, OOMKilled=${oom})"
+    echo "================================================"
+    echo "  Linux OOM killer or cgroup memory limit triggered."
+    echo "  Recovery options:"
+    echo "    - Reduce batch size / sequence length / model size"
+    echo "    - Enable gradient checkpointing"
+    echo "    - Use 4-bit quantisation (bitsandbytes)"
+    echo "    - Free host RAM (close other workloads)"
+    echo "    - Raise --shm-size or set --memory= on docker run"
+    echo "================================================"
+    return 0
+  fi
+  return 1
+}
+
 # Build extra -v flags from EXTRA_MOUNTS env var
 # Format: EXTRA_MOUNTS="/host/a:/container/a,/host/b:/container/b"
 # Comma-separated mount specs, each spec is host_path:container_path

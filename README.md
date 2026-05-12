@@ -1448,6 +1448,17 @@ scripts/verify_adapter_load.py --base Qwen/Qwen3-30B-A3B --adapter ./checkpoints
 # add --load-model for an empirical bind check (heavy: full base+adapter load)
 ```
 
+### OOM detection and exit-code 137
+
+Long-running unsloth containers can be SIGKILLed by the Linux OOM killer (or a cgroup memory limit) under load — typically when batch size, sequence length, or model size exceeds the available host RAM / VRAM. The kernel sends SIGKILL; Docker surfaces exit code **137** and sets `State.OOMKilled=true` in the container metadata.
+
+Both unsloth launchers run two checks to make this loud instead of silent:
+
+1. **Pre-flight memory warning** — before `docker run`, `lib.sh::memory_preflight` checks `/proc/meminfo` `MemAvailable` and (where applicable) `nvidia-smi --query-gpu=memory.free`. If either falls below the threshold a `WARN:` line goes to stderr. Defaults are 16 GB host / 8 GB GPU; override with `MIN_HOST_GB=` / `MIN_GPU_GB=` env vars. On DGX Spark / Grace unified-memory hosts where `nvidia-smi` reports `[N/A]` for `memory.free`, the GPU branch is skipped — only the host check fires.
+2. **Post-mortem OOM banner** — if the container exits before the readiness probe succeeds, `lib.sh::oom_banner` runs `docker inspect -f '{{.State.OOMKilled}}'` and `{{.State.ExitCode}}`. On `OOMKilled=true` *or* `ExitCode=137` the launcher prints a clear banner pointing at the recovery options (smaller batch, gradient checkpointing, 4-bit quantisation, larger `--shm-size`, etc.) instead of the bare "Container exited unexpectedly" message.
+
+This addresses the Watch Log "EXIT 137" recurrences flagged in `DGX_TOOLBOX_ISSUES.md`. Neither check blocks the launch — pre-flight is informational, banner runs only after a real exit.
+
 ### eval-checkpoint workflow
 
 `scripts/eval-checkpoint.sh` runs an ephemeral vLLM workload against a fine-tuned checkpoint and registers the resulting model on the sparkrun LiteLLM proxy. Two sparkrun limitations affect this path:

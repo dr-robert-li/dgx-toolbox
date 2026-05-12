@@ -61,6 +61,8 @@ fi
 echo "================================================"
 echo ""
 
+memory_preflight
+
 docker run -d \
   --name "$CONTAINER_NAME" \
   --gpus all \
@@ -89,7 +91,9 @@ echo ""
 (
     for i in $(seq 1 120); do
         if ! is_running "$CONTAINER_NAME"; then
-            echo "Container exited unexpectedly."
+            if ! oom_banner "$CONTAINER_NAME"; then
+                echo "Container exited unexpectedly."
+            fi
             docker rm -f "$CONTAINER_NAME" 2>/dev/null
             exit 1
         fi
