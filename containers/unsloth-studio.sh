@@ -48,6 +48,10 @@ docker run -d \
   bash -c '\
     python /tmp/install-deps.py unsloth unsloth_zoo && \
     pip uninstall -y torchcodec 2>/dev/null; \
+    if [ ! -x /root/.unsloth/studio/unsloth_studio/bin/python ]; then \
+        echo "[unsloth-studio] venv missing at /root/.unsloth/studio/unsloth_studio; bootstrapping via install.sh"; \
+        curl -fsSL https://unsloth.ai/install.sh | sh; \
+    fi && \
     unsloth studio setup && \
     pip uninstall -y torchcodec 2>/dev/null; \
     unsloth studio -H 0.0.0.0 -p '"${PORT}"''
