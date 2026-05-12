@@ -1326,7 +1326,13 @@ Edit the YAML to point at your container names, workdirs, and validation paths. 
 
 Both NGC PyTorch scripts (`containers/ngc-pytorch.sh`, `containers/ngc-jupyter.sh`) bind-mount two host files and fail-fast if either is missing:
 
-1. `~/requirements-gpu.txt` — packages installed inside the container at start. Create with your preferred deps. The example below targets an unsloth-based LoRA finetune stack; see "How dependency installation works" for the `# no-walk` marker semantics.
+1. `~/requirements-gpu.txt` — packages installed inside the container at start. Create with your preferred deps. The repo ships a known-good template at [`setup/requirements-gpu.example.txt`](./setup/requirements-gpu.example.txt) targeting the NGC PyTorch 26.02 base + PEFT 0.13 / TRL 0.11 stack — see [Known Issues and Compatibility](#known-issues-and-compatibility) for the trade-offs. To start from the template:
+
+   ```bash
+   cp setup/requirements-gpu.example.txt ~/requirements-gpu.txt
+   ```
+
+   Or hand-roll for an unsloth-based LoRA finetune stack (see "How dependency installation works" for the `# no-walk` marker semantics):
 
    ```bash
    cat > ~/requirements-gpu.txt << 'EOF'
@@ -1367,6 +1373,76 @@ After the install, both NGC launchers defensively `pip uninstall -y torchcodec` 
 ### Caches
 
 All six launchers (`ngc-*.sh`, `unsloth-*.sh`) bind-mount `~/.cache/pip` and `~/.cache/huggingface` so repeat starts reuse downloaded wheels and model weights instead of redownloading. The unsloth launchers also share the same `install-deps.py` helper as the NGC scripts.
+
+## Known Issues and Compatibility
+
+Known landmines that hit any user running HF / PEFT / Unsloth workflows on the toolbox containers. The fix vector for each is in-repo; the root cause for several lives upstream (NGC base image, sparkrun, PEFT). See [`DGX_TOOLBOX_ISSUES.md` in the wp-finetune repo](https://github.com/) for the full reproduction notes.
+
+### Container compatibility matrix
+
+NGC PyTorch 26.02-py3 ships transformers 5.x + huggingface-hub 1.x + tokenizers 0.20.3. PEFT 0.19 was built against the transformers 4.x `WeightConverter` signature, so loading any LoRA adapter raises `WeightConverter.__init__() got an unexpected keyword argument 'distributed_operation'`. Most current open-source fine-tuning recipes (Sentence-Transformers, TRL < 0.30, recent PEFT recipes) likewise expect the 4.x line.
+
+The remediation is to layer a known-good HF stack on top of the NGC base via `~/requirements-gpu.txt`:
+
+| NGC base                              | transformers | tokenizers | huggingface-hub | peft     | trl      | bitsandbytes |
+| ------------------------------------- | ------------ | ---------- | --------------- | -------- | -------- | ------------ |
+| `nvcr.io/nvidia/pytorch:25.11-py3`    | 4.46.x       | 0.20.x     | 0.26.x          | 0.13.x   | 0.11.x   | 0.48.0       |
+| `nvcr.io/nvidia/pytorch:26.02-py3`    | 4.46.x       | 0.20.x     | 0.26.x          | 0.13.x   | 0.11.x   | 0.48.0       |
+
+The shipped template at [`setup/requirements-gpu.example.txt`](./setup/requirements-gpu.example.txt) pins exactly this stack. Copy it to `~/requirements-gpu.txt` and tweak from there.
+
+### bitsandbytes on CUDA 13
+
+`bitsandbytes==0.49.2` ships `libbitsandbytes_cuda121.so` and lower but no `libbitsandbytes_cuda131.so`. On the CUDA 13.x bases (26.02-py3, or 25.11-py3 with forward-compat), first import warns `Configured CUDA binary not found at .../libbitsandbytes_cuda131.so` and quantised loads silently fall back to CPU. The template pins `bitsandbytes==0.48.0` which falls back gracefully on CUDA 12.x and remains functional in mixed-CUDA environments. Track upstream for a CUDA-13 wheel: <https://github.com/bitsandbytes-foundation/bitsandbytes/releases>.
+
+### Mount layout
+
+| Launcher                  | Host source        | Container path        | Working dir | Notes                                          |
+| ------------------------- | ------------------ | --------------------- | ----------- | ---------------------------------------------- |
+| `ngc-pytorch.sh`          | `$PWD`             | `/workspace`          | `/workspace`| Your repo is the workspace.                    |
+| `ngc-jupyter.sh`          | `$HOME`            | `/workspace`          | `/workspace`| Jupyter sees your whole home dir.              |
+| `unsloth-headless.sh`     | `$HOME/unsloth-data` + `$PWD` | `/workspace/work` + `/workspace/project` | `/` | Data + repo both mounted.       |
+| `unsloth-studio.sh`       | `$HOME/unsloth-data` + `$PWD` | `/workspace/work` + `/workspace/project` | `/` | Same as headless plus the Studio UI on :8000. |
+
+All launchers also accept `EXTRA_MOUNTS="/host/a:/container/a,/host/b:/container/b"` for additional binds. The unsloth launchers do not override the working directory so `docker exec -it unsloth-headless bash` still lands at `/` for users with existing muscle memory.
+
+### Unsloth version pinning
+
+`unsloth-headless.sh` and `unsloth-studio.sh` honour an `UNSLOTH_VERSION` env var that pins both `unsloth` and `unsloth_zoo`. Use this when loading checkpoints trained against an older transformers line — the latest unsloth pulls transformers 5.x at install (and at runtime imports 5.x APIs even with `--no-deps`), which breaks PEFT 0.13 adapters.
+
+```bash
+UNSLOTH_VERSION=2026.3.5 ./containers/unsloth-headless.sh
+UNSLOTH_VERSION=2026.3.5 ./containers/unsloth-studio.sh
+```
+
+Leave `UNSLOTH_VERSION` unset (or empty) to keep the existing latest-pulling behaviour.
+
+### MoE LoRA adapter loading
+
+Unsloth-trained MoE LoRA adapters that use `target_parameters=["mlp.experts.gate_up_proj", "mlp.experts.down_proj"]` (e.g. Qwen3-30B-A3B with expert-MLP LoRA) silently fail to bind under raw `PeftModel.from_pretrained` on PEFT < 0.19. PEFT prints a `RuntimeWarning: target_parameters=[...] were set but no parameter was matched` — easy to miss — and generation then runs on BASE expert weights, producing a quality regression that looks like an untrained model.
+
+The reliable load path is Unsloth's own loader:
+
+```python
+from unsloth import FastLanguageModel
+model, tokenizer = FastLanguageModel.from_pretrained(adapter_path, ...)
+```
+
+For pipelines that can't move to FastLanguageModel, [`scripts/verify_adapter_load.py`](./scripts/verify_adapter_load.py) statically checks an adapter's `adapter_config.json` against the base model and exits non-zero when a MoE silent-fail risk is detected:
+
+```bash
+scripts/verify_adapter_load.py --base Qwen/Qwen3-30B-A3B --adapter ./checkpoints/my-lora
+# add --load-model for an empirical bind check (heavy: full base+adapter load)
+```
+
+### eval-checkpoint workflow
+
+`scripts/eval-checkpoint.sh` runs an ephemeral vLLM workload against a fine-tuned checkpoint and registers the resulting model on the sparkrun LiteLLM proxy. Two sparkrun limitations affect this path:
+
+- The recipe `model:` field is not env-var-expanded — `${MODEL:-/models/checkpoint}` is treated literally and errors. The eval-checkpoint recipe ships a static placeholder; the script passes the override via `-o model=<id>` (HF flow) or bypasses sparkrun entirely (local-dir flow).
+- sparkrun's `download_model()` is hard-wired to `huggingface_hub.snapshot_download(repo_id=...)` — no local-path branch. For any local checkpoint directory, the script routes around sparkrun and launches `vllm serve` directly via `docker run`, passing `--served-model-name "$MODEL_NAME"` so downstream `harness.eval replay --model "$MODEL_NAME"` requests match what vLLM advertises.
+
+Both gaps will be removed when upstream sparkrun grows env-var expansion in recipe fields and a local-path branch in its model resolver. The toolbox-side dispatch in `scripts/eval-checkpoint.sh` is forward-compatible.
 
 ## Third-Party Software
 
