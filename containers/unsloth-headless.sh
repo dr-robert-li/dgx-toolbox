@@ -18,6 +18,14 @@ require_files "$SCRIPT_DIR/install-deps.py"
 ensure_dirs "$HOME/.cache/huggingface" "$HOME/.cache/pip" "$HOME/unsloth-data"
 CONTAINER_NAME="unsloth-headless"
 
+# Optional version pin (e.g. UNSLOTH_VERSION=2026.3.5) — empty means latest.
+UNSLOTH_VERSION="${UNSLOTH_VERSION:-}"
+if [ -n "$UNSLOTH_VERSION" ]; then
+    UNSLOTH_SPEC="unsloth==${UNSLOTH_VERSION} unsloth_zoo==${UNSLOTH_VERSION}"
+else
+    UNSLOTH_SPEC="unsloth unsloth_zoo"
+fi
+
 # Check if already running
 if is_running "$CONTAINER_NAME"; then
     echo "Unsloth headless container is already running"
@@ -47,12 +55,13 @@ docker run -d \
   -v "$HOME/.cache/huggingface:/root/.cache/huggingface" \
   -v "$HOME/.cache/pip:/root/.cache/pip" \
   -v "$HOME/unsloth-data:/workspace/work" \
+  -v "${PWD}:/workspace/project" \
   -v "$SCRIPT_DIR/install-deps.py:/tmp/install-deps.py:ro" \
   $(build_extra_mounts) \
   --restart unless-stopped \
   nvcr.io/nvidia/pytorch:25.11-py3 \
   bash -c '\
-    python /tmp/install-deps.py unsloth unsloth_zoo && \
+    python /tmp/install-deps.py '"${UNSLOTH_SPEC}"' && \
     pip uninstall -y torchcodec 2>/dev/null; \
     echo "Unsloth headless ready — waiting for exec commands..." && \
     sleep infinity'
