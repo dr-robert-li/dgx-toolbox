@@ -8,17 +8,22 @@ metadata:
     OpenAI gpt-oss-120b served via vLLM for batch LLM-judge inference
     (e.g. wp-finetune eval/llm_checks.py, autoresearch judges,
     boundary-pack generation). Tuned for a single DGX Spark
-    (128 GB unified memory) — 0.85 GPU memory utilization leaves
-    headroom for harness, unsloth-headless, Open-WebUI, and
-    telemetry sharing the same UMA pool while still giving the model
-    its 131k-token context. Push to 0.9 only when no other UMA
-    consumers are live (`sparkrun run gpt-oss-120b-vllm -o
-    gpu_memory_utilization=0.9`). --no-enable-prefix-caching keeps
-    the KV budget for context length, not cross-request reuse. The
-    OpenAI-format tool-call and openai_gptoss reasoning parsers are
-    wired so gpt-oss harmony output (tool calls, chain-of-thought
-    channels) round-trips cleanly through the vLLM OpenAI-compatible
-    endpoint.
+    (128 GB unified memory) — 0.8 GPU memory utilization is the
+    OOM-averse default. DGX Spark UMA means desktop GPU processes
+    (Xorg, GNOME Shell, Chromium, VS Code, terminal compositors)
+    eat from the same pool as vLLM; 0.8 (= 97.4 GiB target on a
+    121.7 GiB device) leaves headroom for the desktop session plus
+    harness / unsloth-headless / Open-WebUI / telemetry. Push to
+    0.85–0.9 only when running headless (multi-user.target) or with
+    those workloads stopped:
+
+      sparkrun run gpt-oss-120b-vllm -o gpu_memory_utilization=0.85
+
+    --no-enable-prefix-caching keeps the KV budget for context
+    length, not cross-request reuse. The OpenAI-format tool-call and
+    openai_gptoss reasoning parsers are wired so gpt-oss harmony
+    output (tool calls, chain-of-thought channels) round-trips
+    cleanly through the vLLM OpenAI-compatible endpoint.
 
     First launch downloads the model snapshot (~240 GB) to
     ~/.cache/huggingface/hub via huggingface_hub.snapshot_download on
@@ -40,7 +45,7 @@ defaults:
   host: 0.0.0.0
   tensor_parallel: 1
   pipeline_parallel: 1
-  gpu_memory_utilization: 0.85
+  gpu_memory_utilization: 0.8
   max_model_len: 131072
   max_num_batched_tokens: 8192
   max_cudagraph_capture_size: 2048
