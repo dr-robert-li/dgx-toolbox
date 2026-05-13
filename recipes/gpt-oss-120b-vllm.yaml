@@ -1,0 +1,70 @@
+recipe_version: "2"
+model: openai/gpt-oss-120b
+runtime: vllm
+container: ghcr.io/spark-arena/dgx-vllm-eugr-nightly:latest
+
+metadata:
+  description: >
+    OpenAI gpt-oss-120b served via vLLM for batch LLM-judge inference
+    (e.g. wp-finetune eval/llm_checks.py, autoresearch judges,
+    boundary-pack generation). Tuned for a single DGX Spark
+    (128 GB unified memory) — 0.9 GPU memory utilization with
+    --no-enable-prefix-caching to keep the KV budget for the
+    131k-token context. The OpenAI-format tool-call and openai_gptoss
+    reasoning parsers are wired so gpt-oss harmony output (tool calls,
+    chain-of-thought channels) round-trips cleanly through the vLLM
+    OpenAI-compatible endpoint.
+
+    First launch downloads the model snapshot (~240 GB) to
+    ~/.cache/huggingface/hub via huggingface_hub.snapshot_download on
+    the control machine, then mounts the HF cache into the vLLM
+    container. Subsequent launches hit the cache. HF_HUB_OFFLINE=1 in
+    the container env keeps the in-container HF libs from doing etag
+    checks against the hub after the model is cached.
+
+    Optional offline tokenizer assets: if you maintain a local
+    ~/tiktoken_encodings dir, add a pre_exec `copy:` step to drop it
+    at /tiktoken_encodings inside the container and uncomment the
+    TIKTOKEN_ENCODINGS_BASE env line below.
+  maintainers:
+    - dgx-toolbox
+  source: https://huggingface.co/openai/gpt-oss-120b
+
+defaults:
+  port: 30000
+  host: 0.0.0.0
+  tensor_parallel: 1
+  pipeline_parallel: 1
+  gpu_memory_utilization: 0.9
+  max_model_len: 131072
+  max_num_batched_tokens: 8192
+  max_cudagraph_capture_size: 2048
+  stream_interval: 20
+  trust_remote_code: true
+
+env:
+  HF_HUB_ENABLE_HF_TRANSFER: "1"
+  HF_HUB_OFFLINE: "1"
+  # Uncomment after wiring a pre_exec copy step for ~/tiktoken_encodings:
+  # TIKTOKEN_ENCODINGS_BASE: "/tiktoken_encodings"
+
+executor_config:
+  shm_size: 64gb
+
+command: |
+  vllm serve {model} \
+    --served-model-name {model} \
+    --host {host} \
+    --port {port} \
+    --max-model-len {max_model_len} \
+    --max-num-batched-tokens {max_num_batched_tokens} \
+    --max-cudagraph-capture-size {max_cudagraph_capture_size} \
+    --stream-interval {stream_interval} \
+    --gpu-memory-utilization {gpu_memory_utilization} \
+    --trust-remote-code \
+    --no-enable-prefix-caching \
+    --enable-auto-tool-choice \
+    --tool-call-parser openai \
+    --reasoning-parser openai_gptoss \
+    -tp {tensor_parallel} \
+    -pp {pipeline_parallel}

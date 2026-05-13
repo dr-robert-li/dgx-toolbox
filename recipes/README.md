@@ -46,6 +46,7 @@ runs `sparkrun registry add <URL>` under the hood, which reads the repo's
 |------|-------|---------|-------|
 | `nemotron-3-nano-4b-bf16-vllm.yaml` | `nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16` | vLLM | Replaces legacy `example.vllm-model` default. |
 | `eval-checkpoint.yaml` | (templated, set `MODEL` env var) | vLLM | Ephemeral eval workload for `scripts/eval-checkpoint.sh`. |
+| `gpt-oss-120b-vllm.yaml` | `openai/gpt-oss-120b` | vLLM | LLM-judge batch backend. Harmony tool-call + reasoning parsers wired. 0.9 GPU mem, 131k context, no prefix caching. `HF_HUB_OFFLINE=1` for offline parity after first cache fill. |
 
 ## Upstream references
 
